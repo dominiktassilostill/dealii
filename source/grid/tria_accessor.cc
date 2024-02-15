@@ -138,6 +138,21 @@ namespace
   }
 
 
+  template <int dim, int spacedim>
+  Point<spacedim>
+  barycenter(const TriaAccessor<2, dim, spacedim> &accessor)
+  {
+    if (accessor.reference_cell() == ReferenceCells::Triangle)
+      {
+        // We define the center in the same way as a simplex barycenter
+        return accessor.center();
+      }
+    else{
+      Assert(false, ExcInternalError());
+        return {};
+    }
+  }
+  
   Point<2>
   barycenter(const TriaAccessor<2, 2, 2> &accessor)
   {

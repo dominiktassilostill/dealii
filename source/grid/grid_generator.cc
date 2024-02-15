@@ -8299,6 +8299,461 @@ namespace GridGenerator
   }
 
 
+template <int dim, int spacedim>
+  void
+  convert_simplex_to_hypercube_mesh(const Triangulation<dim, spacedim> &in_tria,
+                                    Triangulation<dim, spacedim> &out_tria)
+  {
+    Assert(dim > 1, ExcNotImplemented());
+    AssertThrow(in_tria.all_reference_cells_are_simplex(), ExcNotImplemented());
+
+    Triangulation<dim, spacedim> temp_tria;
+    if (in_tria.n_global_levels() > 1)
+      {
+        AssertThrow(!in_tria.has_hanging_nodes(), ExcNotImplemented());
+        flatten_triangulation(in_tria, temp_tria);
+      }
+    const Triangulation<dim, spacedim> &ref_tria =
+      in_tria.n_global_levels() > 1 ? temp_tria : in_tria;
+
+    /* static tables with the definitions of cells, faces and edges by its
+     * vertices for 2d and 3d. For the inheritance of the manifold_id,
+     * definitions of inner-faces and boundary-faces are required. In case of
+     * 3d, also inner-edges and boundary-edges need to be defined.
+     */
+
+    /* Cell definition 2d:
+     * A simplices element is converted to 3 quadrilateral elements. Each
+     * triangle is defined by 3 vertices.
+     */
+    static const ndarray<unsigned int, 3, 4> table_2D_cell = {
+      {{{0, 3, 5, 6}}, {{3, 1, 6, 4}}, {{5, 6, 2, 4}}}};
+    // {{{6, 5, 3, 0}}, {{4, 6, 1, 3}}, {{4, 2, 6, 5}}}};
+
+    // {{{0, 3, 5, 6}}, {{3, 1, 6, 4}}, {{5, 6, 2, 4}}}};
+
+    /* Cell definition 3d:
+     * A tetrahedron element is converted to 4 hex elements. Each
+     * hex is defined by 8 vertices.
+     */
+    static const ndarray<unsigned int, 4, 8> vertex_ids_for_cells_3d = {
+      {{{0, 4, 6, 10, 7, 11, 12, 14}},
+       {{4, 1, 10, 5, 11, 8, 14, 13}},
+       {{6, 10, 2, 5, 12, 14, 9, 13}},
+       {{7, 11, 12, 14, 3, 8, 9, 13}}}};
+
+
+    /* Boundary-faces 2d:
+     * After converting, each of the 3 triangular faces is defined by faces
+     * of 2 different quads, i.e., lines. Note that lines are defined by 2
+     * vertices.
+     */
+    static const ndarray<unsigned int, 3, 2, 2>
+      vertex_ids_for_boundary_faces_2d = {{{{{{0, 3}}, {{3, 1}}}},
+                                           {{{{1, 4}}, {{2, 4}}}},
+                                           {{{{0, 5}}, {{5, 2}}}}}};
+
+    /* Boundary-faces 3d:
+     * After converting, each of the 4 tet faces corresponds to faces of
+     * 3 different hex faces, i.e., quads. Note that a quad is
+     * defined by 4 vertices.
+     */
+    static const ndarray<unsigned int, 4, 3, 4>
+      vertex_ids_for_boundary_faces_3d = {
+        {{{{{0, 4, 6, 10}}, {{4, 1, 10, 5}}, {{6, 10, 2, 5}}}},
+         {{{{0, 4, 7, 11}}, {{4, 1, 11, 8}}, {{7, 11, 3, 8}}}},
+         {{{{0, 6, 7, 12}}, {{6, 2, 12, 9}}, {{7, 12, 3, 9}}}},
+         {{{{1, 5, 8, 13}}, {{2, 5, 9, 13}}, {{3, 8, 9, 13}}}}}};
+
+
+    /* Inner-faces 2d:
+     * The converted triangulation based on hypercubes has 3 faces that do not
+     * form the boundary, i.e. inner-faces, each defined by 2 vertices.
+     */
+    static const ndarray<unsigned int, 3, 2> vertex_ids_for_inner_faces_2d = {
+      {{{3, 6}}, {{6, 4}}, {{5, 6}}}};
+
+    /* Inner-faces 3d:
+     * The converted triangulation based on simplices has 6 faces that do not
+     * form the boundary, i.e. inner-faces, each defined by 4 vertices.
+     */
+    static const ndarray<unsigned int, 6, 4> vertex_ids_for_inner_faces_3d = {
+      {{{4, 10, 11, 14}},
+       {{6, 10, 12, 14}},
+       {{7, 11, 12, 14}},
+       {{10, 5, 14, 13}},
+       {{11, 8, 14, 13}},
+       {{12, 14, 9, 13}}}};
+
+    /* Inner-edges 3d:
+     * The converted triangulation based on hypercubes has 4 edges that do not
+     * coincide with the boundary, i.e. inner-edges, each defined by 2 vertices.
+     */
+    static const ndarray<unsigned int, 4, 2> vertex_ids_for_inner_edges_3d = {
+      {{{10, 14}}, {{11, 14}}, {{12, 14}}, {{14, 13}}}};
+
+    /* Boundary-edges 3d:
+     * For each of the 4 boundary-faces of the tet, there are 9 edges (of
+     * different hex) that coincide with the boundary, i.e.
+     * boundary-edges. Each boundary-edge is defined by 2 vertices.
+     */
+    static const ndarray<unsigned int, 4, 9, 2>
+      vertex_ids_for_new_boundary_edges_3d = {{{{{{0, 6}},
+                                                 {{4, 10}},
+                                                 {{0, 4}},
+                                                 {{6, 10}},
+                                                 {{1, 5}},
+                                                 {{4, 1}},
+                                                 {{10, 5}},
+                                                 {{6, 2}},
+                                                 {{2, 5}}}},
+                                               {{{{0, 7}},
+                                                 {{4, 11}},
+                                                 {{0, 4}},
+                                                 {{7, 11}},
+                                                 {{1, 8}},
+                                                 {{4, 1}},
+                                                 {{11, 8}},
+                                                 {{7, 3}},
+                                                 {{3, 8}}}},
+                                               {{{{0, 7}},
+                                                 {{6, 12}},
+                                                 {{0, 6}},
+                                                 {{7, 12}},
+                                                 {{2, 9}},
+                                                 {{6, 2}},
+                                                 {{12, 9}},
+                                                 {{7, 3}},
+                                                 {{3, 9}}}},
+                                               {{{{1, 8}},
+                                                 {{5, 13}},
+                                                 {{1, 5}},
+                                                 {{8, 13}},
+                                                 {{2, 9}},
+                                                 {{2, 5}},
+                                                 {{9, 13}},
+                                                 {{3, 9}},
+                                                 {{3, 8}}}}}};
+
+    std::vector<Point<spacedim>> vertices;
+    std::vector<CellData<dim>>   cells;
+    SubCellData                  subcell_data;
+
+    // store for each vertex and face the assigned index so that we only
+    // assign them a value once
+    std::vector<unsigned int> old_to_new_vertex_indices(
+      ref_tria.n_vertices(), numbers::invalid_unsigned_int);
+    std::vector<unsigned int> face_to_new_vertex_indices(
+      ref_tria.n_faces(), numbers::invalid_unsigned_int);
+    std::vector<unsigned int> edge_to_new_vertex_indices(
+      ref_tria.n_lines(), numbers::invalid_unsigned_int);
+
+    // We first have to create all of the new vertices. To do this, we loop over
+    // all cells and on each cell
+    // (i) copy the existing vertex locations (and record their new indices in
+    // the 'old_to_new_vertex_indices' vector),
+    // (ii) create new midpoint vertex locations for each edge
+    // (iii) create new midpoint vertex locations for each face and record their
+    // new indices in the 'face_to_new_vertex_indices' vector),
+    // (iv) create new midpoint vertex locations for each cell
+    for (const auto &cell : ref_tria.cell_iterators())
+      {
+        // temporary array storing the global indices of each cell entity in the
+        // sequence: vertices, edges/faces, cell
+        std::array<unsigned int, dim == 2 ? 7 : 15> local_vertex_indices;
+
+        // (i) copy the existing vertex locations
+        for (const auto v : cell->vertex_indices())
+          {
+            const auto v_global = cell->vertex_index(v);
+
+            if (old_to_new_vertex_indices[v_global] ==
+                numbers::invalid_unsigned_int)
+              {
+                old_to_new_vertex_indices[v_global] = vertices.size();
+                vertices.push_back(cell->vertex(v));
+              }
+            // todo: get right way to compute midpoint
+            // center += cell->vertex(v);
+            AssertIndexRange(v, local_vertex_indices.size());
+            local_vertex_indices[v] = old_to_new_vertex_indices[v_global];
+          }
+
+        // (ii) in 3d add midpoints to all edges (in 2d these are the vertex
+        // on the faces from (iii))
+        if (dim == 3)
+          for (const auto e : cell->line_indices())
+            {
+              const auto e_global = cell->line_index(e);
+              if (edge_to_new_vertex_indices[e_global] ==
+                  numbers::invalid_unsigned_int)
+                {
+                  edge_to_new_vertex_indices[e_global] = vertices.size();
+                  // vertices.push_back(0.5 *
+                  //(cell->line(line_ordering[e])->vertex(0) +
+                  // cell->line(line_ordering[e])->vertex(1)));
+                  vertices.push_back(cell->line(e)->center());
+                }
+              AssertIndexRange(cell->n_vertices() + e,
+                               local_vertex_indices.size());
+              local_vertex_indices[cell->n_vertices() + e] =
+                edge_to_new_vertex_indices[e_global];
+            }
+
+
+        // (iii) create new midpoint vertex locations for each face
+        for (const auto f : cell->face_indices())
+          {
+            const auto f_global = cell->face_index(f);
+            if (face_to_new_vertex_indices[f_global] ==
+                numbers::invalid_unsigned_int)
+              {
+                face_to_new_vertex_indices[f_global] = vertices.size();
+                if (dim == 2)
+                  vertices.push_back(
+                    cell->face(f)->center(/*respect_manifold*/ true));
+                else if (dim == 3)
+                  vertices.push_back(cell->face(f)->barycenter());
+                else
+                  ExcNotImplemented();
+              }
+            if (dim == 2)
+              {
+                AssertIndexRange(cell->n_vertices() + f,
+                                 local_vertex_indices.size());
+                local_vertex_indices[cell->n_vertices() + f] =
+                  face_to_new_vertex_indices[f_global];
+              }
+            else if (dim == 3)
+              {
+                AssertIndexRange(cell->n_vertices() + cell->n_lines() + f,
+                                 local_vertex_indices.size());
+                local_vertex_indices[cell->n_vertices() + cell->n_lines() + f] =
+                  face_to_new_vertex_indices[f_global];
+              }
+            else
+              ExcNotImplemented();
+          }
+
+        // (iv) create new midpoint vertex locations for each cell
+        if (dim == 2)
+          {
+            AssertIndexRange(cell->n_vertices() + cell->n_faces(),
+                             local_vertex_indices.size());
+            local_vertex_indices[cell->n_vertices() + cell->n_faces()] =
+              vertices.size();
+          }
+        else if (dim == 3)
+          {
+            AssertIndexRange(cell->n_vertices() + cell->n_lines() +
+                               cell->n_faces(),
+                             local_vertex_indices.size());
+            local_vertex_indices[cell->n_vertices() + cell->n_lines() +
+                                 cell->n_faces()] = vertices.size();
+          }
+        // vertices.push_back((1. / (dim + 1)) * center); //
+        vertices.push_back(cell->center()); // cell->barycenter());
+
+
+        // helper function for creating cells and subcells
+        const auto add_cell = [&](const unsigned int struct_dim,
+                                  const auto        &index_vertices,
+                                  const unsigned int material_or_boundary_id,
+                                  const unsigned int manifold_id = 0) {
+          // sub-cell data only has to be stored if the information differs
+          // from the default
+          if (struct_dim < dim &&
+              (material_or_boundary_id == numbers::internal_face_boundary_id &&
+               manifold_id == numbers::flat_manifold_id))
+            return;
+
+          if (struct_dim == dim) // cells
+            {
+              if (dim == 2)
+                {
+                  AssertDimension(index_vertices.size(), 4);
+                }
+              else if (dim == 3)
+                {
+                  AssertDimension(index_vertices.size(), 8);
+                }
+
+              CellData<dim> cell_data(index_vertices.size());
+              for (unsigned int i = 0; i < index_vertices.size(); ++i)
+                {
+                  AssertIndexRange(index_vertices[i],
+                                   local_vertex_indices.size());
+                  cell_data.vertices[i] =
+                    local_vertex_indices[index_vertices[i]];
+                  cell_data.material_id =
+                    material_or_boundary_id; // inherit material id
+                  cell_data.manifold_id =
+                    manifold_id; // inherit cell-manifold id
+                }
+              cells.push_back(cell_data);
+            }
+          else if (dim == 2 && struct_dim == 1) // an edge of a quad
+            {
+              Assert(index_vertices.size() == 2, ExcInternalError());
+              CellData<1> boundary_line(2);
+              boundary_line.boundary_id = material_or_boundary_id;
+              boundary_line.manifold_id = manifold_id;
+              for (unsigned int i = 0; i < index_vertices.size(); ++i)
+                {
+                  AssertIndexRange(index_vertices[i],
+                                   local_vertex_indices.size());
+                  boundary_line.vertices[i] =
+                    local_vertex_indices[index_vertices[i]];
+                }
+              subcell_data.boundary_lines.push_back(boundary_line);
+            }
+          else if (dim == 3 && struct_dim == 2) // a face of a hex
+            {
+              Assert(index_vertices.size() == 4, ExcInternalError());
+              CellData<2> boundary_quad(4);
+              boundary_quad.material_id = material_or_boundary_id;
+              boundary_quad.manifold_id = manifold_id;
+              for (unsigned int i = 0; i < index_vertices.size(); ++i)
+                {
+                  AssertIndexRange(index_vertices[i],
+                                   local_vertex_indices.size());
+                  boundary_quad.vertices[i] =
+                    local_vertex_indices[index_vertices[i]];
+                }
+              subcell_data.boundary_quads.push_back(boundary_quad);
+            }
+          else if (dim == 3 && struct_dim == 1) // an edge of a hex
+            {
+              Assert(index_vertices.size() == 2, ExcInternalError());
+              CellData<1> boundary_line(2);
+              boundary_line.boundary_id = material_or_boundary_id;
+              boundary_line.manifold_id = manifold_id;
+              for (unsigned int i = 0; i < index_vertices.size(); ++i)
+                {
+                  AssertIndexRange(index_vertices[i],
+                                   local_vertex_indices.size());
+                  boundary_line.vertices[i] =
+                    local_vertex_indices[index_vertices[i]];
+                }
+              subcell_data.boundary_lines.push_back(boundary_line);
+            }
+          else
+            {
+              DEAL_II_NOT_IMPLEMENTED();
+            }
+        };
+        const auto material_id_cell = cell->material_id();
+
+        // create cells one by one
+        if (dim == 2)
+          {
+            // get cell-manifold id from current quad cell
+            const auto manifold_id_cell = cell->manifold_id();
+            // inherit cell manifold
+            for (const auto &cell_vertices : table_2D_cell)
+              {
+                add_cell(dim,
+                         cell_vertices,
+                         material_id_cell,
+                         manifold_id_cell);
+              }
+
+            // inherit inner manifold (faces)
+            for (const auto &face_vertices : vertex_ids_for_inner_faces_2d)
+              {
+                // set inner quad-faces according to cell-manifold of tri
+                // element, set invalid b_id, since we do not want to modify
+                // b_id inside
+                add_cell(1,
+                         face_vertices,
+                         numbers::internal_face_boundary_id,
+                         manifold_id_cell);
+              }
+          }
+        else if (dim == 3)
+          {
+            // get cell-manifold id from current tet cell
+            const auto manifold_id_cell = cell->manifold_id();
+            // inherit cell manifold
+            for (const auto &cell_vertices : vertex_ids_for_cells_3d)
+              {
+                add_cell(dim,
+                         cell_vertices,
+                         material_id_cell,
+                         manifold_id_cell);
+              }
+
+            // set manifold of inner FACES of hex according to
+            // tet-cell-manifold
+
+            for (const auto &face_vertices : vertex_ids_for_inner_faces_3d)
+              {
+                add_cell(2,
+                         face_vertices,
+                         numbers::internal_face_boundary_id,
+                         manifold_id_cell);
+              }
+
+            // set manifold of inner EDGES of hex according to
+            // tet-cell-manifold
+
+            for (const auto &edge_vertices : vertex_ids_for_inner_edges_3d)
+              {
+                add_cell(1,
+                         edge_vertices,
+                         numbers::internal_face_boundary_id,
+                         manifold_id_cell);
+              }
+          }
+        else
+          DEAL_II_NOT_IMPLEMENTED();
+
+        // Set up sub-cell data.
+        for (const auto f : cell->face_indices())
+          {
+            const auto bid = cell->face(f)->boundary_id();
+            const auto mid = cell->face(f)->manifold_id();
+
+            // process boundary-faces: set boundary and manifold ids
+            if (dim == 2) // 2d boundary-faces
+              {
+                for (const auto &face_vertices :
+                     vertex_ids_for_boundary_faces_2d[f])
+                  add_cell(1, face_vertices, bid, mid);
+              }
+            else if (dim == 3) // 3d boundary-faces
+              {
+                // set manifold ids of tet-boundary-faces according to
+                // hex-boundary-faces
+                for (const auto &face_vertices :
+                     vertex_ids_for_boundary_faces_3d[f])
+                  {
+                    add_cell(2, face_vertices, bid, mid);
+                  }
+
+
+                // set manifold ids of new tet-boundary-edges according to
+                // hex-boundary-faces
+                for (const auto &edge_vertices :
+                     vertex_ids_for_new_boundary_edges_3d[f])
+                  {
+                    add_cell(1, edge_vertices, bid, mid);
+                  }
+              }
+            else
+              DEAL_II_NOT_IMPLEMENTED();
+          }
+      }
+
+    out_tria.clear();
+    GridTools::consistently_order_cells(cells);
+    out_tria.create_triangulation(vertices, cells, subcell_data);
+
+    for (const auto i : in_tria.get_manifold_ids())
+      if (i != numbers::flat_manifold_id)
+        out_tria.set_manifold(i, in_tria.get_manifold(i));
+  }
+
 
   template <template <int, int> class MeshType, int dim, int spacedim>
   DEAL_II_CXX20_REQUIRES(

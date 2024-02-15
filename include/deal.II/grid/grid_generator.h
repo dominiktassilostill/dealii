@@ -2307,6 +2307,14 @@ namespace GridGenerator
   convert_hypercube_to_simplex_mesh(const Triangulation<1, spacedim> &in_tria,
                                     Triangulation<1, spacedim>       &out_tria);
 #endif
+  
+  /**
+  * Convert a Simplex to a Hypercube Grid
+  */
+  template <int dim, int spacedim>
+  void
+  convert_simplex_to_hypercube_mesh(const Triangulation<dim, spacedim> &in_tria,
+                                    Triangulation<dim, spacedim> &out_tria);
 
   /**
    * Namespace Airfoil contains classes and functions in order to create a
