@@ -146,12 +146,13 @@ namespace
         // We define the center in the same way as a simplex barycenter
         return accessor.center();
       }
-    else{
-      Assert(false, ExcInternalError());
+    else
+      {
+        Assert(false, ExcInternalError());
         return {};
-    }
+      }
   }
-  
+
   Point<2>
   barycenter(const TriaAccessor<2, 2, 2> &accessor)
   {

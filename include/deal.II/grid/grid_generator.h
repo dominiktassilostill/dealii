@@ -2306,14 +2306,48 @@ namespace GridGenerator
   convert_hypercube_to_simplex_mesh(const Triangulation<1, spacedim> &in_tria,
                                     Triangulation<1, spacedim>       &out_tria);
 #endif
-  
+
   /**
-  * Convert a Simplex to a Hypercube Grid
-  */
+   * Convert a triangulation consisting only of simplex cells
+   * (triangles, tetrahedra) to a triangulation only consisting of
+   * hypercubes (quadrilaterals, hexahedra).
+   *
+   * A triangle is devided into 3 quadrilaterals by adding midpoints to the
+   * edges and one node at the center. A tetrahedra is split into 4 hexahedrals
+   * by placing midpoints at the edges, faces and the volume. Material ID and
+   * boundary IDs are inherited upon conversion.
+   *
+   * @param in_tria The triangulation containing tet elements.
+   * @param out_tria The converted triangulation containing hex elements.
+   *
+   * @note No manifold objects are copied by this function: you must
+   *   copy existing manifold objects from @p in_tria to @p out_tria, e.g.,
+   *   with the following code:
+   * @code
+   * for (const auto i : in_tria.get_manifold_ids())
+   *   if (i != numbers::flat_manifold_id)
+   *     out_tria.set_manifold(i, in_tria.get_manifold(i));
+   * @endcode
+   *
+   * Also see
+   * @ref simplex "Simplex support".
+   */
   template <int dim, int spacedim>
   void
   convert_simplex_to_hypercube_mesh(const Triangulation<dim, spacedim> &in_tria,
                                     Triangulation<dim, spacedim> &out_tria);
+
+  // Doxygen will not show the function above if we include the
+  // specialization.
+#ifndef DOXYGEN
+  /**
+   * Specialization of the above function for 1d: simply copy triangulation.
+   */
+  template <int spacedim>
+  void
+  convert_simplex_to_hypercube_mesh(const Triangulation<1, spacedim> &in_tria,
+                                    Triangulation<1, spacedim>       &out_tria);
+#endif
 
   /**
    * Namespace Airfoil contains classes and functions in order to create a

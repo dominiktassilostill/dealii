@@ -8332,7 +8332,7 @@ namespace GridGenerator
   }
 
 
-template <int dim, int spacedim>
+  template <int dim, int spacedim>
   void
   convert_simplex_to_hypercube_mesh(const Triangulation<dim, spacedim> &in_tria,
                                     Triangulation<dim, spacedim> &out_tria)
@@ -8356,18 +8356,15 @@ template <int dim, int spacedim>
      */
 
     /* Cell definition 2d:
-     * A simplices element is converted to 3 quadrilateral elements. Each
+     * A simplex element is converted to 3 quadrilateral elements. Each
      * triangle is defined by 3 vertices.
      */
     static const ndarray<unsigned int, 3, 4> table_2D_cell = {
       {{{0, 3, 5, 6}}, {{3, 1, 6, 4}}, {{5, 6, 2, 4}}}};
-    // {{{6, 5, 3, 0}}, {{4, 6, 1, 3}}, {{4, 2, 6, 5}}}};
-
-    // {{{0, 3, 5, 6}}, {{3, 1, 6, 4}}, {{5, 6, 2, 4}}}};
 
     /* Cell definition 3d:
-     * A tetrahedron element is converted to 4 hex elements. Each
-     * hex is defined by 8 vertices.
+     * A tetrahedron element is converted to 4 hexahedral elements. Each
+     * hexahedral is defined by 8 vertices.
      */
     static const ndarray<unsigned int, 4, 8> vertex_ids_for_cells_3d = {
       {{{0, 4, 6, 10, 7, 11, 12, 14}},
@@ -8388,7 +8385,7 @@ template <int dim, int spacedim>
 
     /* Boundary-faces 3d:
      * After converting, each of the 4 tet faces corresponds to faces of
-     * 3 different hex faces, i.e., quads. Note that a quad is
+     * 3 different hexahedral faces, i.e., quads. Note that a quad is
      * defined by 4 vertices.
      */
     static const ndarray<unsigned int, 4, 3, 4>
@@ -8506,8 +8503,6 @@ template <int dim, int spacedim>
                 old_to_new_vertex_indices[v_global] = vertices.size();
                 vertices.push_back(cell->vertex(v));
               }
-            // todo: get right way to compute midpoint
-            // center += cell->vertex(v);
             AssertIndexRange(v, local_vertex_indices.size());
             local_vertex_indices[v] = old_to_new_vertex_indices[v_global];
           }
@@ -8522,9 +8517,6 @@ template <int dim, int spacedim>
                   numbers::invalid_unsigned_int)
                 {
                   edge_to_new_vertex_indices[e_global] = vertices.size();
-                  // vertices.push_back(0.5 *
-                  //(cell->line(line_ordering[e])->vertex(0) +
-                  // cell->line(line_ordering[e])->vertex(1)));
                   vertices.push_back(cell->line(e)->center());
                 }
               AssertIndexRange(cell->n_vertices() + e,
@@ -8584,9 +8576,7 @@ template <int dim, int spacedim>
             local_vertex_indices[cell->n_vertices() + cell->n_lines() +
                                  cell->n_faces()] = vertices.size();
           }
-        // vertices.push_back((1. / (dim + 1)) * center); //
-        vertices.push_back(cell->center()); // cell->barycenter());
-
+        vertices.push_back(cell->center());
 
         // helper function for creating cells and subcells
         const auto add_cell = [&](const unsigned int struct_dim,
@@ -8779,14 +8769,23 @@ template <int dim, int spacedim>
       }
 
     out_tria.clear();
+    GridTools::invert_cells_with_negative_measure(vertices, cells);
     GridTools::consistently_order_cells(cells);
     out_tria.create_triangulation(vertices, cells, subcell_data);
 
-    for (const auto i : in_tria.get_manifold_ids())
+    for (const auto i : out_tria.get_manifold_ids())
       if (i != numbers::flat_manifold_id)
-        out_tria.set_manifold(i, in_tria.get_manifold(i));
+        out_tria.set_manifold(i, FlatManifold<dim, spacedim>());
   }
 
+  template <int spacedim>
+  void
+  convert_simplex_to_hypercube_mesh(const Triangulation<1, spacedim> &in_tria,
+                                    Triangulation<1, spacedim>       &out_tria)
+  {
+    out_tria.copy_triangulation(in_tria);
+    return;
+  }
 
   template <template <int, int> class MeshType, int dim, int spacedim>
   DEAL_II_CXX20_REQUIRES(
