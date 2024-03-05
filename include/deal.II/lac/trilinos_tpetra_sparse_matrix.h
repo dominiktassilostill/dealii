@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_trilinos_tpetra_sparse_matrix_h
 #define dealii_trilinos_tpetra_sparse_matrix_h
@@ -24,18 +23,30 @@
 #  include <deal.II/base/subscriptor.h>
 #  include <deal.II/base/trilinos_utilities.h>
 
+#  include <deal.II/lac/sparse_matrix.h>
+#  include <deal.II/lac/sparsity_pattern.h>
 #  include <deal.II/lac/trilinos_tpetra_sparsity_pattern.h>
 #  include <deal.II/lac/trilinos_tpetra_vector.h>
+#  include <deal.II/lac/vector.h>
 
 // Tpetra includes
 #  include <Tpetra_Core.hpp>
 #  include <Tpetra_CrsMatrix.hpp>
 
+#  include <type_traits>
+
 
 DEAL_II_NAMESPACE_OPEN
 
 // forward declarations
+
+template <typename Number>
+class SparseMatrix;
+
 #  ifndef DOXYGEN
+template <typename MatrixType>
+class BlockMatrixBase;
+
 namespace LinearAlgebra
 {
   namespace TpetraWrappers
@@ -99,6 +110,22 @@ namespace LinearAlgebra
       using size_type = dealii::types::global_dof_index;
 
       /**
+       * A structure that describes some of the traits of this class in terms of
+       * its run-time behavior. Some other classes (such as the block matrix
+       * classes) that take one or other of the matrix classes as its template
+       * parameters can tune their behavior based on the variables in this
+       * class.
+       */
+      struct Traits
+      {
+        /**
+         * It is safe to elide additions of zeros to individual elements of this
+         * matrix.
+         */
+        static const bool zero_addition_can_be_elided = true;
+      };
+
+      /**
        * Declare an alias for the type used to store matrix elements, in analogy
        * to all the other container classes.
        */
@@ -137,6 +164,12 @@ namespace LinearAlgebra
        */
       using GraphType =
         Tpetra::CrsGraph<int, dealii::types::signed_global_dof_index, NodeType>;
+
+      /**
+       * Typedef for Tpetra::Vector
+       */
+      using VectorType = Tpetra::
+        Vector<Number, int, dealii::types::signed_global_dof_index, NodeType>;
 
       /**
        * @name Constructors and initialization.
@@ -319,7 +352,8 @@ namespace LinearAlgebra
        * processors in order to avoid a dead lock.
        */
       template <typename SparsityPatternType>
-      void
+      std::enable_if_t<
+        !std::is_same_v<SparsityPatternType, dealii::SparseMatrix<double>>>
       reinit(const IndexSet            &parallel_partitioning,
              const SparsityPatternType &sparsity_pattern,
              const MPI_Comm             communicator  = MPI_COMM_WORLD,
@@ -338,12 +372,39 @@ namespace LinearAlgebra
        * processors in order to avoid a dead lock.
        */
       template <typename SparsityPatternType>
-      void
+      std::enable_if_t<
+        !std::is_same_v<SparsityPatternType, dealii::SparseMatrix<double>>>
       reinit(const IndexSet            &row_parallel_partitioning,
              const IndexSet            &col_parallel_partitioning,
              const SparsityPatternType &sparsity_pattern,
              const MPI_Comm             communicator  = MPI_COMM_WORLD,
              const bool                 exchange_data = false);
+
+      /**
+       * This function initializes the Trilinos matrix using the deal.II sparse
+       * matrix and the entries stored therein. It uses a threshold to copy only
+       * elements with modulus larger than the threshold (so zeros in the
+       * deal.II matrix can be filtered away). In contrast to the other reinit
+       * function with deal.II sparse matrix argument, this function takes a
+       * %parallel partitioning specified by the user instead of internally
+       * generating it.
+       *
+       * The optional parameter <tt>copy_values</tt> decides whether only the
+       * sparsity structure of the input matrix should be used or the matrix
+       * entries should be copied, too.
+       *
+       * This is a @ref GlossCollectiveOperation "collective operation" that needs to be called on all
+       * processors in order to avoid a dead lock.
+       */
+      void
+      reinit(const IndexSet                     &row_parallel_partitioning,
+             const IndexSet                     &col_parallel_partitioning,
+             const dealii::SparseMatrix<Number> &dealii_sparse_matrix,
+             const MPI_Comm                      communicator = MPI_COMM_WORLD,
+             const double                        drop_tolerance    = 1e-13,
+             const bool                          copy_values       = true,
+             const dealii::SparsityPattern      *use_this_sparsity = nullptr);
+
       /** @} */
 
       /**
@@ -353,13 +414,13 @@ namespace LinearAlgebra
       /**
        * Return the number of rows in this matrix.
        */
-      dealii::types::signed_global_dof_index
+      size_type
       m() const;
 
       /**
        * Return the number of columns in this matrix.
        */
-      dealii::types::signed_global_dof_index
+      size_type
       n() const;
 
 
@@ -437,6 +498,12 @@ namespace LinearAlgebra
       operator/=(const Number factor);
 
       /**
+       * Copy the given (Trilinos) matrix (sparsity pattern and entries).
+       */
+      void
+      copy_from(const SparseMatrix<Number, MemorySpace> &source);
+
+      /**
        * Add @p value to the element (<i>i,j</i>).
        * Just as the respective call in deal.II SparseMatrix<Number,
        * MemorySpace> class. Moreover, if <tt>value</tt> is not a finite number
@@ -468,6 +535,16 @@ namespace LinearAlgebra
           const Number    *values,
           const bool       elide_zero_values      = true,
           const bool       col_indices_are_sorted = false);
+
+      /**
+       * Add <tt>matrix</tt> scaled by <tt>factor</tt> to this matrix, i.e. the
+       * matrix <tt>factor*matrix</tt> is added to <tt>this</tt>. If the
+       * sparsity pattern of the calling matrix does not contain all the
+       * elements in the sparsity pattern of the input matrix, this function
+       * will throw an exception.
+       */
+      void
+      add(const Number factor, const SparseMatrix<Number, MemorySpace> &matrix);
 
       /**
        * Set the element (<i>i,j</i>) to @p value.
@@ -608,6 +685,69 @@ namespace LinearAlgebra
           const Number    *values,
           const bool       elide_zero_values = false);
 
+      /**
+       * Remove all elements from this <tt>row</tt> by setting them to zero. The
+       * function does not modify the number of allocated nonzero entries, it
+       * only sets the entries to zero.
+       *
+       * This operation is used in eliminating constraints (e.g. due to hanging
+       * nodes) and makes sure that we can write this modification to the matrix
+       * without having to read entries (such as the locations of non-zero
+       * elements) from it &mdash; without this operation, removing constraints
+       * on %parallel matrices is a rather complicated procedure.
+       *
+       * The second parameter can be used to set the diagonal entry of this row
+       * to a value different from zero. The default is to set it to zero.
+       *
+       * @note If the matrix is stored in parallel across multiple processors
+       * using MPI, this function only touches rows that are locally stored and
+       * simply ignores all other row indices. Further, in the context of
+       * parallel computations, you will get into trouble if you clear a row
+       * while other processors still have pending writes or additions into the
+       * same row. In other words, if another processor still wants to add
+       * something to an element of a row and you call this function to zero out
+       * the row, then the next time you call compress() may add the remote
+       * value to the zero you just created. Consequently, you will want to call
+       * compress() after you made the last modifications to a matrix and before
+       * starting to clear rows.
+       */
+      void
+      clear_row(const size_type row, const Number new_diag_value = 0);
+
+      /**
+       * Same as clear_row(), except that it works on a number of rows at once.
+       *
+       * The second parameter can be used to set the diagonal entries of all
+       * cleared rows to something different from zero. Note that all of these
+       * diagonal entries get the same value -- if you want different values for
+       * the diagonal entries, you have to set them by hand.
+       *
+       * @note If the matrix is stored in parallel across multiple processors
+       * using MPI, this function only touches rows that are locally stored and
+       * simply ignores all other row indices. Further, in the context of
+       * parallel computations, you will get into trouble if you clear a row
+       * while other processors still have pending writes or additions into the
+       * same row. In other words, if another processor still wants to add
+       * something to an element of a row and you call this function to zero out
+       * the row, then the next time you call compress() may add the remote
+       * value to the zero you just created. Consequently, you will want to call
+       * compress() after you made the last modifications to a matrix and before
+       * starting to clear rows.
+       */
+      void
+      clear_rows(const ArrayView<const size_type> &rows,
+                 const Number                      new_diag_value = 0);
+
+      /**
+       * Release all memory and return to a state just like after having called
+       * the default constructor.
+       *
+       * This is a @ref GlossCollectiveOperation "collective operation" that needs to be called on all
+       * processors in order to avoid a dead lock.
+       */
+      void
+      clear();
+
       /** @} */
       /**
        * @name Entry Access
@@ -668,9 +808,9 @@ namespace LinearAlgebra
        * initialized with the same IndexSet that was used for the column indices
        * of the matrix.
        */
+      template <typename InputVectorType>
       void
-      vmult(Vector<Number, MemorySpace>       &dst,
-            const Vector<Number, MemorySpace> &src) const;
+      vmult(InputVectorType &dst, const InputVectorType &src) const;
 
       /*
        * Matrix-vector multiplication: let <i>dst = M<sup>T</sup>*src</i> with
@@ -679,9 +819,9 @@ namespace LinearAlgebra
        *
        * Source and destination must not be the same vector.
        */
+      template <typename InputVectorType>
       void
-      Tvmult(Vector<Number, MemorySpace>       &dst,
-             const Vector<Number, MemorySpace> &src) const;
+      Tvmult(InputVectorType &dst, const InputVectorType &src) const;
 
       /**
        * Adding matrix-vector multiplication. Add <i>M*src</i> on <i>dst</i>
@@ -689,10 +829,9 @@ namespace LinearAlgebra
        *
        * Source and destination must not be the same vector.
        */
+      template <typename InputVectorType>
       void
-      vmult_add(Vector<Number, MemorySpace>       &dst,
-                const Vector<Number, MemorySpace> &src) const;
-
+      vmult_add(InputVectorType &dst, const InputVectorType &src) const;
 
       /**
        * Adding matrix-vector multiplication. Add <i>M<sup>T</sup>*src</i> to
@@ -701,9 +840,78 @@ namespace LinearAlgebra
        *
        * Source and destination must not be the same vector.
        */
+      template <typename InputVectorType>
       void
-      Tvmult_add(Vector<Number, MemorySpace>       &dst,
-                 const Vector<Number, MemorySpace> &src) const;
+      Tvmult_add(InputVectorType &dst, const InputVectorType &src) const;
+
+      /**
+       * Return the square of the norm of the vector $v$ with respect to the
+       * norm induced by this matrix, i.e., $\left(v,Mv\right)$. This is useful,
+       * e.g. in the finite element context, where the $L_2$ norm of a function
+       * equals the matrix norm with respect to the @ref GlossMassMatrix "mass matrix" of the vector
+       * representing the nodal values of the finite element function.
+       *
+       * Obviously, the matrix needs to be quadratic for this operation.
+       *
+       * The implementation of this function is not as efficient as the one in
+       * the @p SparseMatrix class used in deal.II (i.e. the original one, not
+       * the Trilinos wrapper class) since Trilinos doesn't support this
+       * operation and needs a temporary vector.
+       *
+       * The vector has to be initialized with the same IndexSet the matrix
+       * was initialized with.
+       *
+       * In case of a localized Vector, this function will only work when
+       * running on one processor, since the matrix object is inherently
+       * distributed. Otherwise, an exception will be thrown.
+       */
+      Number
+      matrix_norm_square(const Vector<Number, MemorySpace> &v) const;
+
+      /**
+       * Compute the matrix scalar product $\left(u,Mv\right)$.
+       *
+       * The implementation of this function is not as efficient as the one in
+       * the @p SparseMatrix class used in deal.II (i.e. the original one, not
+       * the Trilinos wrapper class) since Trilinos doesn't support this
+       * operation and needs a temporary vector.
+       *
+       * The vector @p u has to be initialized with the same IndexSet that
+       * was used for the row indices of the matrix and the vector @p v has
+       * to be initialized with the same IndexSet that was used for the
+       * column indices of the matrix.
+       *
+       * In case of a localized Vector, this function will only work when
+       * running on one processor, since the matrix object is inherently
+       * distributed. Otherwise, an exception will be thrown.
+       *
+       * This function is only implemented for square matrices.
+       */
+      Number
+      matrix_scalar_product(const Vector<Number, MemorySpace> &u,
+                            const Vector<Number, MemorySpace> &v) const;
+
+      /**
+       * Compute the residual of an equation <i>Mx=b</i>, where the residual is
+       * defined to be <i>r=b-Mx</i>. Write the residual into @p dst. The
+       * <i>l<sub>2</sub></i> norm of the residual vector is returned.
+       *
+       * Source <i>x</i> and destination <i>dst</i> must not be the same vector.
+       *
+       * The vectors @p dst and @p b have to be initialized with the same
+       * IndexSet that was used for the row indices of the matrix and the vector
+       * @p x has to be initialized with the same IndexSet that was used for the
+       * column indices of the matrix.
+       *
+       * In case of a localized Vector, this function will only work when
+       * running on one processor, since the matrix object is inherently
+       * distributed. Otherwise, an exception will be thrown.
+       */
+      Number
+      residual(Vector<Number, MemorySpace>       &dst,
+               const Vector<Number, MemorySpace> &x,
+               const Vector<Number, MemorySpace> &b) const;
+
       /** @} */
 
       /**
@@ -938,10 +1146,48 @@ namespace LinearAlgebra
        */
       bool compressed;
 
+      /**
+       * For some matrix storage formats, in particular for the PETSc
+       * distributed blockmatrices, set and add operations on individual
+       * elements can not be freely mixed. Rather, one has to synchronize
+       * operations when one wants to switch from setting elements to adding to
+       * elements.  BlockMatrixBase automatically synchronizes the access by
+       * calling this helper function for each block.  This function ensures
+       * that the matrix is in a state that allows adding elements; if it
+       * previously already was in this state, the function does nothing.
+       *
+       * This function is called from BlockMatrixBase.
+       */
+      void
+      prepare_add();
+
+      /**
+       * Same as prepare_add() but prepare the matrix for setting elements if
+       * the representation of elements in this class requires such an
+       * operation.
+       *
+       * This function is called from BlockMatrixBase.
+       */
+      void
+      prepare_set();
+
+      // To allow calling protected prepare_add() and prepare_set().
+      friend class BlockMatrixBase<SparseMatrix<Number, MemorySpace>>;
     }; // class SparseMatrix
 
 
     /* ------------------------- Inline functions ---------------------- */
+
+    template <typename Number, typename MemorySpace>
+    inline void
+    SparseMatrix<Number, MemorySpace>::set(const size_type i,
+                                           const size_type j,
+                                           const Number    value)
+    {
+      set(i, 1, &j, &value, false);
+    }
+
+
 
     template <typename Number, typename MemorySpace>
     inline void
@@ -955,7 +1201,23 @@ namespace LinearAlgebra
 
 
     template <typename Number, typename MemorySpace>
-    inline dealii::types::signed_global_dof_index
+    inline Number
+    SparseMatrix<Number, MemorySpace>::residual(
+      Vector<Number, MemorySpace>       &dst,
+      const Vector<Number, MemorySpace> &x,
+      const Vector<Number, MemorySpace> &b) const
+    {
+      vmult(dst, x);
+      dst -= b;
+      dst *= -1.;
+
+      return dst.l2_norm();
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    inline typename SparseMatrix<Number, MemorySpace>::size_type
     SparseMatrix<Number, MemorySpace>::m() const
     {
       return matrix->getRowMap()->getGlobalNumElements();
@@ -964,7 +1226,7 @@ namespace LinearAlgebra
 
 
     template <typename Number, typename MemorySpace>
-    inline dealii::types::signed_global_dof_index
+    inline typename SparseMatrix<Number, MemorySpace>::size_type
     SparseMatrix<Number, MemorySpace>::n() const
     {
       // If the matrix structure has not been fixed (i.e., we did not have a
@@ -981,6 +1243,24 @@ namespace LinearAlgebra
     SparseMatrix<Number, MemorySpace>::is_compressed() const
     {
       return compressed;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    inline void
+    SparseMatrix<Number, MemorySpace>::prepare_add()
+    {
+      // nothing to do here
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    inline void
+    SparseMatrix<Number, MemorySpace>::prepare_set()
+    {
+      // nothing to do here
     }
 
 

@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_trilinos_tpetra_vector_templates_h
 #define dealii_trilinos_tpetra_vector_templates_h
@@ -182,6 +181,7 @@ namespace LinearAlgebra
           0, 0, Utilities::Trilinos::tpetra_comm_self()));
       has_ghost  = false;
       compressed = true;
+      nonlocal_vector.reset();
     }
 
 
@@ -405,6 +405,30 @@ namespace LinearAlgebra
           source_stored_elements = V.source_stored_elements;
           tpetra_comm_pattern    = V.tpetra_comm_pattern;
         }
+
+      return *this;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    template <typename OtherNumber>
+    Vector<Number, MemorySpace> &
+    Vector<Number, MemorySpace>::operator=(const dealii::Vector<OtherNumber> &V)
+    {
+      static_assert(
+        std::is_same<Number, OtherNumber>::value,
+        "TpetraWrappers::Vector and dealii::Vector must use the same number type here.");
+
+      vector.reset();
+      nonlocal_vector.reset();
+
+      Teuchos::Array<OtherNumber> vector_data(V.begin(), V.end());
+      vector = Utilities::Trilinos::internal::make_rcp<VectorType>(
+        V.locally_owned_elements().make_tpetra_map_rcp(), vector_data);
+
+      has_ghost  = false;
+      compressed = true;
 
       return *this;
     }
@@ -807,18 +831,16 @@ namespace LinearAlgebra
     {
       // get a representation of the vector and
       // loop over all the elements
-      Number       *start_ptr = vector->getDataNonConst().get();
-      const Number *ptr       = start_ptr,
-                   *eptr      = start_ptr + vector->getLocalLength();
-      unsigned int flag       = 0;
-      while (ptr != eptr)
+      Teuchos::ArrayRCP<const Number> data       = vector->getData();
+      const size_type                 n_elements = vector->getLocalLength();
+      unsigned int                    flag       = 0;
+      for (size_type i = 0; i < n_elements; ++i)
         {
-          if (*ptr != Number(0))
+          if (data[i] != Number(0))
             {
               flag = 1;
               break;
             }
-          ++ptr;
         }
 
       // Check that the vector is zero on _all_ processors.
@@ -828,6 +850,42 @@ namespace LinearAlgebra
                               vector->getMap()->getComm()));
 
       return num_nonzero == 0;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    bool
+    Vector<Number, MemorySpace>::is_non_negative() const
+    {
+      if constexpr (!std::is_same_v<Number, std::complex<double>> &&
+                    !std::is_same_v<Number, std::complex<float>>)
+        {
+          // get a representation of the vector and
+          // loop over all the elements
+          Teuchos::ArrayRCP<const Number> data       = vector->getData();
+          const size_type                 n_elements = vector->getLocalLength();
+          unsigned int                    flag       = 0;
+          for (size_type i = 0; i < n_elements; ++i)
+            {
+              if (data[i] < Number(0))
+                {
+                  flag = 1;
+                  break;
+                }
+            }
+
+          // Check that the vector is non-negative on _all_ processors.
+          unsigned int num_negative =
+            Utilities::MPI::sum(flag,
+                                Utilities::Trilinos::teuchos_comm_to_mpi_comm(
+                                  vector->getMap()->getComm()));
+          return num_negative == 0;
+        }
+      Assert(false,
+             ExcMessage("You can't ask a complex value "
+                        "whether it is non-negative."));
+      return true;
     }
 
 
@@ -897,6 +955,53 @@ namespace LinearAlgebra
       this->add(a, V);
 
       return *this * W;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    bool
+    Vector<Number, MemorySpace>::operator==(
+      const Vector<Number, MemorySpace> &v) const
+    {
+      Assert(size() == v.size(), ExcDimensionMismatch(size(), v.size()));
+
+      const size_t this_local_length  = vector->getLocalLength();
+      const size_t other_local_length = v.vector->getLocalLength();
+      if (this_local_length != other_local_length)
+        return false;
+
+#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
+      auto this_vector_2d = vector->template getLocalView<Kokkos::HostSpace>(
+        Tpetra::Access::ReadOnly);
+      auto other_vector_2d = v.vector->template getLocalView<Kokkos::HostSpace>(
+        Tpetra::Access::ReadOnly);
+
+#  else
+      vector->template sync<Kokkos::HostSpace>();
+      v.vector->template sync<Kokkos::HostSpace>();
+      auto this_vector_2d = vector->template getLocalView<Kokkos::HostSpace>();
+      auto other_vector_2d =
+        v.vector->template getLocalView<Kokkos::HostSpace>();
+#  endif
+      auto this_vector_1d  = Kokkos::subview(this_vector_2d, Kokkos::ALL(), 0);
+      auto other_vector_1d = Kokkos::subview(other_vector_2d, Kokkos::ALL(), 0);
+
+      for (size_type i = 0; i < this_local_length; ++i)
+        if (this_vector_1d(i) != other_vector_1d(i))
+          return false;
+
+      return true;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    bool
+    Vector<Number, MemorySpace>::operator!=(
+      const Vector<Number, MemorySpace> &v) const
+    {
+      return (!(*this == v));
     }
 
 
@@ -1018,10 +1123,6 @@ namespace LinearAlgebra
       AssertThrow(out.fail() == false, ExcIO());
       boost::io::ios_flags_saver restore_flags(out);
 
-      // Get a representation of the vector and loop over all
-      // the elements
-      const auto val = vector->get1dView();
-
       out.precision(precision);
       if (scientific)
         out.setf(std::ios::scientific, std::ios::floatfield);
@@ -1064,6 +1165,7 @@ namespace LinearAlgebra
       // of the vector
       AssertThrow(out.fail() == false, ExcIO());
     }
+
 
 
     template <typename Number, typename MemorySpace>

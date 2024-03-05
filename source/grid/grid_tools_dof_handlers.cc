@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2001 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #include <deal.II/base/geometry_info.h>
 #include <deal.II/base/point.h>
@@ -824,13 +823,24 @@ namespace GridTools
     std::vector<bool> locally_active_vertices_on_subdomain(
       mesh.get_triangulation().n_vertices(), false);
 
+    std::map<unsigned int, std::vector<unsigned int>> coinciding_vertex_groups;
+    std::map<unsigned int, unsigned int> vertex_to_coinciding_vertex_group;
+    GridTools::collect_coinciding_vertices(mesh.get_triangulation(),
+                                           coinciding_vertex_groups,
+                                           vertex_to_coinciding_vertex_group);
+
     // Find the cells for which the predicate is true
     // These are the cells around which we wish to construct
     // the halo layer
     for (const auto &cell : mesh.active_cell_iterators())
       if (predicate(cell)) // True predicate --> Part of subdomain
         for (const auto v : cell->vertex_indices())
-          locally_active_vertices_on_subdomain[cell->vertex_index(v)] = true;
+          {
+            locally_active_vertices_on_subdomain[cell->vertex_index(v)] = true;
+            for (const auto vv : coinciding_vertex_groups
+                   [vertex_to_coinciding_vertex_group[cell->vertex_index(v)]])
+              locally_active_vertices_on_subdomain[vv] = true;
+          }
 
     // Find the cells that do not conform to the predicate
     // but share a vertex with the selected subdomain

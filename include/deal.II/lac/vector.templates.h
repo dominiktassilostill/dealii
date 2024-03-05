@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2022 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 1999 - 2023 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_vector_templates_h
 #define dealii_vector_templates_h
@@ -33,6 +32,10 @@
 
 #ifdef DEAL_II_WITH_TRILINOS
 #  include <deal.II/lac/trilinos_vector.h>
+#endif
+
+#ifdef DEAL_II_TRILINOS_WITH_TPETRA
+#  include <deal.II/lac/trilinos_tpetra_vector.h>
 #endif
 
 
@@ -172,6 +175,60 @@ Vector<Number>::Vector(const TrilinosWrappers::MPI::Vector &v)
       std::copy(start_ptr[0], start_ptr[0] + size(), begin());
 
       maybe_reset_thread_partitioner();
+    }
+}
+
+#endif
+
+
+#ifdef DEAL_II_TRILINOS_WITH_TPETRA
+
+template <typename Number>
+template <typename OtherNumber, typename MemorySpace>
+Vector<Number>::Vector(
+  const LinearAlgebra::TpetraWrappers::Vector<OtherNumber, MemorySpace> &v)
+  : values(v.size())
+{
+  static_assert(
+    std::is_same<Number, OtherNumber>::value,
+    "TpetraWrappers::Vector and dealii::Vector must use the same number type here.");
+
+  if (size() != 0)
+    {
+      // Copy the distributed vector to
+      // a local one at all processors
+      // that know about the original vector.
+      typename LinearAlgebra::TpetraWrappers::Vector<OtherNumber,
+                                                     MemorySpace>::VectorType
+        localized_vector(complete_index_set(size()).make_tpetra_map_rcp(),
+                         v.get_mpi_communicator());
+
+      Teuchos::RCP<const typename LinearAlgebra::TpetraWrappers::
+                     Vector<OtherNumber, MemorySpace>::ImportType>
+        importer = Tpetra::createImport(v.trilinos_vector().getMap(),
+                                        localized_vector.getMap());
+
+      localized_vector.doImport(v.trilinos_vector(), *importer, Tpetra::INSERT);
+
+      // get a kokkos view from the localized_vector
+#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
+      auto localized_vector_2d =
+        localized_vector.template getLocalView<Kokkos::HostSpace>(
+          Tpetra::Access::ReadOnly);
+#  else
+      localized_vector.template sync<Kokkos::HostSpace>();
+      auto localized_vector_2d =
+        localized_vector.template getLocalView<Kokkos::HostSpace>();
+#  endif
+      auto localized_vector_1d =
+        Kokkos::subview(localized_vector_2d, Kokkos::ALL(), 0);
+      const size_t local_length = localized_vector.getLocalLength();
+
+      Kokkos::DefaultHostExecutionSpace         exec;
+      Kokkos::View<Number *, Kokkos::HostSpace> values_view(values.data(),
+                                                            local_length);
+      Kokkos::deep_copy(exec, values_view, localized_vector_1d);
+      exec.fence();
     }
 }
 
@@ -808,6 +865,68 @@ Vector<Number>::operator=(const TrilinosWrappers::MPI::Vector &v)
 }
 
 #endif
+
+
+
+#ifdef DEAL_II_TRILINOS_WITH_TPETRA
+
+template <typename Number>
+template <typename OtherNumber, typename MemorySpace>
+Vector<Number> &
+Vector<Number>::operator=(
+  const LinearAlgebra::TpetraWrappers::Vector<OtherNumber, MemorySpace> &v)
+{
+  static_assert(
+    std::is_same<Number, OtherNumber>::value,
+    "TpetraWrappers::Vector and dealii::Vector must use the same number type here.");
+
+  if (v.size() != size())
+    reinit(v.size(), true);
+
+  if (size() != 0)
+    {
+      // Copy the distributed vector to
+      // a local one at all processors
+      // that know about the original vector.
+      typename LinearAlgebra::TpetraWrappers::Vector<OtherNumber,
+                                                     MemorySpace>::VectorType
+        localized_vector(complete_index_set(size()).make_tpetra_map_rcp(),
+                         v.get_mpi_communicator());
+
+      Teuchos::RCP<const typename LinearAlgebra::TpetraWrappers::
+                     Vector<OtherNumber, MemorySpace>::ImportType>
+        importer = Tpetra::createImport(v.trilinos_vector().getMap(),
+                                        localized_vector.getMap());
+
+      localized_vector.doImport(v.trilinos_vector(), *importer, Tpetra::INSERT);
+
+      // get a kokkos view from the localized_vector
+#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
+      auto localized_vector_2d =
+        localized_vector.template getLocalView<Kokkos::HostSpace>(
+          Tpetra::Access::ReadOnly);
+#  else
+      localized_vector.template sync<Kokkos::HostSpace>();
+      auto localized_vector_2d =
+        localized_vector.template getLocalView<Kokkos::HostSpace>();
+#  endif
+      auto localized_vector_1d =
+        Kokkos::subview(localized_vector_2d, Kokkos::ALL(), 0);
+      const size_t local_length = localized_vector.getLocalLength();
+
+      Kokkos::DefaultHostExecutionSpace         exec;
+      Kokkos::View<Number *, Kokkos::HostSpace> values_view(values.data(),
+                                                            local_length);
+      Kokkos::deep_copy(exec, values_view, localized_vector_1d);
+      exec.fence();
+    }
+
+  return *this;
+}
+
+#endif
+
+
 
 template <typename Number>
 template <typename Number2>

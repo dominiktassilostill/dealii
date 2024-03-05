@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2005 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2012 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 
 #include <deal.II/base/exceptions.h>
@@ -99,26 +98,6 @@ namespace Utilities
 
   namespace MPI
   {
-#ifdef DEAL_II_WITH_MPI
-    // Provide definitions of template variables for all valid instantiations.
-    template const MPI_Datatype mpi_type_id_for_type<bool>;
-    template const MPI_Datatype mpi_type_id_for_type<char>;
-    template const MPI_Datatype mpi_type_id_for_type<signed char>;
-    template const MPI_Datatype mpi_type_id_for_type<short>;
-    template const MPI_Datatype mpi_type_id_for_type<int>;
-    template const MPI_Datatype mpi_type_id_for_type<long int>;
-    template const MPI_Datatype mpi_type_id_for_type<unsigned char>;
-    template const MPI_Datatype mpi_type_id_for_type<unsigned short>;
-    template const MPI_Datatype mpi_type_id_for_type<unsigned long int>;
-    template const MPI_Datatype mpi_type_id_for_type<unsigned long long int>;
-    template const MPI_Datatype mpi_type_id_for_type<float>;
-    template const MPI_Datatype mpi_type_id_for_type<double>;
-    template const MPI_Datatype mpi_type_id_for_type<long double>;
-    template const MPI_Datatype mpi_type_id_for_type<std::complex<float>>;
-    template const MPI_Datatype mpi_type_id_for_type<std::complex<double>>;
-#endif
-
-
     MinMaxAvg
     min_max_avg(const double my_value, const MPI_Comm mpi_communicator)
     {

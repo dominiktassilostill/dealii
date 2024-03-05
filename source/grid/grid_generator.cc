@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 1999 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #include <deal.II/base/ndarray.h>
 #include <deal.II/base/parameter_handler.h>
@@ -6481,43 +6480,74 @@ namespace GridGenerator
     // Top (Z+) part of the cylinder has boundary id 3
 
     // Define tolerance to help detect boundary conditions
-    double eps_z =
-      std::min(1e-3 * (outer_radius - inner_radius), 1e-3 * length);
-    double mid_radial_distance = 0.5 * (outer_radius - inner_radius);
+    // First we define the tolerance along the z axis to identify
+    // bottom and top cells.
+    double eps_z = 1e-6 * length;
 
+    // Gather the inner radius from the faces instead of the argument, this is
+    // more robust for some aspect ratios. First initialize the outer to 0 and
+    // the inner to a large value
+    double face_inner_radius = std::numeric_limits<double>::max();
+    double face_outer_radius = 0.;
+
+    // Loop over the cells once to acquire the min and max radius at the face
+    // centers. Otherwise, for some cell ratio, the center of the faces can be
+    // at a radius which is significantly different from the one prescribed.
     for (const auto &cell : tria.active_cell_iterators())
       for (const unsigned int f : GeometryInfo<3>::face_indices())
         {
           if (!cell->face(f)->at_boundary())
             continue;
 
-          const auto face_center = cell->face(f)->center();
+          const auto   face_center = cell->face(f)->center();
+          const double z           = face_center[2];
 
-          const double radius = std::sqrt(face_center[0] * face_center[0] +
-                                          face_center[1] * face_center[1]);
+          if ((std::fabs(z) > eps_z) &&
+              (std::fabs(z - length) > eps_z)) // Not a zmin or zmax boundary
+            {
+              const double radius = std::sqrt(face_center[0] * face_center[0] +
+                                              face_center[1] * face_center[1]);
+              face_inner_radius   = std::min(face_inner_radius, radius);
+              face_outer_radius   = std::max(face_outer_radius, radius);
+            }
+        }
 
-          const double z = face_center[2];
+    double mid_radial_distance = 0.5 * (face_outer_radius - face_inner_radius);
 
-          if (std::fabs(z) < eps_z) // z = 0 set boundary 2
+    for (const auto &cell : tria.active_cell_iterators())
+      for (const unsigned int f : GeometryInfo<3>::face_indices())
+        {
+          if (cell->face(f)->at_boundary())
             {
-              cell->face(f)->set_boundary_id(2);
+              const auto face_center = cell->face(f)->center();
+
+              const double radius = std::sqrt(face_center[0] * face_center[0] +
+                                              face_center[1] * face_center[1]);
+
+              const double z = face_center[2];
+
+              if (std::fabs(z) < eps_z) // z = 0 set boundary 2
+                {
+                  cell->face(f)->set_boundary_id(2);
+                }
+              else if (std::fabs(z - length) <
+                       eps_z) // z = length set boundary 3
+                {
+                  cell->face(f)->set_boundary_id(3);
+                }
+              else if (std::fabs(radius - face_inner_radius) >
+                       mid_radial_distance) // r =  outer_radius set boundary 1
+                {
+                  cell->face(f)->set_boundary_id(1);
+                }
+              else if (std::fabs(radius - face_inner_radius) <
+                       mid_radial_distance) // r =  inner_radius set boundary 0
+                {
+                  cell->face(f)->set_boundary_id(0);
+                }
+              else
+                DEAL_II_ASSERT_UNREACHABLE();
             }
-          else if (std::fabs(z - length) < eps_z) // z = length set boundary 3
-            {
-              cell->face(f)->set_boundary_id(3);
-            }
-          else if (std::fabs(radius - inner_radius) >
-                   mid_radial_distance) // r =  outer_radius set boundary 1
-            {
-              cell->face(f)->set_boundary_id(1);
-            }
-          else if (std::fabs(radius - inner_radius) <
-                   mid_radial_distance) // r =  inner_radius set boundary 0
-            {
-              cell->face(f)->set_boundary_id(0);
-            }
-          else
-            DEAL_II_ASSERT_UNREACHABLE();
         }
   }
 
@@ -7067,6 +7097,9 @@ namespace GridGenerator
              "The number of slices for extrusion must be at least 2."));
     Assert(std::is_sorted(slice_coordinates.begin(), slice_coordinates.end()),
            ExcMessage("Slice z-coordinates should be in ascending order"));
+    Assert(input.all_reference_cells_are_hyper_cube(),
+           ExcMessage(
+             "This function is only implemented for quadrilateral meshes."));
 
     const auto priorities = [&]() -> std::vector<types::manifold_id> {
       // if a non-empty (i.e., not the default) vector is given for

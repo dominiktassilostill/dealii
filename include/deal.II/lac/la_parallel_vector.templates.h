@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2011 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2012 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_la_parallel_vector_templates_h
 #define dealii_la_parallel_vector_templates_h
@@ -133,7 +132,13 @@ namespace LinearAlgebra
         {
           if (comm_shared == MPI_COMM_SELF)
             {
+#if KOKKOS_VERSION >= 30600
+              Kokkos::resize(Kokkos::WithoutInitializing,
+                             data.values,
+                             new_alloc_size);
+#else
               Kokkos::resize(data.values, new_alloc_size);
+#endif
 
               allocated_size = new_alloc_size;
 
@@ -342,7 +347,13 @@ namespace LinearAlgebra
                       data.values.size() == 0),
                      ExcInternalError());
 
+#if KOKKOS_VERSION >= 30600
+              Kokkos::resize(Kokkos::WithoutInitializing,
+                             data.values,
+                             new_alloc_size);
+#else
               Kokkos::resize(data.values, new_alloc_size);
+#endif
 
               allocated_size = new_alloc_size;
             }
@@ -981,15 +992,27 @@ namespace LinearAlgebra
           if (std::is_same_v<MemorySpaceType, dealii::MemorySpace::Default>)
             {
               if (import_data.values_host_buffer.size() == 0)
+#    if KOKKOS_VERSION >= 30600
+                Kokkos::resize(Kokkos::WithoutInitializing,
+                               import_data.values_host_buffer,
+                               partitioner->n_import_indices());
+#    else
                 Kokkos::resize(import_data.values_host_buffer,
                                partitioner->n_import_indices());
+#    endif
             }
           else
 #  endif
             {
               if (import_data.values.size() == 0)
-                Kokkos::resize(import_data.values,
+#  if KOKKOS_VERSION >= 30600
+                Kokkos::resize(Kokkos::WithoutInitializing,
+                               import_data.values,
                                partitioner->n_import_indices());
+#  else
+              Kokkos::resize(import_data.values,
+                             partitioner->n_import_indices());
+#  endif
             }
         }
 
@@ -1129,15 +1152,27 @@ namespace LinearAlgebra
           if (std::is_same_v<MemorySpaceType, MemorySpace::Default>)
             {
               if (import_data.values_host_buffer.size() == 0)
+#    if KOKKOS_VERSION >= 30600
+                Kokkos::resize(Kokkos::WithoutInitializing,
+                               import_data.values_host_buffer,
+                               partitioner->n_import_indices());
+#    else
                 Kokkos::resize(import_data.values_host_buffer,
                                partitioner->n_import_indices());
+#    endif
             }
           else
 #  endif
             {
               if (import_data.values.size() == 0)
-                Kokkos::resize(import_data.values,
+#  if KOKKOS_VERSION >= 30600
+                Kokkos::resize(Kokkos::WithoutInitializing,
+                               import_data.values,
                                partitioner->n_import_indices());
+#  else
+              Kokkos::resize(import_data.values,
+                             partitioner->n_import_indices());
+#  endif
             }
         }
 

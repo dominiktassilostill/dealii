@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #include <deal.II/grid/grid_tools.h>
 #include <deal.II/grid/grid_tools_cache.h>
@@ -1127,10 +1126,11 @@ namespace Particles
     unsigned int i = 0;
     for (auto it = begin(); it != end(); ++it, ++i)
       {
+        Point<spacedim> &location = it->get_location();
         if (displace_particles)
-          it->set_location(it->get_location() + new_positions[i]);
+          location += new_positions[i];
         else
-          it->set_location(new_positions[i]);
+          location = new_positions[i];
       }
     sort_particles_into_subdomains_and_cells();
   }
@@ -1150,7 +1150,7 @@ namespace Particles
     Vector<double> new_position(spacedim);
     for (auto &particle : *this)
       {
-        Point<spacedim> particle_location = particle.get_location();
+        Point<spacedim> &particle_location = particle.get_location();
         function.vector_value(particle_location, new_position);
         if (displace_particles)
           for (unsigned int d = 0; d < spacedim; ++d)
@@ -1158,7 +1158,6 @@ namespace Particles
         else
           for (unsigned int d = 0; d < spacedim; ++d)
             particle_location[d] = new_position[d];
-        particle.set_location(particle_location);
       }
     sort_particles_into_subdomains_and_cells();
   }
@@ -1262,7 +1261,8 @@ namespace Particles
         for (const auto &p_unit : reference_locations)
           {
             if (numbers::is_finite(p_unit[0]) &&
-                GeometryInfo<dim>::is_inside_unit_cell(p_unit))
+                GeometryInfo<dim>::is_inside_unit_cell(p_unit,
+                                                       tolerance_inside_cell))
               particle->set_reference_location(p_unit);
             else
               particles_out_of_cell.push_back(particle);
@@ -1384,8 +1384,8 @@ namespace Particles
                                                           real_locations,
                                                           reference_locations);
 
-              if (GeometryInfo<dim>::is_inside_unit_cell(
-                    reference_locations[0]))
+              if (GeometryInfo<dim>::is_inside_unit_cell(reference_locations[0],
+                                                         tolerance_inside_cell))
                 {
                   current_cell = *cell;
                   found_cell   = true;
@@ -1433,7 +1433,7 @@ namespace Particles
                     cell, real_locations, reference_locations);
 
                   if (GeometryInfo<dim>::is_inside_unit_cell(
-                        reference_locations[0]))
+                        reference_locations[0], tolerance_inside_cell))
                     {
                       current_cell = cell;
                       found_cell   = true;
@@ -2431,8 +2431,8 @@ namespace Particles
                         const Point<dim> p_unit =
                           mapping->transform_real_to_unit_cell(
                             child, particle->get_location());
-                        if (GeometryInfo<dim>::is_inside_unit_cell(p_unit,
-                                                                   1e-12))
+                        if (GeometryInfo<dim>::is_inside_unit_cell(
+                              p_unit, tolerance_inside_cell))
                           {
                             found_new_cell = true;
                             particle->set_reference_location(p_unit);

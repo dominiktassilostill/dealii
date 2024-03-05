@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_particles_particle_handler_h
 #define dealii_particles_particle_handler_h
@@ -1019,6 +1018,11 @@ namespace Particles
     unsigned int handle;
 
     /**
+     * Tolerance to be used for GeometryInfo<dim>::is_inside_cell().
+     */
+    const double tolerance_inside_cell = 1e-12;
+
+    /**
      * The GridTools::Cache is used to store the information about the
      * vertex_to_cells set and the vertex_to_cell_centers vectors to prevent
      * recomputing them every time we sort_into_subdomain_and_cells().
@@ -1341,12 +1345,15 @@ namespace Particles
                     get_next_free_particle_index() * spacedim);
     for (auto &p : *this)
       {
-        Point<spacedim> new_point(displace_particles ? p.get_location() :
-                                                       Point<spacedim>());
-        const auto      id = p.get_id();
-        for (unsigned int i = 0; i < spacedim; ++i)
-          new_point[i] += input_vector[id * spacedim + i];
-        p.set_location(new_point);
+        Point<spacedim> &position = p.get_location();
+        const auto       id       = p.get_id();
+
+        if (displace_particles)
+          for (unsigned int i = 0; i < spacedim; ++i)
+            position[i] += input_vector[id * spacedim + i];
+        else
+          for (unsigned int i = 0; i < spacedim; ++i)
+            position[i] = input_vector[id * spacedim + i];
       }
     sort_particles_into_subdomains_and_cells();
   }

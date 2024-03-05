@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2022 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_particles_property_pool_h
 #define dealii_particles_property_pool_h
@@ -151,10 +150,18 @@ namespace Particles
     deregister_particle(Handle &handle);
 
     /**
-     * Return the location of a particle identified by the given `handle`.
+     * Return a read-only reference to the location of a particle
+     * identified by the given `handle`.
      */
     const Point<spacedim> &
     get_location(const Handle handle) const;
+
+    /**
+     * Return a writeable reference to the location of a particle
+     * identified by the given `handle`.
+     */
+    Point<spacedim> &
+    get_location(const Handle handle);
 
     /**
      * Set the location of a particle identified by the given `handle`.
@@ -163,8 +170,8 @@ namespace Particles
     set_location(const Handle handle, const Point<spacedim> &new_location);
 
     /**
-     * Return the reference_location of a particle identified by the given
-     * `handle`.
+     * Return a read-only reference to the reference location of a particle
+     * identified by the given `handle`.
      */
     const Point<dim> &
     get_reference_location(const Handle handle) const;
@@ -286,6 +293,29 @@ namespace Particles
   template <int dim, int spacedim>
   inline const Point<spacedim> &
   PropertyPool<dim, spacedim>::get_location(const Handle handle) const
+  {
+    const std::vector<double>::size_type data_index =
+      (handle != invalid_handle) ? handle : 0;
+
+    // Ideally we would need to assert that 'handle' has not been deallocated
+    // by searching through 'currently_available_handles'. However, this
+    // is expensive and this function is performance critical, so instead
+    // just check against the array range, and rely on the fact
+    // that handles are invalidated when handed over to
+    // deallocate_properties_array().
+    Assert(data_index <= locations.size() - 1,
+           ExcMessage("Invalid location handle. This can happen if the "
+                      "handle was duplicated and then one copy was deallocated "
+                      "before trying to access the properties."));
+
+    return locations[data_index];
+  }
+
+
+
+  template <int dim, int spacedim>
+  inline Point<spacedim> &
+  PropertyPool<dim, spacedim>::get_location(const Handle handle)
   {
     const std::vector<double>::size_type data_index =
       (handle != invalid_handle) ? handle : 0;

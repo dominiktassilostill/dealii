@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2020 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_mg_transfer_global_coarsening_h
 #define dealii_mg_transfer_global_coarsening_h
@@ -215,13 +214,13 @@ class MGTwoLevelTransferBase : public Subscriptor
 {
 public:
   /**
-   * Perform prolongation.
+   * Perform prolongation on a solution vector.
    */
   virtual void
   prolongate_and_add(VectorType &dst, const VectorType &src) const = 0;
 
   /**
-   * Perform restriction.
+   * Perform restriction on a residual vector.
    */
   virtual void
   restrict_and_add(VectorType &dst, const VectorType &src) const = 0;
@@ -230,7 +229,8 @@ public:
    * Perform interpolation of a solution vector from the fine level to the
    * coarse level. This function is different from restriction, where a
    * weighted residual is transferred to a coarser level (transposition of
-   * prolongation matrix).
+   * prolongation matrix). In other words, restriction acts on right hand
+   * side vectors, whereas interpolation acts on solution vectors.
    */
   virtual void
   interpolate(VectorType &dst, const VectorType &src) const = 0;
@@ -274,20 +274,23 @@ public:
   MGTwoLevelTransferBase();
 
   /**
-   * Perform prolongation.
+   * Perform prolongation on a solution vector.
    */
   void
   prolongate_and_add(VectorType &dst, const VectorType &src) const;
 
   /**
-   * Perform restriction.
+   * Perform restriction on a residual vector.
    */
   void
   restrict_and_add(VectorType &dst, const VectorType &src) const;
 
   /**
    * Perform interpolation of a solution vector from the fine level to the
-   * coarse level.
+   * coarse level. This function is different from restriction, where a
+   * weighted residual is transferred to a coarser level (transposition of
+   * prolongation matrix). In other words, restriction acts on right hand
+   * side vectors, whereas interpolation acts on solution vectors.
    */
   virtual void
   interpolate(VectorType &dst, const VectorType &src) const = 0;
@@ -445,20 +448,19 @@ class MGTwoLevelTransfer : public MGTwoLevelTransferBase<VectorType>
 {
 public:
   /**
-   * Perform prolongation.
+   * @copydoc MGTwoLevelTransferBase::prolongate_and_add
    */
   void
   prolongate_and_add(VectorType &dst, const VectorType &src) const override;
 
   /**
-   * Perform restriction.
+   * @copydoc MGTwoLevelTransferBase::restrict_and_add
    */
   void
   restrict_and_add(VectorType &dst, const VectorType &src) const override;
 
   /**
-   * Perform interpolation of a solution vector from the fine level to the
-   * coarse level.
+   * @copydoc MGTwoLevelTransferBase::interpolate
    */
   void
   interpolate(VectorType &dst, const VectorType &src) const override;
@@ -568,8 +570,7 @@ public:
                                      const unsigned int fe_degree_coarse);
 
   /**
-   * Perform interpolation of a solution vector from the fine level to the
-   * coarse level.
+   * @copydoc MGTwoLevelTransferBase::interpolate
    */
   void
   interpolate(

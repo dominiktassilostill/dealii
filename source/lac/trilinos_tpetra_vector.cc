@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #include <deal.II/lac/trilinos_tpetra_vector.templates.h>
 
@@ -36,6 +35,8 @@ namespace LinearAlgebra
     static_assert(concepts::is_vector_space_vector<Vector<float>>);
 #    endif
     template class Vector<float>;
+    template Vector<float> &
+    Vector<float>::operator=<float>(const dealii::Vector<float> &);
     namespace internal
     {
       template class VectorReference<float>;
@@ -47,6 +48,8 @@ namespace LinearAlgebra
     static_assert(concepts::is_vector_space_vector<Vector<double>>);
 #    endif
     template class Vector<double>;
+    template Vector<double> &
+    Vector<double>::operator=<double>(const dealii::Vector<double> &);
     namespace internal
     {
       template class VectorReference<double>;
@@ -60,6 +63,9 @@ namespace LinearAlgebra
                   Vector<std::complex<float>>);
 #      endif
     template class Vector<std::complex<float>>;
+    template Vector<std::complex<float>> &
+    Vector<std::complex<float>>::operator=
+      <std::complex<float>>(const dealii::Vector<std::complex<float>> &);
     namespace internal
     {
       template class VectorReference<std::complex<float>>;
@@ -72,6 +78,9 @@ namespace LinearAlgebra
                   Vector<std::complex<double>>);
 #      endif
     template class Vector<std::complex<double>>;
+    template Vector<std::complex<double>> &
+    Vector<std::complex<double>>::operator=
+      <std::complex<double>>(const dealii::Vector<std::complex<double>> &);
     namespace internal
     {
       template class VectorReference<std::complex<double>>;

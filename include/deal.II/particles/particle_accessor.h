@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2017 - 2022 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_particles_particle_accessor_h
 #define dealii_particles_particle_accessor_h
@@ -149,12 +148,36 @@ namespace Particles
     set_location(const Point<spacedim> &new_location);
 
     /**
-     * Get the location of this particle.
+     * Get read-access to the location of this particle.
      *
      * @return The location of this particle.
      */
     const Point<spacedim> &
     get_location() const;
+
+    /**
+     * Get read- and write-access to the location of this particle.
+     * Note that changing the location does not check
+     * whether this is a valid location in the simulation domain.
+     *
+     * @note In parallel programs, the ParticleHandler class stores particles
+     *   on both the locally owned cells, as well as on ghost cells. The
+     *   particles on the latter are *copies* of particles owned on other
+     *   processors, and should therefore be treated in the same way as
+     *   ghost entries in
+     *   @ref GlossGhostedVector "vectors with ghost elements"
+     *   or
+     *   @ref GlossGhostCell "ghost cells":
+     *   In both cases, one should
+     *   treat the ghost elements or cells as `const` objects that shouldn't
+     *   be modified even if the objects allow for calls that modify
+     *   properties. Rather, properties should only be modified on processors
+     *   that actually *own* the particle.
+     *
+     * @return The location of this particle.
+     */
+    Point<spacedim> &
+    get_location();
 
     /**
      * Set the reference location of this particle.
@@ -642,6 +665,17 @@ namespace Particles
   template <int dim, int spacedim>
   inline const Point<spacedim> &
   ParticleAccessor<dim, spacedim>::get_location() const
+  {
+    Assert(state() == IteratorState::valid, ExcInternalError());
+
+    return property_pool->get_location(get_handle());
+  }
+
+
+
+  template <int dim, int spacedim>
+  inline Point<spacedim> &
+  ParticleAccessor<dim, spacedim>::get_location()
   {
     Assert(state() == IteratorState::valid, ExcInternalError());
 

@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_trilinos_tpetra_vector_h
 #define dealii_trilinos_tpetra_vector_h
@@ -27,6 +26,7 @@
 
 #  include <deal.II/lac/read_vector.h>
 #  include <deal.II/lac/trilinos_tpetra_communication_pattern.h>
+#  include <deal.II/lac/vector.h>
 #  include <deal.II/lac/vector_operation.h>
 #  include <deal.II/lac/vector_type_traits.h>
 
@@ -208,6 +208,34 @@ namespace LinearAlgebra
                        << "An error with error number " << arg1
                        << " occurred while calling a Trilinos function");
 
+        /*
+         * Access to a an element that is not (locally-)owned.
+         *
+         * @ingroup Exceptions
+         */
+        DeclException4(
+          ExcAccessToNonLocalElement,
+          size_type,
+          size_type,
+          size_type,
+          size_type,
+          << "You are trying to access element " << arg1
+          << " of a distributed vector, but this element is not stored "
+          << "on the current processor. Note: There are " << arg2
+          << " elements stored "
+          << "on the current processor from within the range [" << arg3 << ','
+          << arg4 << "] but Trilinos vectors need not store contiguous "
+          << "ranges on each processor, and not every element in "
+          << "this range may in fact be stored locally."
+          << "\n\n"
+          << "A common source for this kind of problem is that you "
+          << "are passing a 'fully distributed' vector into a function "
+          << "that needs read access to vector elements that correspond "
+          << "to degrees of freedom on ghost cells (or at least to "
+          << "'locally active' degrees of freedom that are not also "
+          << "'locally owned'). You need to pass a vector that has these "
+          << "elements as ghost entries.");
+
       private:
         /**
          * Point to the vector we are referencing.
@@ -261,6 +289,8 @@ namespace LinearAlgebra
       using real_type  = typename numbers::NumberTraits<Number>::real_type;
       using size_type  = types::global_dof_index;
       using reference  = internal::VectorReference<Number, MemorySpace>;
+      using const_reference =
+        const internal::VectorReference<Number, MemorySpace>;
       using MapType =
         Tpetra::Map<int, dealii::types::signed_global_dof_index, NodeType>;
       using VectorType = Tpetra::
@@ -400,6 +430,15 @@ namespace LinearAlgebra
        */
       Vector &
       operator=(const Vector &V);
+
+      /**
+       * Copy function. This function takes a Vector and copies all the
+       * elements. The Vector will have the same parallel distribution as @p
+       * V.
+       */
+      template <typename OtherNumber>
+      Vector &
+      operator=(const dealii::Vector<OtherNumber> &V);
 
       /**
        * Sets all elements of the vector to the scalar @p s. This operation is
@@ -623,6 +662,14 @@ namespace LinearAlgebra
       bool
       all_zero() const;
 
+      /**
+       * Return @p true if the vector has no negative entries, i.e. all entries
+       * are zero or positive. This function is used, for example, to check
+       * whether refinement indicators are really all positive (or zero).
+       */
+      bool
+      is_non_negative() const;
+
       /** @} */
 
 
@@ -708,6 +755,22 @@ namespace LinearAlgebra
        */
       bool
       has_ghost_elements() const;
+
+      /**
+       * Test for equality. This function assumes that the present vector and
+       * the one to compare with have the same size already, since comparing
+       * vectors of different sizes makes not much sense anyway.
+       */
+      bool
+      operator==(const Vector<Number, MemorySpace> &v) const;
+
+      /**
+       * Test for inequality. This function assumes that the present vector and
+       * the one to compare with have the same size already, since comparing
+       * vectors of different sizes makes not much sense anyway.
+       */
+      bool
+      operator!=(const Vector<Number, MemorySpace> &v) const;
 
       /**
        * Return the global size of the vector, equal to the sum of the number of

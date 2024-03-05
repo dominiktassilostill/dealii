@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 1999 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 1999 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_vector_h
 #define dealii_vector_h
@@ -56,6 +55,17 @@ namespace TrilinosWrappers
     class Vector;
   }
 } // namespace TrilinosWrappers
+#  endif
+
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA
+namespace LinearAlgebra
+{
+  namespace TpetraWrappers
+  {
+    template <typename Number, typename MemorySpace>
+    class Vector;
+  }
+} // namespace LinearAlgebra
 #  endif
 
 template <typename number>
@@ -232,6 +242,26 @@ public:
    * that needs to be executed by all MPI processes that jointly share @p v.
    */
   explicit Vector(const TrilinosWrappers::MPI::Vector &v);
+#endif
+
+#ifdef DEAL_II_TRILINOS_WITH_TPETRA
+  /**
+   * Another copy constructor: copy the values from a Trilinos wrapper vector.
+   * This copy constructor is only available if Trilinos was detected during
+   * configuration time.
+   *
+   * @note Due to the communication model used in MPI, this operation can
+   * only succeed if all processes that have knowledge of @p v
+   * (i.e. those given by <code>v.get_mpi_communicator()</code>) do it at
+   * the same time. This means that unless you use a split MPI communicator
+   * then it is not normally possible for only one or a subset of processes
+   * to obtain a copy of a parallel vector while the other jobs do something
+   * else. In other words, calling this function is a @ref GlossCollectiveOperation "collective operation"
+   * that needs to be executed by all MPI processes that jointly share @p v.
+   */
+  template <typename OtherNumber, typename MemorySpace>
+  explicit Vector(
+    const LinearAlgebra::TpetraWrappers::Vector<OtherNumber, MemorySpace> &v);
 #endif
 
   /**
@@ -438,6 +468,28 @@ public:
    */
   Vector<Number> &
   operator=(const TrilinosWrappers::MPI::Vector &v);
+#endif
+
+#ifdef DEAL_II_TRILINOS_WITH_TPETRA
+  /**
+   * Another copy operator: copy the values from a (sequential or parallel,
+   * depending on the underlying compiler) Trilinos wrapper vector class. This
+   * operator is only available if Trilinos was detected during configuration
+   * time.
+   *
+   * @note Due to the communication model used in MPI, this operation can
+   * only succeed if all processes that have knowledge of @p v
+   * (i.e. those given by <code>v.get_mpi_communicator()</code>) do it at
+   * the same time. This means that unless you use a split MPI communicator
+   * then it is not normally possible for only one or a subset of processes
+   * to obtain a copy of a parallel vector while the other jobs do something
+   * else. In other words, calling this function is a @ref GlossCollectiveOperation "collective operation"
+   * that needs to be executed by all MPI processes that jointly share @p v.
+   */
+  template <typename OtherNumber, typename MemorySpace>
+  Vector<Number> &
+  operator=(
+    const LinearAlgebra::TpetraWrappers::Vector<OtherNumber, MemorySpace> &v);
 #endif
 
   /**

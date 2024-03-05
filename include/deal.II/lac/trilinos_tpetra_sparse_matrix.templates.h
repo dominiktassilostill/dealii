@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_trilinos_tpetra_sparse_matrix_templates_h
 #define dealii_trilinos_tpetra_sparse_matrix_templates_h
@@ -32,8 +31,116 @@ namespace LinearAlgebra
 
   namespace TpetraWrappers
   {
+    namespace internal
+    {
+      template <typename Number, typename MemorySpace>
+      void
+      apply(const SparseMatrix<Number, MemorySpace> &M,
+            const Vector<Number, MemorySpace>       &src,
+            Vector<Number, MemorySpace>             &dst,
+            Teuchos::ETransp                         mode = Teuchos::NO_TRANS,
+            Number alpha = Teuchos::ScalarTraits<Number>::one(),
+            Number beta  = Teuchos::ScalarTraits<Number>::zero())
+      {
+        Assert(&src != &dst,
+               SparseMatrix<double>::ExcSourceEqualsDestination());
+        Assert(M.trilinos_matrix().isFillComplete(),
+               SparseMatrix<double>::ExcMatrixNotCompressed());
+
+        if (mode == Teuchos::NO_TRANS)
+          {
+            Assert(src.trilinos_vector().getMap()->isSameAs(
+                     *M.trilinos_matrix().getDomainMap()),
+                   SparseMatrix<double>::ExcColMapMissmatch());
+            Assert(dst.trilinos_vector().getMap()->isSameAs(
+                     *M.trilinos_matrix().getRangeMap()),
+                   SparseMatrix<double>::ExcDomainMapMissmatch());
+          }
+        else
+          {
+            Assert(dst.trilinos_vector().getMap()->isSameAs(
+                     *M.trilinos_matrix().getDomainMap()),
+                   SparseMatrix<double>::ExcColMapMissmatch());
+            Assert(src.trilinos_vector().getMap()->isSameAs(
+                     *M.trilinos_matrix().getRangeMap()),
+                   SparseMatrix<double>::ExcDomainMapMissmatch());
+          }
+
+        M.trilinos_matrix().apply(
+          src.trilinos_vector(), dst.trilinos_vector(), mode, alpha, beta);
+      }
+
+
+
+      template <typename Number, typename MemorySpace>
+      void
+      apply(const SparseMatrix<Number, MemorySpace> &M,
+            const dealii::Vector<Number>            &src,
+            dealii::Vector<Number>                  &dst,
+            Teuchos::ETransp                         mode = Teuchos::NO_TRANS,
+            Number alpha = Teuchos::ScalarTraits<Number>::one(),
+            Number beta  = Teuchos::ScalarTraits<Number>::zero())
+      {
+        Assert(&src != &dst,
+               SparseMatrix<double>::ExcSourceEqualsDestination());
+        Assert(M.trilinos_matrix().isFillComplete(),
+               SparseMatrix<double>::ExcMatrixNotCompressed());
+
+        // get the size of the input vectors:
+        const size_type dst_local_size = dst.end() - dst.begin();
+        const size_type src_local_size = src.end() - src.begin();
+
+        // For the dst vector:
+        Kokkos::View<Number **, Kokkos::LayoutLeft, Kokkos::HostSpace>
+          kokkos_view_dst(dst.begin(), dst_local_size, 1);
+
+        // get a Kokkos::DualView
+        auto mirror_view_dst = Kokkos::create_mirror_view_and_copy(
+          typename MemorySpace::kokkos_space{}, kokkos_view_dst);
+        typename SparseMatrix<Number, MemorySpace>::VectorType::dual_view_type
+          kokkos_dual_view_dst(mirror_view_dst, kokkos_view_dst);
+
+        // create the Tpetra::Vector
+        typename SparseMatrix<Number, MemorySpace>::VectorType tpetra_dst(
+          M.trilinos_matrix().getRangeMap(), kokkos_dual_view_dst);
+
+        // For the src vector:
+        // create a Kokkos::View from the src vector
+        Kokkos::View<Number **, Kokkos::LayoutLeft, Kokkos::HostSpace>
+          kokkos_view_src(const_cast<Number *>(src.begin()), src_local_size, 1);
+
+        // get a Kokkos::DualView
+        auto mirror_view_src = Kokkos::create_mirror_view_and_copy(
+          typename MemorySpace::kokkos_space{}, kokkos_view_src);
+        typename SparseMatrix<Number, MemorySpace>::VectorType::dual_view_type
+          kokkos_dual_view_src(mirror_view_src, kokkos_view_src);
+
+        // create the Tpetra::Vector
+        typename SparseMatrix<Number, MemorySpace>::VectorType tpetra_src(
+          M.trilinos_matrix().getDomainMap(), kokkos_dual_view_src);
+
+        M.trilinos_matrix().apply(tpetra_src, tpetra_dst, mode, alpha, beta);
+      }
+
+
+
+      template <typename Number, typename MemorySpace, typename VectorType>
+      void
+      apply(SparseMatrix<Number, MemorySpace> &,
+            const VectorType &,
+            VectorType &,
+            Teuchos::ETransp,
+            Number,
+            Number)
+      {
+        DEAL_II_NOT_IMPLEMENTED();
+      }
+    } // namespace internal
+
+
+
     // reinit_matrix():
-    namespace
+    namespace SparseMatrixImpl
     {
       using size_type = dealii::types::signed_global_dof_index;
 
@@ -61,6 +168,118 @@ namespace LinearAlgebra
                     const SparsityPatternType &sparsity_pattern,
                     const bool                 exchange_data,
                     const MPI_Comm             communicator,
+                    Teuchos::RCP<MapType<NodeType>> &column_space_map,
+                    Teuchos::RCP<MatrixType<Number, NodeType>> &matrix)
+      {
+        // release memory before reallocation
+        matrix.reset();
+
+        // Get the Tpetra::Maps
+        Teuchos::RCP<MapType<NodeType>> row_space_map =
+          row_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+
+        column_space_map =
+          column_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+
+        if (column_space_map->getComm()->getRank() == 0)
+          {
+            AssertDimension(sparsity_pattern.n_rows(),
+                            row_parallel_partitioning.size());
+            AssertDimension(sparsity_pattern.n_cols(),
+                            column_parallel_partitioning.size());
+          }
+
+        // if we want to exchange data, build a usual Trilinos sparsity pattern
+        // and let that handle the exchange. otherwise, manually create a
+        // CrsGraph, which consumes considerably less memory because it can set
+        // correct number of indices right from the start
+        if (exchange_data)
+          {
+            SparsityPattern trilinos_sparsity;
+            trilinos_sparsity.reinit(row_parallel_partitioning,
+                                     column_parallel_partitioning,
+                                     sparsity_pattern,
+                                     communicator,
+                                     exchange_data);
+            matrix = Utilities::Trilinos::internal::make_rcp<
+              MatrixType<Number, NodeType>>(
+              trilinos_sparsity.trilinos_sparsity_pattern());
+
+            return;
+          }
+
+        // compute the number of entries per row
+        const size_type first_row = row_space_map->getMinGlobalIndex();
+        const size_type last_row  = row_space_map->getMaxGlobalIndex() + 1;
+
+        Teuchos::Array<size_t> n_entries_per_row(last_row - first_row);
+        for (size_type row = first_row; row < last_row; ++row)
+          n_entries_per_row[row - first_row] = sparsity_pattern.row_length(row);
+
+          // The deal.II notation of a Sparsity pattern corresponds to the
+          // Tpetra concept of a Graph. Hence, we generate a graph by copying
+          // the sparsity pattern into it, and then build up the matrix from the
+          // graph. This is considerable faster than directly filling elements
+          // into the matrix. Moreover, it consumes less memory, since the
+          // internal reordering is done on ints only, and we can leave the
+          // doubles aside.
+#  if DEAL_II_TRILINOS_VERSION_GTE(12, 16, 0)
+        Teuchos::RCP<GraphType<NodeType>> graph =
+          Utilities::Trilinos::internal::make_rcp<GraphType<NodeType>>(
+            row_space_map, n_entries_per_row);
+#  else
+        Teuchos::RCP<GraphType<NodeType>> graph =
+          Utilities::Trilinos::internal::make_rcp<GraphType<NodeType>>(
+            row_space_map, Teuchos::arcpFromArray(n_entries_per_row));
+#  endif
+
+        // This functions assumes that the sparsity pattern sits on all
+        // processors (completely). The parallel version uses a Tpetra graph
+        // that is already distributed.
+
+        // now insert the indices
+        Teuchos::Array<TrilinosWrappers::types::int_type> row_indices;
+
+        for (size_type global_row = first_row; global_row < last_row;
+             ++global_row)
+          {
+            const int row_length = sparsity_pattern.row_length(global_row);
+            if (row_length == 0)
+              continue;
+
+            row_indices.resize(row_length, -1);
+            for (size_type col = 0; col < row_length; ++col)
+              row_indices[col] =
+                sparsity_pattern.column_number(global_row, col);
+
+            AssertIndexRange(global_row, row_space_map->getGlobalNumElements());
+            graph->insertGlobalIndices(global_row, row_indices);
+          }
+
+        // Eventually, optimize the graph structure (sort indices, make memory
+        // contiguous, etc.). note that the documentation of the function indeed
+        // states that we first need to provide the column (domain) map and then
+        // the row (range) map
+        graph->fillComplete(column_space_map, row_space_map);
+
+        // check whether we got the number of columns right.
+        AssertDimension(sparsity_pattern.n_cols(), graph->getGlobalNumCols());
+
+        // And now finally generate the matrix.
+        matrix =
+          Utilities::Trilinos::internal::make_rcp<MatrixType<Number, NodeType>>(
+            graph);
+      }
+
+
+
+      template <typename Number, typename NodeType>
+      void
+      reinit_matrix(const IndexSet               &row_parallel_partitioning,
+                    const IndexSet               &column_parallel_partitioning,
+                    const DynamicSparsityPattern &sparsity_pattern,
+                    const bool                    exchange_data,
+                    const MPI_Comm                communicator,
                     Teuchos::RCP<MapType<NodeType>> &column_space_map,
                     Teuchos::RCP<MatrixType<Number, NodeType>> &matrix)
       {
@@ -135,14 +354,14 @@ namespace LinearAlgebra
         // into the matrix. Moreover, it consumes less memory, since the
         // internal reordering is done on ints only, and we can leave the
         // doubles aside.
-        Teuchos::RCP<GraphType<NodeType>> graph;
-
 #  if DEAL_II_TRILINOS_VERSION_GTE(12, 16, 0)
-        graph = Utilities::Trilinos::internal::make_rcp<GraphType<NodeType>>(
-          row_space_map, n_entries_per_row);
+        Teuchos::RCP<GraphType<NodeType>> graph =
+          Utilities::Trilinos::internal::make_rcp<GraphType<NodeType>>(
+            row_space_map, n_entries_per_row);
 #  else
-        graph = Utilities::Trilinos::internal::make_rcp<GraphType<NodeType>>(
-          row_space_map, Teuchos::arcpFromArray(n_entries_per_row));
+        Teuchos::RCP<GraphType<NodeType>> graph =
+          Utilities::Trilinos::internal::make_rcp<GraphType<NodeType>>(
+            row_space_map, Teuchos::arcpFromArray(n_entries_per_row));
 #  endif
 
         // This functions assumes that the sparsity pattern sits on all
@@ -150,7 +369,7 @@ namespace LinearAlgebra
         // that is already distributed.
 
         // now insert the indices
-        std::vector<TrilinosWrappers::types::int_type> row_indices;
+        Teuchos::Array<TrilinosWrappers::types::int_type> row_indices;
 
         for (const auto global_row : relevant_rows)
           {
@@ -164,9 +383,7 @@ namespace LinearAlgebra
                 sparsity_pattern.column_number(global_row, col);
 
             AssertIndexRange(global_row, row_space_map->getGlobalNumElements());
-            graph->insertGlobalIndices(global_row,
-                                       row_length,
-                                       row_indices.data());
+            graph->insertGlobalIndices(global_row, row_indices);
           }
 
         // Eventually, optimize the graph structure (sort indices, make memory
@@ -183,7 +400,7 @@ namespace LinearAlgebra
           Utilities::Trilinos::internal::make_rcp<MatrixType<Number, NodeType>>(
             graph);
       }
-    } // namespace
+    } // namespace SparseMatrixImpl
 
 
 
@@ -313,7 +530,7 @@ namespace LinearAlgebra
     SparseMatrix<Number, MemorySpace>::reinit(
       const SparsityPatternType &sparsity_pattern)
     {
-      reinit_matrix<Number, NodeType, SparsityPatternType>(
+      SparseMatrixImpl::reinit_matrix<Number, NodeType, SparsityPatternType>(
         complete_index_set(sparsity_pattern.n_rows()),
         complete_index_set(sparsity_pattern.n_cols()),
         sparsity_pattern,
@@ -430,7 +647,8 @@ namespace LinearAlgebra
 
     template <typename Number, typename MemorySpace>
     template <typename SparsityPatternType>
-    inline void
+    std::enable_if_t<
+      !std::is_same_v<SparsityPatternType, dealii::SparseMatrix<double>>>
     SparseMatrix<Number, MemorySpace>::reinit(
       const IndexSet            &parallel_partitioning,
       const SparsityPatternType &sparsity_pattern,
@@ -448,16 +666,16 @@ namespace LinearAlgebra
 
     template <typename Number, typename MemorySpace>
     template <typename SparsityPatternType>
-    void
+    std::enable_if_t<
+      !std::is_same_v<SparsityPatternType, dealii::SparseMatrix<double>>>
     SparseMatrix<Number, MemorySpace>::reinit(
-      const IndexSet &row_parallel_partitioning,
-
+      const IndexSet            &row_parallel_partitioning,
       const IndexSet            &col_parallel_partitioning,
       const SparsityPatternType &sparsity_pattern,
       const MPI_Comm             communicator,
       const bool                 exchange_data)
     {
-      reinit_matrix<Number, NodeType, SparsityPatternType>(
+      SparseMatrixImpl::reinit_matrix<Number, NodeType, SparsityPatternType>(
         row_parallel_partitioning,
         col_parallel_partitioning,
         sparsity_pattern,
@@ -468,6 +686,108 @@ namespace LinearAlgebra
 
       compressed = false;
       compress(VectorOperation::add);
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    void
+    SparseMatrix<Number, MemorySpace>::reinit(
+      const IndexSet                     &row_parallel_partitioning,
+      const IndexSet                     &col_parallel_partitioning,
+      const dealii::SparseMatrix<Number> &dealii_sparse_matrix,
+      const MPI_Comm                      communicator,
+      const double                        drop_tolerance,
+      const bool                          copy_values,
+      const dealii::SparsityPattern      *use_this_sparsity)
+    {
+      const size_type n_rows = dealii_sparse_matrix.m();
+      AssertDimension(row_parallel_partitioning.size(), n_rows);
+      AssertDimension(col_parallel_partitioning.size(),
+                      dealii_sparse_matrix.n());
+
+      const dealii::SparsityPattern &sparsity_pattern =
+        (use_this_sparsity != nullptr) ?
+          *use_this_sparsity :
+          dealii_sparse_matrix.get_sparsity_pattern();
+
+      if (matrix.is_null() || m() != n_rows ||
+          n_nonzero_elements() != sparsity_pattern.n_nonzero_elements() ||
+          copy_values)
+        if (use_this_sparsity == nullptr)
+          reinit(row_parallel_partitioning,
+                 col_parallel_partitioning,
+                 sparsity_pattern,
+                 communicator,
+                 false);
+
+      // in case we do not copy values, we are done
+      if (copy_values == false)
+        return;
+
+        // fill the values: go through all rows of the
+        // matrix, and then all columns. since the sparsity patterns of the
+        // input matrix and the specified sparsity pattern might be different,
+        // need to go through the row for both these sparsity structures
+        // simultaneously in order to really set the correct values.
+#  if DEAL_II_TRILINOS_VERSION_GTE(14, 0, 0)
+      size_type maximum_row_length = matrix->getLocalMaxNumRowEntries();
+#  else
+      size_type maximum_row_length = matrix->getNodeMaxNumRowEntries();
+#  endif
+      std::vector<size_type> row_indices(maximum_row_length);
+      std::vector<Number>    values(maximum_row_length);
+
+      for (size_type row = 0; row < n_rows; ++row)
+        // see if the row is locally stored on this processor
+        if (row_parallel_partitioning.is_element(row) == true)
+          {
+            dealii::SparsityPattern::iterator select_index =
+              sparsity_pattern.begin(row);
+            typename dealii::SparseMatrix<Number>::const_iterator it =
+              dealii_sparse_matrix.begin(row);
+            size_type col = 0;
+            if (sparsity_pattern.n_rows() == sparsity_pattern.n_cols())
+              {
+                // optimized diagonal
+                AssertDimension(it->column(), row);
+                if (std::fabs(it->value()) > drop_tolerance)
+                  {
+                    values[col]        = it->value();
+                    row_indices[col++] = it->column();
+                  }
+                ++select_index;
+                ++it;
+              }
+
+            while (it != dealii_sparse_matrix.end(row) &&
+                   select_index != sparsity_pattern.end(row))
+              {
+                while (select_index->column() < it->column() &&
+                       select_index != sparsity_pattern.end(row))
+                  ++select_index;
+                while (it->column() < select_index->column() &&
+                       it != dealii_sparse_matrix.end(row))
+                  ++it;
+
+                if (it == dealii_sparse_matrix.end(row))
+                  break;
+                if (std::fabs(it->value()) > drop_tolerance)
+                  {
+                    values[col]        = it->value();
+                    row_indices[col++] = it->column();
+                  }
+                ++select_index;
+                ++it;
+              }
+            set(row,
+                col,
+                reinterpret_cast<size_type *>(row_indices.data()),
+                values.data(),
+                false);
+          }
+
+      compress(VectorOperation::insert);
     }
 
 
@@ -590,6 +910,46 @@ namespace LinearAlgebra
 
     template <typename Number, typename MemorySpace>
     Number
+    SparseMatrix<Number, MemorySpace>::matrix_norm_square(
+      const Vector<Number, MemorySpace> &v) const
+    {
+      AssertDimension(m(), v.size());
+      Assert(matrix->isFillComplete(), ExcMatrixNotCompressed());
+      Assert(matrix->getRowMap()->isSameAs(*matrix->getDomainMap()),
+             ExcNotQuadratic());
+
+      Vector<Number, MemorySpace> temp_vector;
+      temp_vector.reinit(v, true);
+
+      vmult(temp_vector, v);
+      return temp_vector * v;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    Number
+    SparseMatrix<Number, MemorySpace>::matrix_scalar_product(
+      const Vector<Number, MemorySpace> &u,
+      const Vector<Number, MemorySpace> &v) const
+    {
+      AssertDimension(m(), u.size());
+      AssertDimension(m(), v.size());
+      Assert(matrix->isFillComplete(), ExcMatrixNotCompressed());
+      Assert(matrix->getRowMap()->isSameAs(*matrix->getDomainMap()),
+             ExcNotQuadratic());
+
+      Vector<Number, MemorySpace> temp_vector;
+      temp_vector.reinit(v, true);
+
+      vmult(temp_vector, v);
+      return u * temp_vector;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    Number
     SparseMatrix<Number, MemorySpace>::frobenius_norm() const
     {
       Assert(matrix->isFillComplete(), ExcMatrixNotCompressed());
@@ -656,6 +1016,9 @@ namespace LinearAlgebra
       // pattern), and the second one is when the pattern is already fixed. In
       // the former case, we add the possibility to insert new values, and in
       // the second we just replace data.
+
+      // If the matrix is marked as compressed, we need to
+      // call resumeFill() first.
       if (compressed || matrix->isFillComplete())
         {
           matrix->resumeFill();
@@ -672,19 +1035,6 @@ namespace LinearAlgebra
                                     n_columns,
                                     col_value_ptr,
                                     col_index_ptr);
-    }
-
-
-
-    template <typename Number, typename MemorySpace>
-    inline void
-    SparseMatrix<Number, MemorySpace>::set(const size_type i,
-                                           const size_type j,
-                                           const Number    value)
-    {
-      AssertIsFinite(value);
-
-      set(i, 1, &j, &value, false);
     }
 
 
@@ -775,83 +1125,213 @@ namespace LinearAlgebra
 
 
 
+    template <typename Number, typename MemorySpace>
+    void
+    SparseMatrix<Number, MemorySpace>::add(
+      const Number                             factor,
+      const SparseMatrix<Number, MemorySpace> &source)
+    {
+      AssertDimension(source.m(), m());
+      AssertDimension(source.n(), n());
+      AssertDimension(source.local_range().first, local_range().first);
+      AssertDimension(source.local_range().second, local_range().second);
+      Assert(matrix->getRowMap()->isSameAs(*source.matrix->getRowMap()),
+             ExcMessage(
+               "Can only add matrices with same distribution of rows"));
+      Assert(matrix->isFillComplete() && source.matrix->isFillComplete(),
+             ExcMessage("Addition of matrices only allowed if matrices are "
+                        "filled, i.e., compress() has been called"));
+
+      matrix->add(factor,
+                  *source.matrix,
+                  1.0,
+                  matrix->getDomainMap(),
+                  matrix->getRangeMap(),
+                  Teuchos::null);
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    void
+    SparseMatrix<Number, MemorySpace>::clear_row(const size_type row,
+                                                 const Number    new_diag_value)
+    {
+      clear_rows(ArrayView<const size_type>(row), new_diag_value);
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    void
+    SparseMatrix<Number, MemorySpace>::clear_rows(
+      const ArrayView<const size_type> &rows,
+      const Number                      new_diag_value)
+    {
+      // If the matrix is marked as compressed, we need to
+      // call resumeFill() first.
+      if (compressed || matrix->isFillComplete())
+        {
+          matrix->resumeFill();
+          compressed = false;
+        }
+
+      std::vector<int>    col_indices_vector;
+      std::vector<Number> values_vector;
+
+      for (size_type row : rows)
+        {
+          // Only do this on the rows owned locally on this processor.
+          int local_row = matrix->getRowMap()->getLocalElement(row);
+          if (local_row != Teuchos::OrdinalTraits<int>::invalid())
+            {
+              size_t nnz = matrix->getNumEntriesInLocalRow(local_row);
+              col_indices_vector.resize(nnz);
+              values_vector.resize(nnz);
+#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
+              typename MatrixType::nonconst_local_inds_host_view_type
+                col_indices(col_indices_vector.data(), nnz);
+              typename MatrixType::nonconst_values_host_view_type values(
+                values_vector.data(), nnz);
+#  else
+              Teuchos::ArrayView<int>    col_indices(col_indices_vector);
+              Teuchos::ArrayView<Number> values(values_vector);
+#  endif
+              matrix->getLocalRowCopy(local_row, col_indices, values, nnz);
+
+              const size_t diag_index = std::find(col_indices_vector.begin(),
+                                                  col_indices_vector.end(),
+                                                  local_row) -
+                                        col_indices_vector.begin();
+
+              for (size_t j = 0; j < nnz; ++j)
+                if (diag_index != j || new_diag_value == 0)
+                  values[j] = 0.;
+
+              if (diag_index != nnz)
+                values[diag_index] = new_diag_value;
+
+              [[maybe_unused]] int n_replacements =
+                matrix->replaceLocalValues(local_row, col_indices, values);
+              AssertDimension(n_replacements, nnz);
+            }
+        }
+      compress(VectorOperation::insert);
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    void
+    SparseMatrix<Number, MemorySpace>::copy_from(
+      const SparseMatrix<Number, MemorySpace> &source)
+    {
+      if (this == &source)
+        return;
+
+      // release memory before reallocation
+      matrix.reset();
+      column_space_map.reset();
+
+      // TODO:
+      // If the source and the target matrix have the same structure, we do
+      // not need to perform a deep copy.
+
+      // Perform a deep copy
+#  if DEAL_II_TRILINOS_VERSION_GTE(12, 18, 1)
+      matrix =
+        Utilities::Trilinos::internal::make_rcp<MatrixType>(*source.matrix,
+                                                            Teuchos::Copy);
+#  else
+      matrix = source.matrix->clone(
+        Utilities::Trilinos::internal::make_rcp<NodeType>());
+#  endif
+      column_space_map = Teuchos::rcp_const_cast<MapType>(matrix->getColMap());
+      compressed       = source.compressed;
+    }
+
+
+
+    template <typename Number, typename MemorySpace>
+    void
+    SparseMatrix<Number, MemorySpace>::clear()
+    {
+      // When we clear the matrix, reset
+      // the pointer and generate an
+      // empty matrix.
+      column_space_map = Utilities::Trilinos::internal::make_rcp<MapType>(
+        0, 0, Utilities::Trilinos::tpetra_comm_self());
+
+      // Prepare the graph
+      Teuchos::RCP<GraphType> graph =
+        Utilities::Trilinos::internal::make_rcp<GraphType>(column_space_map,
+                                                           column_space_map,
+                                                           0);
+      graph->fillComplete();
+
+      // Create the matrix from the graph
+      matrix = Utilities::Trilinos::internal::make_rcp<MatrixType>(graph);
+
+      compressed = true;
+    }
+
+
+
     // Multiplications
-
     template <typename Number, typename MemorySpace>
+    template <typename InputVectorType>
     void
-    SparseMatrix<Number, MemorySpace>::vmult(
-      Vector<Number, MemorySpace>       &dst,
-      const Vector<Number, MemorySpace> &src) const
+    SparseMatrix<Number, MemorySpace>::vmult(InputVectorType       &dst,
+                                             const InputVectorType &src) const
     {
-      Assert(&src != &dst, ExcSourceEqualsDestination());
-      Assert(matrix->isFillComplete(), ExcMatrixNotCompressed());
-      Assert(src.trilinos_vector().getMap()->isSameAs(*matrix->getDomainMap()),
-             ExcColMapMissmatch());
-      Assert(dst.trilinos_vector().getMap()->isSameAs(*matrix->getRangeMap()),
-             ExcDomainMapMissmatch());
-      matrix->apply(src.trilinos_vector(), dst.trilinos_vector());
+      internal::apply(*this, src, dst);
     }
 
 
 
     template <typename Number, typename MemorySpace>
+    template <typename InputVectorType>
     void
-    SparseMatrix<Number, MemorySpace>::Tvmult(
-      Vector<Number, MemorySpace>       &dst,
-      const Vector<Number, MemorySpace> &src) const
+    SparseMatrix<Number, MemorySpace>::Tvmult(InputVectorType       &dst,
+                                              const InputVectorType &src) const
     {
-      Assert(&src != &dst, ExcSourceEqualsDestination());
-      Assert(matrix->isFillComplete(), ExcMatrixNotCompressed());
-      Assert(dst.trilinos_vector().getMap()->isSameAs(*matrix->getDomainMap()),
-             ExcColMapMissmatch());
-      Assert(src.trilinos_vector().getMap()->isSameAs(*matrix->getRangeMap()),
-             ExcDomainMapMissmatch());
-      matrix->apply(src.trilinos_vector(),
-                    dst.trilinos_vector(),
-                    Teuchos::TRANS);
+      internal::apply(*this, src, dst, Teuchos::TRANS);
     }
 
 
 
     template <typename Number, typename MemorySpace>
+    template <typename InputVectorType>
     void
     SparseMatrix<Number, MemorySpace>::vmult_add(
-      Vector<Number, MemorySpace>       &dst,
-      const Vector<Number, MemorySpace> &src) const
+      InputVectorType       &dst,
+      const InputVectorType &src) const
     {
-      Assert(&src != &dst, ExcSourceEqualsDestination());
-      Assert(matrix->isFillComplete(), ExcMatrixNotCompressed());
-      Assert(src.trilinos_vector().getMap()->isSameAs(*matrix->getDomainMap()),
-             ExcColMapMissmatch());
-      Assert(dst.trilinos_vector().getMap()->isSameAs(*matrix->getRangeMap()),
-             ExcDomainMapMissmatch());
-      matrix->apply(src.trilinos_vector(),
-                    dst.trilinos_vector(),
-                    Teuchos::NO_TRANS,
-                    Teuchos::ScalarTraits<Number>::one(),
-                    Teuchos::ScalarTraits<Number>::one());
+      internal::apply(*this,
+                      src,
+                      dst,
+                      Teuchos::NO_TRANS,
+                      Teuchos::ScalarTraits<Number>::one(),
+                      Teuchos::ScalarTraits<Number>::one());
     }
 
 
 
     template <typename Number, typename MemorySpace>
+    template <typename InputVectorType>
     void
     SparseMatrix<Number, MemorySpace>::Tvmult_add(
-      Vector<Number, MemorySpace>       &dst,
-      const Vector<Number, MemorySpace> &src) const
+      InputVectorType       &dst,
+      const InputVectorType &src) const
     {
-      Assert(&src != &dst, ExcSourceEqualsDestination());
-      Assert(matrix->isFillComplete(), ExcMatrixNotCompressed());
-      Assert(dst.trilinos_vector().getMap()->isSameAs(*matrix->getDomainMap()),
-             ExcColMapMissmatch());
-      Assert(src.trilinos_vector().getMap()->isSameAs(*matrix->getRangeMap()),
-             ExcDomainMapMissmatch());
-      matrix->apply(src.trilinos_vector(),
-                    dst.trilinos_vector(),
-                    Teuchos::TRANS,
-                    Teuchos::ScalarTraits<Number>::one(),
-                    Teuchos::ScalarTraits<Number>::one());
+      internal::apply(*this,
+                      src,
+                      dst,
+                      Teuchos::TRANS,
+                      Teuchos::ScalarTraits<Number>::one(),
+                      Teuchos::ScalarTraits<Number>::one());
     }
+
 
 
     template <typename Number, typename MemorySpace>
@@ -898,8 +1378,7 @@ namespace LinearAlgebra
 
     template <typename Number, typename MemorySpace>
     void
-    SparseMatrix<Number, MemorySpace>::compress(
-      [[maybe_unused]] VectorOperation::values operation)
+    SparseMatrix<Number, MemorySpace>::compress(VectorOperation::values)
     {
       if (!compressed)
         {
