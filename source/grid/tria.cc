@@ -6732,34 +6732,55 @@ namespace internal
                       }
                   }
 
+                  unsigned int chosen_line_tetrahedron = 0;
                   // set up new lines
-                  {
-                    static constexpr dealii::ndarray<unsigned int, 6, 2>
-                      new_line_vertices_hex = {{{{22, 26}},
-                                                {{26, 23}},
-                                                {{20, 26}},
-                                                {{26, 21}},
-                                                {{24, 26}},
-                                                {{26, 25}}}};
+                  if (reference_cell_type == ReferenceCells::Hexahedron)
+                    {
+                      static constexpr dealii::ndarray<unsigned int, 6, 2>
+                        new_line_vertices = {{{{22, 26}},
+                                              {{26, 23}},
+                                              {{20, 26}},
+                                              {{26, 21}},
+                                              {{24, 26}},
+                                              {{26, 25}}}};
+                      for (unsigned int i = 0; i < n_new_lines; ++i)
+                        new_lines[i]->set_bounding_object_indices(
+                          {vertex_indices[new_line_vertices[i][0]],
+                           vertex_indices[new_line_vertices[i][1]]});
+                    }
+                  else if (reference_cell_type == ReferenceCells::Tetrahedron)
+                    {
+                      // in the tetrahedron case, we have the three
+                      // possibilities (6,8), (5,7), (4,9) -> pick the
+                      // shortest line to guarantee the best possible aspect
+                      // ratios
+                      static constexpr dealii::ndarray<unsigned int, 3, 2>
+                        new_line_vertices = {{{{6, 8}}, {{5, 7}}, {{4, 9}}}};
 
-                    static constexpr dealii::ndarray<unsigned int, 6, 2>
-                      new_line_vertices_tet = {{{{6, 8}},
-                                                {{X, X}},
-                                                {{X, X}},
-                                                {{X, X}},
-                                                {{X, X}},
-                                                {{X, X}}}};
-
-                    const auto &new_line_vertices =
-                      (reference_cell_type == ReferenceCells::Hexahedron) ?
-                        new_line_vertices_hex :
-                        new_line_vertices_tet;
-
-                    for (unsigned int i = 0; i < n_new_lines; ++i)
-                      new_lines[i]->set_bounding_object_indices(
-                        {vertex_indices[new_line_vertices[i][0]],
-                         vertex_indices[new_line_vertices[i][1]]});
-                  }
+                      const auto &vertices = triangulation.get_vertices();
+                      double      best_distance =
+                        std::numeric_limits<double>::infinity();
+                      for (unsigned int i = 0; i < new_line_vertices.size();
+                           ++i)
+                        {
+                          const double tentative_distance =
+                            vertices[vertex_indices[new_line_vertices[i][0]]]
+                              .distance(
+                                vertices
+                                  [vertex_indices[new_line_vertices[i][1]]]);
+                          if (tentative_distance < best_distance)
+                            {
+                              chosen_line_tetrahedron = i;
+                              best_distance           = tentative_distance;
+                            }
+                        }
+                      
+                      new_lines[0]->set_bounding_object_indices(
+                        {vertex_indices
+                           [new_line_vertices[chosen_line_tetrahedron][0]],
+                         vertex_indices
+                           [new_line_vertices[chosen_line_tetrahedron][1]]});
+                    }
 
                   // set up new quads
                   {
@@ -6799,6 +6820,41 @@ namespace internal
                       }
                     else if (reference_cell_type == ReferenceCells::Tetrahedron)
                       {
+                        /* 
+                        Each old surface has 4 childs, numbers 0,1,2 are connected to each one of the verices defining the parent,
+                        the third one is defined with the vertices cutting the lines in of the partent surface in half
+                        If the partent is made of the vertices 0,1,2,3 (0 is at the origin, 1 is the point (1,0,0) and 2 is the point (0,1,0)), 
+                        then the new vertices 4,5,6,7,8,9 are defined of the midpoint of the lines between these 2 vertices:
+                        4: 0-1
+                        5: 1-2
+                        6: 2-0
+                        7: 0-3
+                        8: 1-3   
+                        9: 2-3
+
+                        The surfaces are enumerated in the following order and are defined by these 3 vertices:
+                        0: 0,1,2
+                        1: 0,1,3
+                        2: 0,2,3
+                        3: 1,2,3
+
+                        Taking the center triangle of the surfaces leads to the follwoing relevant lines (if the oringial order within the child is kept, which is in "table" the case 0,1,2) defined by 2 vertices:
+                        0: 4-5 (from surface 0)
+                        1: 5-6
+                        2: 4-6
+                        3: 4-7 (from surface 1)
+                        4: 7-8
+                        5: 4-8
+                        6: 6-9 (from surface 2)
+                        7: 9-7
+                        8: 6-7
+                        9: 5-8 (from surface 3)
+                        10: 8-9
+                        11: 5-9
+                        12: determined by chosen_line_tetrahedron i.e. 6-8, 5-7 or 4-9
+
+                        The ordering of the relevant_lines defines the ordering and the indices of the lines and quads for the child Tets.
+                        */
                         relevant_lines.resize(13);
 
                         unsigned int k = 0;
@@ -6808,14 +6864,14 @@ namespace internal
                               // TODO: add comment
                               static const std::
                                 array<std::array<unsigned int, 3>, 6>
-                                  table = {{{{1, 0, 2}}, // 0
+                                  table =  {{{{1, 0, 2}}, // 0
                                             {{0, 1, 2}},
                                             {{0, 2, 1}}, // 2
                                             {{1, 2, 0}},
                                             {{2, 1, 0}}, // 4
                                             {{2, 0, 1}}}};
-
-                              relevant_lines[k] =
+                                         
+                               relevant_lines[k] =
                                 hex->face(f)
                                   ->child(3 /*center triangle*/)
                                   ->line(
@@ -6827,8 +6883,7 @@ namespace internal
                                               f)][l]);
                             }
 
-                        relevant_lines[k++] = new_lines[0];
-
+                        relevant_lines[k++] = new_lines[0];                        
                         AssertDimension(k, 13);
                       }
                     else
@@ -6839,6 +6894,7 @@ namespace internal
                     for (unsigned int i = 0; i < relevant_line_indices.size();
                          ++i)
                       relevant_line_indices[i] = relevant_lines[i]->index();
+                     
 
                     static constexpr dealii::ndarray<unsigned int, 12, 4>
                       new_quad_lines_hex = {{{{10, 28, 16, 24}},
@@ -6854,19 +6910,50 @@ namespace internal
                                              {{3, 25, 26, 12}},
                                              {{25, 7, 27, 13}}}};
 
-                    static constexpr dealii::ndarray<unsigned int, 12, 4>
-                      new_quad_lines_tet = {{{{2, 3, 8, X}},
-                                             {{0, 9, 5, X}},
-                                             {{1, 6, 11, X}},
-                                             {{4, 10, 7, X}},
-                                             {{2, 12, 5, X}},
-                                             {{1, 9, 12, X}},
-                                             {{4, 8, 12, X}},
-                                             {{6, 12, 10, X}},
-                                             {{X, X, X, X}},
-                                             {{X, X, X, X}},
-                                             {{X, X, X, X}},
-                                             {{X, X, X, X}}}};
+                    // the list gives the 3 indices of the lines defining the 8 surfaces needed to describe the 8 child tets
+                    // the first 4 surfaces cut off the child Tets containing one of the vertices of the parent Tet in the order 0,1,2,3 
+                    // the last 4 cut apart the remaining octahedron, such all of these contain line number 12 (see relevant_lines for numbering of the lines)
+                    // these are ordered after their occurance in the new defined faces below. This also defines the ordering of the lines within the face.
+                    static constexpr dealii::ndarray<unsigned int, 3, 12, 4>
+                      new_quad_lines_tet = {{// new line is (6,8)
+                                             {{{{2, 3, 8, X}},
+                                               {{0, 9, 5, X}},
+                                               {{1, 6, 11, X}},
+                                               {{4, 10, 7, X}},
+                                               {{2, 12, 5, X}},
+                                               {{1, 9, 12, X}}, 
+                                               {{4, 8, 12, X}},
+                                               {{6, 12, 10, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}}}},
+                                             // new line is (5,7)
+                                             {{{{2, 3, 8, X}},
+                                               {{0, 9, 5, X}},
+                                               {{1, 6, 11, X}},
+                                               {{4, 10, 7, X}},
+                                               {{0, 3, 12, X}},
+                                               {{1, 12, 8, X}},   
+                                               {{4, 12, 9, X}}, 
+                                               {{7, 11, 12, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}}}},
+                                             // new line is (4,9)
+                                             {{{{2, 3, 8, X}},
+                                               {{0, 9, 5, X}},
+                                               {{1, 6, 11, X}},
+                                               {{4, 10, 7, X}},
+                                               {{0, 12, 11, X}},
+                                               {{2, 6, 12, X}},
+                                               {{3, 12, 7, X}}, 
+                                               {{5, 10, 12, X}}, 
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}},
+                                               {{X, X, X, X}}}}}};
 
                     static constexpr dealii::ndarray<unsigned int, 12, 4, 2>
                       table_hex = {
@@ -6883,30 +6970,59 @@ namespace internal
                          {{{{20, 18}}, {{26, 23}}, {{20, 26}}, {{18, 23}}}},
                          {{{{26, 23}}, {{21, 19}}, {{26, 21}}, {{23, 19}}}}}};
 
-                    static constexpr dealii::ndarray<unsigned int, 12, 4, 2>
-                      table_tet = {
-                        {{{{{6, 4}}, {{4, 7}}, {{7, 6}}, {{X, X}}}},
-                         {{{{4, 5}}, {{5, 8}}, {{8, 4}}, {{X, X}}}},
-                         {{{{5, 6}}, {{6, 9}}, {{9, 5}}, {{X, X}}}},
-                         {{{{7, 8}}, {{8, 9}}, {{9, 7}}, {{X, X}}}},
-                         {{{{4, 6}}, {{6, 8}}, {{8, 4}}, {{X, X}}}},
-                         {{{{6, 5}}, {{5, 8}}, {{8, 6}}, {{X, X}}}},
-                         {{{{8, 7}}, {{7, 6}}, {{6, 8}}, {{X, X}}}},
-                         {{{{9, 6}}, {{6, 8}}, {{8, 9}}, {{X, X}}}},
-                         {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
-                         {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
-                         {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
-                         {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}}}};
+                    // The table defines the edge vertices of the lines above
+                    // see relevant_lines for mapping between line indices and vertex numbering
+                    static constexpr dealii::ndarray<unsigned int, 3, 12, 4, 2>
+                      table_tet =  {
+                        {// new line is (6,8)
+                         {{{{{{6, 4}}, {{4, 7}}, {{7, 6}}, {{X, X}}}},
+                           {{{{4, 5}}, {{5, 8}}, {{8, 4}}, {{X, X}}}},
+                           {{{{5, 6}}, {{6, 9}}, {{9, 5}}, {{X, X}}}},
+                           {{{{7, 8}}, {{8, 9}}, {{9, 7}}, {{X, X}}}},
+                           {{{{4, 6}}, {{6, 8}}, {{8, 4}}, {{X, X}}}},
+                           {{{{6, 5}}, {{5, 8}}, {{8, 6}}, {{X, X}}}}, 
+                           {{{{8, 7}}, {{7, 6}}, {{6, 8}}, {{X, X}}}},
+                           {{{{9, 6}}, {{6, 8}}, {{8, 9}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}}}},
+                         // new line is (5, 7)
+                         {{{{{{6, 4}}, {{4, 7}}, {{7, 6}}, {{X, X}}}}, 
+                           {{{{4, 5}}, {{5, 8}}, {{8, 4}}, {{X, X}}}},
+                           {{{{5, 6}}, {{6, 9}}, {{9, 5}}, {{X, X}}}},
+                           {{{{7, 8}}, {{8, 9}}, {{9, 7}}, {{X, X}}}},
+                           {{{{5, 4}}, {{4, 7}}, {{7, 5}}, {{X, X}}}},
+                           {{{{6, 5}}, {{5, 7}}, {{7, 6}}, {{X, X}}}}, 
+                           {{{{8, 7}}, {{7, 5}}, {{5, 8}}, {{X, X}}}}, 
+                           {{{{7, 9}}, {{9, 5}}, {{5, 7}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}}}},
+                         // new line is (4, 9)
+                         {{{{{{6, 4}}, {{4, 7}}, {{7, 6}}, {{X, X}}}},
+                           {{{{4, 5}}, {{5, 8}}, {{8, 4}}, {{X, X}}}},
+                           {{{{5, 6}}, {{6, 9}}, {{9, 5}}, {{X, X}}}},
+                           {{{{7, 8}}, {{8, 9}}, {{9, 7}}, {{X, X}}}},
+                           {{{{5, 4}}, {{4, 9}}, {{9, 5}}, {{X, X}}}}, 
+                           {{{{4, 6}}, {{6, 9}}, {{9, 4}}, {{X, X}}}}, 
+                           {{{{7, 4}}, {{4, 9}}, {{9, 7}}, {{X, X}}}},
+                           {{{{4, 8}}, {{8, 9}}, {{9, 4}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}},
+                           {{{{X, X}}, {{X, X}}, {{X, X}}, {{X, X}}}}}}}};
 
                     const auto &new_quad_lines =
                       (reference_cell_type == ReferenceCells::Hexahedron) ?
                         new_quad_lines_hex :
-                        new_quad_lines_tet;
+                        new_quad_lines_tet[chosen_line_tetrahedron];
 
                     const auto &table =
                       (reference_cell_type == ReferenceCells::Hexahedron) ?
                         table_hex :
-                        table_tet;
+                        table_tet[chosen_line_tetrahedron];
 
                     static constexpr dealii::ndarray<unsigned int, 4, 2>
                       representative_lines{
@@ -6956,7 +7072,7 @@ namespace internal
                             const std::array<unsigned int, 2> vertices_1 = {
                               {vertex_indices[table[q][l][0]],
                                vertex_indices[table[q][l][1]]}};
-
+                           
                             const auto orientation =
                               ReferenceCells::Line.get_combined_orientation(
                                 make_array_view(vertices_0),
@@ -7002,7 +7118,7 @@ namespace internal
 
                         for (unsigned int f = 0, k = n_new_quads; f < 4; ++f)
                           for (unsigned int c = 0; c < 4; ++c, ++k)
-                            {
+                            { 
                               quad_indices[k] = hex->face(f)->child_index(
                                 (c == 3) ?
                                   3 :
@@ -7018,6 +7134,7 @@ namespace internal
                                           f)));
                             }
                       }
+                      
                     else
                       {
                         DEAL_II_NOT_IMPLEMENTED();
@@ -7035,75 +7152,205 @@ namespace internal
                         {{3, 19, 7, 27, 11, 35}}  //
                       }};
 
-                    static constexpr dealii::ndarray<unsigned int, 8, 6>
-                      cell_quads_tet{{{{8, 13, 16, 0, X, X}},
-                                      {{9, 12, 1, 21, X, X}},
-                                      {{10, 2, 17, 20, X, X}},
-                                      {{3, 14, 18, 22, X, X}},
-                                      {{11, 1, 4, 5, X, X}},
-                                      {{15, 0, 4, 6, X, X}},
-                                      {{19, 7, 6, 3, X, X}},
-                                      {{23, 5, 2, 7, X, X}}}};
+                    // list of the indices of the surfaces which define the 8 new tets
+                    // the indices 0-7 are the new quads defined above (so 0-3 cut off the corners and 4-7 sperate the remaining octahedral),
+                    // the indices between 8-11 are the children of the first face, from 12-15 of the second, etc. until face number 23
+                    // the 4 last tets are sorted after the surfaces 11,15,19,23, which are the inner triangles on the child faces of surface 0-3
+                    // the ordering of the faces within the new Tet follows the convention from here: https://www.dealii.org/current/doxygen/deal.II/group__simplex.html
+                    // Surfaces 11, 15, 19 and 23 define the local vertices 0, 1 and 2 (numbered lexigraphic), vertex number 3 is the remaining one of the Tet 
+                    static constexpr dealii::ndarray<unsigned int, 3, 8, 6>
+                      cell_quads_tet = {{// new line is (6, 8)
+                                      {{{{8, 13, 16, 0, X, X}},
+                                        {{9, 12, 1, 21, X, X}},
+                                        {{10, 2, 17, 20, X, X}},
+                                        {{3, 14, 18, 22, X, X}},
+                                        {{11, 1, 4, 5, X, X}}, 
+                                        {{15, 0, 4, 6, X, X}},
+                                        {{19, 7, 6, 3, X, X}},
+                                        {{23, 5, 2, 7, X, X}}}},
+                                      // new line is (5, 7)
+                                      {{{{8, 13, 16, 0, X, X}},
+                                        {{9, 12, 1, 21, X, X}},
+                                        {{10, 2, 17, 20, X, X}},
+                                        {{3, 14, 18, 22, X, X}},
+                                        {{11, 4, 0, 5, X, X}},
+                                        {{15, 4, 1, 6, X, X}}, 
+                                        {{19, 2, 5, 7, X, X}} ,
+                                        {{23 ,6, 7, 3, X, X}},
+                                        }},
+                                      // new line is (4, 9)
+                                      {{{{8, 13, 16, 0, X, X}},
+                                        {{9, 12, 1, 21, X, X}},
+                                        {{10, 2, 17, 20, X, X}},
+                                        {{3, 14, 18, 22, X, X}},
+                                        {{11, 4, 5, 2, X, X}},
+                                        {{15, 6, 7, 3, X, X}},
+                                        {{19, 5, 0, 6, X, X}},
+                                        {{23, 1, 4, 7, X, X}},
+                                      }}}};
 
-                    static constexpr dealii::ndarray<unsigned int, 8, 6, 4>
-                      cell_face_vertices_tet{{{{{{0, 4, 6, X}},
-                                                {{4, 0, 7, X}},
-                                                {{0, 6, 7, X}},
-                                                {{6, 4, 7, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}},
-                                              {{{{4, 1, 5, X}},
-                                                {{1, 4, 8, X}},
-                                                {{4, 5, 8, X}},
-                                                {{5, 1, 8, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}},
-                                              {{{{6, 5, 2, X}},
-                                                {{5, 6, 9, X}},
-                                                {{6, 2, 9, X}},
-                                                {{2, 5, 9, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}},
-                                              {{{{7, 8, 9, X}},
-                                                {{8, 7, 3, X}},
-                                                {{7, 9, 3, X}},
-                                                {{9, 8, 3, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}},
-                                              {{{{4, 5, 6, X}},
-                                                {{5, 4, 8, X}},
-                                                {{4, 6, 8, X}},
-                                                {{6, 5, 8, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}},
-                                              {{{{4, 7, 8, X}},
-                                                {{7, 4, 6, X}},
-                                                {{4, 8, 6, X}},
-                                                {{8, 7, 6, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}},
-                                              {{{{6, 9, 7, X}},
-                                                {{9, 6, 8, X}},
-                                                {{6, 7, 8, X}},
-                                                {{7, 9, 8, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}},
-                                              {{{{5, 8, 9, X}},
-                                                {{8, 5, 6, X}},
-                                                {{5, 9, 6, X}},
-                                                {{9, 8, 6, X}},
-                                                {{X, X, X, X}},
-                                                {{X, X, X, X}}}}}};
+                    // these are the 3 corner vertices of the 4 surfaces of the 8 child Tets defined above 
+                    static constexpr dealii::ndarray<unsigned int, 3, 8, 6, 4>
+                      cell_face_vertices_tet = {{
+                        // new line is (6, 8)
+                       {{{{{{0, 4, 6, X}},
+                            {{4, 0, 7, X}},
+                            {{0, 6, 7, X}},
+                            {{6, 4, 7, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 1, 5, X}},
+                            {{1, 4, 8, X}},
+                            {{4, 5, 8, X}},
+                            {{5, 1, 8, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{6, 5, 2, X}},
+                            {{5, 6, 9, X}},
+                            {{6, 2, 9, X}},
+                            {{2, 5, 9, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{7, 8, 9, X}},
+                            {{8, 7, 3, X}},
+                            {{7, 9, 3, X}},
+                            {{9, 8, 3, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 5, 6, X}},
+                            {{5, 4, 8, X}},
+                            {{4, 6, 8, X}},
+                            {{6, 5, 8, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 7, 8, X}},
+                            {{7, 4, 6, X}},
+                            {{4, 8, 6, X}},
+                            {{8, 7, 6, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{6, 9, 7, X}},
+                            {{9, 6, 8, X}},
+                            {{6, 7, 8, X}},
+                            {{7, 9, 8, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{5, 8, 9, X}},
+                            {{8, 5, 6, X}},
+                            {{5, 9, 6, X}},
+                            {{9, 8, 6, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}}}},
+                        // new line is (5, 7)
+                        {{{{{{0, 4, 6, X}},
+                            {{4, 0, 7, X}},
+                            {{0, 6, 7, X}},
+                            {{6, 4, 7, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 1, 5, X}},
+                            {{1, 4, 8, X}},
+                            {{4, 5, 8, X}},
+                            {{5, 1, 8, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{6, 5, 2, X}},
+                            {{5, 6, 9, X}},
+                            {{6, 2, 9, X}},
+                            {{2, 5, 9, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{7, 8, 9, X}},
+                            {{8, 7, 3, X}},
+                            {{7, 9, 3, X}},
+                            {{9, 8, 3, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 5, 6, X}},
+                            {{5, 4, 7, X}}, 
+                            {{4, 6, 7, X}},
+                            {{6, 5, 7, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 7, 8, X}},
+                            {{7, 4, 5, X}},
+                            {{4, 8, 5, X}},
+                            {{8, 7, 5, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{6, 9, 7, X}}, 
+                            {{9, 6, 5, X}}, 
+                            {{6, 7, 5, X}},
+                            {{7, 9, 5, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}}, 
+                          {{{{5, 8, 9, X}},
+                            {{8, 5, 7, X}},
+                            {{5, 9, 7, X}},
+                            {{9, 8, 7, X}}, 
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}}}},
+                        // new line is (4, 9)
+                        {{{{{{0, 4, 6, X}},
+                            {{4, 0, 7, X}},
+                            {{0, 6, 7, X}},
+                            {{6, 4, 7, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 1, 5, X}},
+                            {{1, 4, 8, X}},
+                            {{4, 5, 8, X}},
+                            {{5, 1, 8, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{6, 5, 2, X}},
+                            {{5, 6, 9, X}},
+                            {{6, 2, 9, X}},
+                            {{2, 5, 9, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{7, 8, 9, X}},
+                            {{8, 7, 3, X}},
+                            {{7, 9, 3, X}},
+                            {{9, 8, 3, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 5, 6, X}},
+                            {{5, 4, 9, X}},
+                            {{4, 6, 9, X}}, 
+                            {{6, 5, 9, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{4, 7, 8, X}},
+                            {{7, 4, 9, X}},
+                            {{4, 8, 9, X}},
+                            {{8, 7, 9, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{6, 9, 7, X}}, 
+                            {{9, 6, 4, X}},
+                            {{6, 7, 4, X}},
+                            {{7, 9, 4, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}},
+                          {{{{5, 8, 9, X}}, 
+                            {{8, 5, 4, X}},
+                            {{5, 9, 4, X}},
+                            {{9, 8, 4, X}},
+                            {{X, X, X, X}},
+                            {{X, X, X, X}}}}}}
+                          }};
 
                     const auto &cell_quads =
                       (reference_cell_type == ReferenceCells::Hexahedron) ?
                         cell_quads_hex :
-                        cell_quads_tet;
+                        cell_quads_tet[chosen_line_tetrahedron];
 
                     for (unsigned int c = 0;
                          c < GeometryInfo<dim>::max_children_per_cell;
                          ++c)
                       {
+                        
                         auto &new_hex = new_hexes[c];
 
                         if (new_hex->n_faces() == 4)
@@ -7114,6 +7361,7 @@ namespace internal
                                quad_indices[cell_quads[c][2]],
                                quad_indices[cell_quads[c][3]]});
 
+                            
                             // for tets, we need to go through the faces and
                             // figure the orientation out the hard way
                             for (const auto f : new_hex->face_indices())
@@ -7128,22 +7376,21 @@ namespace internal
                                    face->vertex_index(1),
                                    face->vertex_index(2)}};
 
+                                const auto &array = cell_face_vertices_tet
+                                  [chosen_line_tetrahedron][c][f];
                                 const std::array<unsigned int, 3> vertices_1 = {
                                   {
-                                    vertex_indices[cell_face_vertices_tet[c][f]
-                                                                         [0]],
-                                    vertex_indices[cell_face_vertices_tet[c][f]
-                                                                         [1]],
-                                    vertex_indices[cell_face_vertices_tet[c][f]
-                                                                         [2]],
+                                    vertex_indices[array[0]],
+                                    vertex_indices[array[1]],
+                                    vertex_indices[array[2]],
                                   }};
-
+                                
                                 new_hex->set_combined_face_orientation(
                                   f,
                                   face->reference_cell()
                                     .get_combined_orientation(
                                       make_array_view(vertices_1),
-                                      make_array_view(vertices_0)));
+                                      make_array_view(vertices_0))); 
                               }
                           }
                         else if (new_hex->n_faces() == 6)
@@ -11978,7 +12225,7 @@ namespace internal
               index = 2 * face_index + 0;
             }
           else
-            {
+            { 
               Assert(((adjacent_cells[2 * face_index + 1].first ==
                        numbers::invalid_unsigned_int) &&
                       (adjacent_cells[2 * face_index + 1].second ==
