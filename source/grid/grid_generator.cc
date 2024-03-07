@@ -8769,7 +8769,10 @@ namespace GridGenerator
       }
 
     out_tria.clear();
+    
+    //remove invert_cells_with_negative_measure() for performance?
     GridTools::invert_cells_with_negative_measure(vertices, cells);
+    
     GridTools::consistently_order_cells(cells);
     out_tria.create_triangulation(vertices, cells, subcell_data);
 
