@@ -1735,7 +1735,14 @@ template <int structdim, int dim, int spacedim>
 inline unsigned int
 TriaAccessor<structdim, dim, spacedim>::n_children() const
 {
-  return GeometryInfo<structdim>::n_children(refinement_case());
+  Assert(this->state() == IteratorState::valid,
+         TriaAccessorExceptions::ExcDereferenceInvalidObject<TriaAccessor>(
+           *this));
+  if (reference_cell() == ReferenceCells::Tetrahedron)
+    return GeometryInfo<structdim>::n_children(
+      RefinementCase<structdim>::isotropic_refinement);
+  else
+    return GeometryInfo<structdim>::n_children(refinement_case());
 }
 
 
@@ -3642,6 +3649,36 @@ CellAccessor<dim, spacedim>::clear_refine_flag() const
     RefinementCase<dim>::no_refinement;
 }
 
+
+template <int dim, int spacedim>
+inline std::uint8_t
+CellAccessor<dim, spacedim>::refine_choice_set() const
+{
+  Assert(this->used(), TriaAccessorExceptions::ExcCellNotUsed());
+  return this->tria->levels[this->present_level]
+    ->refine_choice[this->present_index];
+}
+
+
+template <int dim, int spacedim>
+inline void
+CellAccessor<dim, spacedim>::set_refine_choice(
+  const std::uint8_t refinement_choice) const
+{
+  Assert(this->used() && this->is_active(), ExcRefineCellNotActive());
+  this->tria->levels[this->present_level]->refine_choice[this->present_index] =
+    refinement_choice;
+}
+
+
+template <int dim, int spacedim>
+inline void
+CellAccessor<dim, spacedim>::clear_refine_choice() const
+{
+  Assert(this->used() && this->is_active(), ExcRefineCellNotActive());
+  this->tria->levels[this->present_level]->refine_choice[this->present_index] =
+    ReferenceCell::isotropic_refinement;
+}
 
 
 template <int dim, int spacedim>
