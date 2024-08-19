@@ -166,11 +166,68 @@ namespace internal
                   reduced_identities.emplace_back(dof_index_1, dof_index_2);
                 }
 
-              if constexpr (running_in_debug_mode())
+#ifdef DEBUG
+              // double check whether the newly created entries make
+              // any sense at all
+              for (const auto &identity : reduced_identities)
                 {
-                  // double check whether the newly created entries make
-                  // any sense at all
-                  for (const auto &identity : reduced_identities)
+                  if (fes[fe_index_2].reference_cell() ==
+                      ReferenceCells::Pyramid)
+                    {
+                      if (fes[fe_index_1].reference_cell().is_simplex())
+                        {
+                          Assert(identity.first <
+                                   fes[fe_index_1]
+                                     .template n_dofs_per_object<structdim>(
+                                       face_no),
+                                 ExcInternalError());
+                          Assert(identity.second <
+                                   fes[fe_index_2]
+                                     .template n_dofs_per_object<structdim>(1),
+                                 ExcInternalError());
+                        }
+                      else
+                        {
+                          Assert(identity.first <
+                                   fes[fe_index_1]
+                                     .template n_dofs_per_object<structdim>(
+                                       face_no),
+                                 ExcInternalError());
+                          Assert(identity.second <
+                                   fes[fe_index_2]
+                                     .template n_dofs_per_object<structdim>(0),
+                                 ExcInternalError());
+                        }
+                    }
+                  else if (fes[fe_index_2].reference_cell() ==
+                           ReferenceCells::Wedge)
+                    {
+                      if (fes[fe_index_1].reference_cell().is_simplex())
+                        {
+                          Assert(identity.first <
+                                   fes[fe_index_1]
+                                     .template n_dofs_per_object<structdim>(
+                                       face_no),
+                                 ExcInternalError());
+                          Assert(identity.second <
+                                   fes[fe_index_2]
+                                     .template n_dofs_per_object<structdim>(0),
+                                 ExcInternalError());
+                        }
+                      else
+                        {
+                          Assert(identity.first <
+                                   fes[fe_index_1]
+                                     .template n_dofs_per_object<structdim>(
+                                       face_no),
+                                 ExcInternalError());
+                          Assert(identity.second <
+                                   fes[fe_index_2]
+                                     .template n_dofs_per_object<structdim>(2),
+                                 ExcInternalError());
+                        }
+                    }
+                  else
                     {
                       Assert(
                         identity.first <
@@ -2287,10 +2344,6 @@ namespace internal
                                 .is_hyper_cube())
                             hypercube_or_simplex_fe_index =
                               quad->nth_active_fe_index(f);
-                      // if there are only pyramids and wedges reset
-                      if (hypercube_or_simplex_fe_index ==
-                          numbers::invalid_unsigned_int)
-                        is_mixed_mesh = false;
 
                       for (unsigned int f = 0; f < n_active_fe_indices; ++f)
                         {
@@ -2303,16 +2356,10 @@ namespace internal
                                 .n_dofs_per_quad(q) :
                               dof_handler.get_fe(fe_index).n_dofs_per_quad(q);
 
-                          std::cout << "N dofs per quad " << n_dofs_per_quad
-                                    << " on face " << q << std::endl;
                           for (unsigned int d = 0; d < n_dofs_per_quad; ++d)
                             {
                               const types::global_dof_index old_dof_index =
                                 quad->dof_index(d, fe_index);
-                              std::cout << "old index: " << old_dof_index
-                                        << " changed to "
-                                        << new_numbers[old_dof_index]
-                                        << std::endl;
                               if (old_dof_index != numbers::invalid_dof_index)
                                 {
                                   // In the following blocks, we first check
