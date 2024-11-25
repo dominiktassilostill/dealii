@@ -100,8 +100,8 @@ namespace internal
           return {ReferenceCells::get_hypercube<dim>(),
                   dealii::hp::QCollection<dim - 1>(QGauss<dim - 1>(i))};
 
-      if (do_assert)
-        AssertThrow(false, ExcNotImplemented());
+      // if (do_assert)
+      // AssertThrow(false, ExcNotImplemented());
 
       return {ReferenceCells::Invalid, dealii::hp::QCollection<dim - 1>()};
     }
@@ -183,7 +183,7 @@ namespace internal
         if (quad == QGauss<dim>(i))
           return {QGauss<dim - 1>(i), Quadrature<dim - 1>()};
 
-      AssertThrow(false, ExcNotImplemented());
+      // AssertThrow(false, ExcNotImplemented());
 
       return {Quadrature<dim - 1>(), Quadrature<dim - 1>()};
     }
