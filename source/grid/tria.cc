@@ -6730,8 +6730,6 @@ namespace internal
                       else
                         DEAL_II_NOT_IMPLEMENTED();
 
-                      // chosen_line_tetrahedron = 2;
-                      std::cout << "Chosen line: " << chosen_line_tetrahedron << std::endl;
 
                       hex->set_refinement_case(
                         RefinementCase<dim>(chosen_line_tetrahedron + 1));
