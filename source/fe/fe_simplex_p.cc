@@ -371,7 +371,10 @@ FE_SimplexPoly<dim, spacedim>::get_prolongation_matrix(
                  static_cast<char>(IsotropicRefinementChoice::cut_tet_57)) ||
              RefinementCase<dim>(refinement_case) ==
                RefinementCase<dim>(
-                 static_cast<char>(IsotropicRefinementChoice::cut_tet_49)),
+                 static_cast<char>(IsotropicRefinementChoice::cut_tet_49)) ||
+             RefinementCase<dim>(refinement_case) ==
+               RefinementCase<dim>(
+                 static_cast<char>(IsotropicRefinementChoice::cut_labled_edge)),
            ExcNotImplemented());
   else
     Assert(refinement_case ==
@@ -411,7 +414,8 @@ FE_SimplexPoly<dim, spacedim>::get_prolongation_matrix(
       else if (dim == 3)
         {
           std::vector<std::vector<FullMatrix<double>>> matrices(
-            static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_49),
+            static_cast<unsigned int>(
+              IsotropicRefinementChoice::cut_labled_edge),
             std::vector<FullMatrix<double>>(
               this->reference_cell().n_children(
                 RefinementCase<dim>(refinement_case)),
@@ -421,7 +425,8 @@ FE_SimplexPoly<dim, spacedim>::get_prolongation_matrix(
           for (unsigned int refinement_direction = static_cast<unsigned int>(
                  IsotropicRefinementChoice::cut_tet_68);
                refinement_direction <=
-               static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_49);
+               static_cast<unsigned int>(
+                 IsotropicRefinementChoice::cut_labled_edge);
                refinement_direction++)
             this_nonconst.prolongation[refinement_direction - 1] =
               std::move(matrices[refinement_direction - 1]);
@@ -451,7 +456,10 @@ FE_SimplexPoly<dim, spacedim>::get_restriction_matrix(
                  static_cast<char>(IsotropicRefinementChoice::cut_tet_57)) ||
              RefinementCase<dim>(refinement_case) ==
                RefinementCase<dim>(
-                 static_cast<char>(IsotropicRefinementChoice::cut_tet_49)),
+                 static_cast<char>(IsotropicRefinementChoice::cut_tet_49)) ||
+             RefinementCase<dim>(refinement_case) ==
+               RefinementCase<dim>(
+                 static_cast<char>(IsotropicRefinementChoice::cut_labled_edge)),
            ExcNotImplemented());
   else
     Assert(refinement_case == RefinementCase<dim>::isotropic_refinement,
@@ -1126,7 +1134,10 @@ FE_SimplexDGP<dim, spacedim>::get_restriction_matrix(
                  static_cast<char>(IsotropicRefinementChoice::cut_tet_57)) ||
              RefinementCase<dim>(refinement_case) ==
                RefinementCase<dim>(
-                 static_cast<char>(IsotropicRefinementChoice::cut_tet_49)),
+                 static_cast<char>(IsotropicRefinementChoice::cut_tet_49)) ||
+             RefinementCase<dim>(refinement_case) ==
+               RefinementCase<dim>(
+                 static_cast<char>(IsotropicRefinementChoice::cut_labled_edge)),
            ExcNotImplemented());
   else
     Assert(refinement_case == RefinementCase<dim>::isotropic_refinement,
@@ -1165,7 +1176,8 @@ FE_SimplexDGP<dim, spacedim>::get_restriction_matrix(
       else if (dim == 3)
         {
           std::vector<std::vector<FullMatrix<double>>> matrices(
-            static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_49),
+            static_cast<unsigned int>(
+              IsotropicRefinementChoice::cut_labled_edge),
             std::vector<FullMatrix<double>>(
               this->reference_cell().n_children(
                 RefinementCase<dim>(refinement_case)),
@@ -1175,7 +1187,8 @@ FE_SimplexDGP<dim, spacedim>::get_restriction_matrix(
           for (unsigned int refinement_direction = static_cast<unsigned int>(
                  IsotropicRefinementChoice::cut_tet_68);
                refinement_direction <=
-               static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_49);
+               static_cast<unsigned int>(
+                 IsotropicRefinementChoice::cut_labled_edge);
                refinement_direction++)
             this_nonconst.restriction[refinement_direction - 1] =
               std::move(matrices[refinement_direction - 1]);

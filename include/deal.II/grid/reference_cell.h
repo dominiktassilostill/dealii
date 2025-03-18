@@ -90,6 +90,8 @@ enum class IsotropicRefinementChoice : std::uint8_t
    * Perform a cut in the along the edge (4,9).
    */
   cut_tet_49 = 3,
+
+  cut_labled_edge = 4,
 };
 
 
@@ -1979,10 +1981,12 @@ ReferenceCell::get_isotropic_refinement_choice(
     {
       case ReferenceCells::Tetrahedron:
         {
-          static constexpr ndarray<IsotropicRefinementChoice, 3>
-            isotropic_ref_choices = {{IsotropicRefinementChoice::cut_tet_68,
-                                      IsotropicRefinementChoice::cut_tet_57,
-                                      IsotropicRefinementChoice::cut_tet_49}};
+          static constexpr ndarray<IsotropicRefinementChoice, 4>
+            isotropic_ref_choices = {
+              {IsotropicRefinementChoice::cut_tet_68,
+               IsotropicRefinementChoice::cut_tet_57,
+               IsotropicRefinementChoice::cut_tet_49,
+               IsotropicRefinementChoice::cut_labled_edge}};
           return isotropic_ref_choices[ref_choice];
         }
       default:

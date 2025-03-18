@@ -1813,7 +1813,10 @@ namespace internal
                            IsotropicRefinementChoice::cut_tet_57)) ||
                        RefinementCase<dim>(refinement_case) ==
                          RefinementCase<dim>(static_cast<std::uint8_t>(
-                           IsotropicRefinementChoice::cut_tet_49)),
+                           IsotropicRefinementChoice::cut_tet_49)) ||
+                       RefinementCase<dim>(refinement_case) ==
+                         RefinementCase<dim>(static_cast<std::uint8_t>(
+                           IsotropicRefinementChoice::cut_labled_edge)),
                      ExcNotImplemented());
             else
               {

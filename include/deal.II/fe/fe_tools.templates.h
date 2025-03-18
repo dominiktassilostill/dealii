@@ -1702,7 +1702,7 @@ namespace FETools
         ref_case_start =
           static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_68);
         ref_case_end =
-          static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_49);
+          static_cast<unsigned int>(IsotropicRefinementChoice::cut_labled_edge);
       }
     else
       {
@@ -2146,7 +2146,7 @@ namespace FETools
         ref_case_start =
           static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_68);
         ref_case_end =
-          static_cast<unsigned int>(IsotropicRefinementChoice::cut_tet_49);
+          static_cast<unsigned int>(IsotropicRefinementChoice::cut_labled_edge);
       }
     else
       {
