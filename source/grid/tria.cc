@@ -6755,10 +6755,7 @@ namespace internal
                         chosen_line_tetrahedron = 3;
                       else
                         DEAL_II_NOT_IMPLEMENTED();
-                      // if (chosen_line_tetrahedron == 2)
-                      //   chosen_line_tetrahedron = 3;
-                      std::cout << "Ref case: " << chosen_line_tetrahedron
-                                << std::endl;
+
                       hex->set_refinement_case(
                         RefinementCase<dim>(chosen_line_tetrahedron + 1));
 

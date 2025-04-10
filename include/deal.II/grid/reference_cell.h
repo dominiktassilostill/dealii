@@ -1956,7 +1956,7 @@ ReferenceCell::n_isotropic_refinement_choices() const
       case ReferenceCells::Quadrilateral:
         return 1;
       case ReferenceCells::Tetrahedron:
-        return 3;
+        return 4;
       case ReferenceCells::Pyramid:
         return 1;
       case ReferenceCells::Wedge:
