@@ -11958,12 +11958,117 @@ namespace internal
       template <int dim, int spacedim>
       static void
       delete_children(
-        Triangulation<dim, spacedim> & /*triangulation*/,
-        typename Triangulation<dim, spacedim>::cell_iterator & /*cell*/,
-        std::vector<unsigned int> & /*line_cell_count*/,
-        std::vector<unsigned int> & /*quad_cell_count*/)
+        Triangulation<dim, spacedim> & triangulation,
+        typename Triangulation<dim, spacedim>::cell_iterator & cell,
+        std::vector<unsigned int> & line_cell_count,
+        std::vector<unsigned int> & quad_cell_count)
       {
-        AssertThrow(false, ExcNotImplemented());
+        if (dim != 2)
+          DEAL_II_ASSERT_UNREACHABLE();
+        (void) quad_cell_count;
+        {
+          const RefinementCase<dim> ref_case = cell->refinement_case();
+  
+          // vectors to hold all lines which
+          // may be deleted
+          std::vector<typename Triangulation<dim, spacedim>::line_iterator>
+            lines_to_delete(0);
+  
+          lines_to_delete.reserve(3 * 2 + 3);
+  
+          // now we decrease the counters for
+          // lines contained in the child
+          // cells
+          for (unsigned int c = 0; c < cell->n_children(); ++c)
+            {
+              typename Triangulation<dim, spacedim>::cell_iterator child =
+                cell->child(c);
+              for (unsigned int l = 0; l < cell->reference_cell().n_lines(); ++l)
+                --line_cell_count[child->line_index(l)];
+            }
+  
+
+            {
+              lines_to_delete.push_back(cell->child(3)->line(0));
+              lines_to_delete.push_back(cell->child(3)->line(1));
+              lines_to_delete.push_back(cell->child(3)->line(2));
+            }
+  
+          // invalidate children
+          for (unsigned int child = 0; child < cell->n_children(); ++child)
+            {
+              cell->child(child)->clear_user_data();
+              cell->child(child)->clear_user_flag();
+              cell->child(child)->clear_used_flag();
+            }
+  
+  
+          // delete pointer to children
+          cell->clear_children();
+          cell->clear_refinement_case();
+          cell->clear_user_flag();
+  
+          // look at the refinement of outer
+          // lines. if nobody needs those
+          // anymore we can add them to the
+          // list of lines to be deleted.
+          for (unsigned int line_no = 0;
+               line_no < cell->reference_cell().n_lines();
+               ++line_no)
+            {
+              typename Triangulation<dim, spacedim>::line_iterator line =
+                cell->line(line_no);
+  
+              if (line->has_children())
+                {
+                  // if one of the cell counters is
+                  // zero, the other has to be as well
+  
+                  Assert((line_cell_count[line->child_index(0)] == 0 &&
+                          line_cell_count[line->child_index(1)] == 0) ||
+                           (line_cell_count[line->child_index(0)] > 0 &&
+                            line_cell_count[line->child_index(1)] > 0),
+                         ExcInternalError());
+  
+                  if (line_cell_count[line->child_index(0)] == 0)
+                    {
+                      for (unsigned int c = 0; c < 2; ++c)
+                        Assert(!line->child(c)->has_children(),
+                               ExcInternalError());
+  
+                      // we may delete the line's
+                      // children and the middle vertex
+                      // as no cell references them
+                      // anymore
+                      triangulation
+                        .vertices_used[line->child(0)->vertex_index(1)] = false;
+  
+                      lines_to_delete.push_back(line->child(0));
+                      lines_to_delete.push_back(line->child(1));
+  
+                      line->clear_children();
+                    }
+                }
+            }
+  
+          // finally, delete unneeded lines
+  
+          // clear user pointers, to avoid that
+          // they may appear at unwanted places
+          // later on...
+          // same for user flags, then finally
+          // delete the lines
+          typename std::vector<
+            typename Triangulation<dim, spacedim>::line_iterator>::iterator
+            line    = lines_to_delete.begin(),
+            endline = lines_to_delete.end();
+          for (; line != endline; ++line)
+            {
+              (*line)->clear_user_data();
+              (*line)->clear_user_flag();
+              (*line)->clear_used_flag();
+            }
+        }
       }
 
       template <int dim, int spacedim>
@@ -11996,9 +12101,10 @@ namespace internal
       coarsening_allowed(
         const typename Triangulation<dim, spacedim>::cell_iterator &)
       {
-        AssertThrow(false, ExcNotImplemented());
+        //AssertThrow(false, ExcNotImplemented());
 
-        return false;
+        //return false;
+        return true;
       }
     };
 

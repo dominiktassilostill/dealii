@@ -46,6 +46,8 @@
 // already to define the usual bi- or tri-linear elements, but we will now use
 // it for bi-quadratic elements:
 #include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/mapping_fe.h>
 // We will not read the grid from a file as in the previous example, but
 // generate it using a function of the library. However, we will want to write
 // out the locally refined grids (just the grid, not the solution) in each
@@ -101,7 +103,7 @@ private:
 
   Triangulation<dim> triangulation;
 
-  const FE_Q<dim> fe;
+  const FE_SimplexP<dim> fe;
   DoFHandler<dim> dof_handler;
 
 
@@ -253,7 +255,7 @@ void Step6<dim>::setup_system()
 template <int dim>
 void Step6<dim>::assemble_system()
 {
-  const QGauss<dim> quadrature_formula(fe.degree + 1);
+  const QGaussSimplex<dim> quadrature_formula(fe.degree + 1);
 
   FEValues<dim> fe_values(fe,
                           quadrature_formula,
@@ -401,14 +403,6 @@ void Step6<dim>::solve()
 template <int dim>
 void Step6<dim>::refine_grid()
 {
-  Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-
-  KellyErrorEstimator<dim>::estimate(dof_handler,
-                                     QGauss<dim - 1>(fe.degree + 1),
-                                     {},
-                                     solution,
-                                     estimated_error_per_cell);
-
   // The above function returned one error indicator value for each cell in
   // the <code>estimated_error_per_cell</code> array. Refinement is now done
   // as follows: refine those 30 per cent of the cells with the highest error
@@ -436,10 +430,6 @@ void Step6<dim>::refine_grid()
   // method described above. It is from a class that implements several
   // different algorithms to refine a triangulation based on cell-wise error
   // indicators.
-  GridRefinement::refine_and_coarsen_fixed_number(triangulation,
-                                                  estimated_error_per_cell,
-                                                  0.3,
-                                                  0.03);
 
   // After the previous function has exited, some cells are flagged for
   // refinement, and some other for coarsening. The refinement or coarsening
@@ -447,6 +437,16 @@ void Step6<dim>::refine_grid()
   // further modifications of these flags is useful. Here, we don't want to do
   // any such thing, so we can tell the triangulation to perform the actions
   // for which the cells are flagged:
+  for (const auto &cell : dof_handler.active_cell_iterators())
+  {
+    if (cell->level() > 3)
+    {
+      if (cell->center()[0] < 0.5)
+        cell->set_coarsen_flag();
+    }
+    else
+      cell->set_refine_flag();
+  }
   triangulation.execute_coarsening_and_refinement();
 }
 
@@ -469,15 +469,6 @@ void Step6<dim>::refine_grid()
 template <int dim>
 void Step6<dim>::output_results(const unsigned int cycle) const
 {
-  {
-    GridOut               grid_out;
-    std::ofstream         output("grid-" + std::to_string(cycle) + ".gnuplot");
-    GridOutFlags::Gnuplot gnuplot_flags(false, 5);
-    grid_out.set_flags(gnuplot_flags);
-    const MappingQ<dim> mapping(3);
-    grid_out.write_gnuplot(triangulation, output, &mapping);
-  }
-
   {
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
@@ -524,8 +515,8 @@ void Step6<dim>::run()
 
       if (cycle == 0)
         {
-          GridGenerator::hyper_ball(triangulation);
-          triangulation.refine_global(1);
+          GridGenerator::subdivided_hyper_cube_with_simplices(triangulation, 1);
+          triangulation.refine_global(2);
         }
       else
         refine_grid();
