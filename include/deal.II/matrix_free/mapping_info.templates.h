@@ -1668,8 +1668,8 @@ namespace internal
           fe_subface_values_container(mapping_info.face_data.size());
         for (unsigned int my_q = 0; my_q < mapping_info.face_data.size();
              ++my_q)
-          fe_subface_values_container[my_q].resize(
-            mapping_info.face_data[my_q].descriptor.size());
+          fe_subface_values_container[my_q].resize(max_active_fe_index +
+                                                         1);
 
         ExtractCellHelper::LocalData<dim, Number, VectorizedArrayType>
           face_data(ExtractCellHelper::get_jacobian_size(tria));
