@@ -44,21 +44,10 @@ namespace
    * Helper function to set up the dpo vector of FE_PyramidP for a given @p degree.
    */
   template <int dim>
-  std::pair<const internal::GenericDoFsPerObject, const std::vector<Point<dim>>>
-  get_support_points_dpo_vector_fe_pyramid_p(const unsigned int degree)
+  std::vector<Point<dim>>
+  get_support_points(const unsigned int degree)
   {
     AssertDimension(dim, 3);
-
-    internal::GenericDoFsPerObject dpo;
-
-    // set dpo for linear case and then add for higher orders
-    dpo.dofs_per_object_exclusive = {{1}, {degree - 1}, {0, 0, 0, 0, 0}, {0}};
-    dpo.dofs_per_object_inclusive = {{1},
-                                     {degree + 1},
-                                     {4, 3, 3, 3, 3},
-                                     {compute_n_dofs(dim, degree)}};
-    dpo.object_index = {{}, {5, 5, 5, 5, 5, 5, 5, 5}, {5, 5, 5, 5, 5}, {5}};
-    dpo.first_object_index_on_face = {{}, {4, 3, 3, 3, 3}, {4, 3, 3, 3, 3}};
 
     std::vector<Point<dim>> support_points;
     std::vector<Point<dim>> support_points_unordered;
@@ -87,6 +76,8 @@ namespace
         if (current_degree == degree)
           {
             // the first are the support points at the vertices
+            // +1 for the DoF at the tip of the pyramid
+            // so always 5
             n_dofs_total_per_object[0] = fe_q.reference_cell().n_vertices() + 1;
 
             // lines are on lines
@@ -100,53 +91,18 @@ namespace
             n_dofs_per_object[0] =
               fe_q.reference_cell().n_lines() * fe_q.n_dofs_per_line();
             n_dofs_per_object[2] = fe_q.n_dofs_per_quad();
-
-            dpo.dofs_per_object_exclusive[2][0] = fe_q.n_dofs_per_quad();
-            dpo.dofs_per_object_inclusive[2][0] = fe_q.n_dofs_per_cell();
-
-            dpo.dofs_per_object_inclusive[2][1] += fe_q.n_dofs_per_line();
-            dpo.dofs_per_object_inclusive[2][2] += fe_q.n_dofs_per_line();
-            dpo.dofs_per_object_inclusive[2][3] += fe_q.n_dofs_per_line();
-            dpo.dofs_per_object_inclusive[2][4] += fe_q.n_dofs_per_line();
-
-            dpo.first_object_index_on_face[2][0] += n_dofs_per_object[0];
-            dpo.first_object_index_on_face[2][1] += fe_q.n_dofs_per_line();
-            dpo.first_object_index_on_face[2][2] += fe_q.n_dofs_per_line();
-            dpo.first_object_index_on_face[2][3] += fe_q.n_dofs_per_line();
-            dpo.first_object_index_on_face[2][4] += fe_q.n_dofs_per_line();
-
-
-            dpo.object_index[1][1] += fe_q.n_dofs_per_line();
-            dpo.object_index[1][2] += 2 * fe_q.n_dofs_per_line();
-            dpo.object_index[1][3] += 3 * fe_q.n_dofs_per_line();
           }
         else
           {
             // on the vertex here is on the line in the pyramid
             n_dofs_total_per_object[1] += fe_q.reference_cell().n_vertices();
 
-            dpo.first_object_index_on_face[2][1] += 2;
-            dpo.first_object_index_on_face[2][2] += 2;
-            dpo.first_object_index_on_face[2][3] += 2;
-            dpo.first_object_index_on_face[2][4] += 2;
-
             // on the lines here are on faces in the pyramid
             n_dofs_total_per_object[2] +=
               fe_q.reference_cell().n_lines() * fe_q.n_dofs_per_line();
 
-            dpo.dofs_per_object_exclusive[2][1] += fe_q.n_dofs_per_line();
-            dpo.dofs_per_object_exclusive[2][2] += fe_q.n_dofs_per_line();
-            dpo.dofs_per_object_exclusive[2][3] += fe_q.n_dofs_per_line();
-            dpo.dofs_per_object_exclusive[2][4] += fe_q.n_dofs_per_line();
-            dpo.dofs_per_object_inclusive[2][1] += fe_q.n_dofs_per_line() + 2;
-            dpo.dofs_per_object_inclusive[2][2] += fe_q.n_dofs_per_line() + 2;
-            dpo.dofs_per_object_inclusive[2][3] += fe_q.n_dofs_per_line() + 2;
-            dpo.dofs_per_object_inclusive[2][4] += fe_q.n_dofs_per_line() + 2;
-
-
             // on the faces here is on the hex on the pyramid
             n_dofs_total_per_object[3] += fe_q.n_dofs_per_quad();
-            dpo.dofs_per_object_exclusive[3][0] += fe_q.n_dofs_per_quad();
 
 
             n_dofs_per_object[1] += 1;
@@ -162,11 +118,6 @@ namespace
     start_lines[2] = start_lines[1] + n_dofs_per_object[1];
     start_lines[3] = start_lines[2] + n_dofs_per_object[1];
 
-    dpo.object_index[1][4] = start_lines[0];
-    dpo.object_index[1][5] = start_lines[1];
-    dpo.object_index[1][6] = start_lines[2];
-    dpo.object_index[1][7] = start_lines[3];
-
     std::vector<unsigned int> start_faces(4);
     start_faces[0] = n_dofs_total_per_object[0] + n_dofs_total_per_object[1] +
                      n_dofs_per_object[2];
@@ -174,19 +125,9 @@ namespace
     start_faces[2] = start_faces[1] + n_dofs_per_object[3];
     start_faces[3] = start_faces[2] + n_dofs_per_object[3];
 
-    dpo.object_index[2][0] =
-      n_dofs_total_per_object[0] + n_dofs_total_per_object[1];
-    dpo.object_index[2][1] = start_faces[0];
-    dpo.object_index[2][2] = start_faces[1];
-    dpo.object_index[2][3] = start_faces[2];
-    dpo.object_index[2][4] = start_faces[3];
-
-
     unsigned int start_hex = n_dofs_total_per_object[0] +
                              n_dofs_total_per_object[1] +
                              n_dofs_total_per_object[2];
-
-    dpo.object_index[3][0] = start_hex;
 
     for (unsigned int current_degree = degree; current_degree > 0;
          --current_degree)
@@ -261,36 +202,140 @@ namespace
       }
     support_points[4] = tip;
 
-
-    std::pair<internal::GenericDoFsPerObject, std::vector<Point<dim>>>
-      dpos_support_points;
-    dpos_support_points.first  = dpo;
-    dpos_support_points.second = support_points;
-
-    return dpos_support_points;
+    return support_points;
   }
 
 
   /**
-   * Helper function to set up the dpo vector of FE_PyramidDGP for a given @p degree.
+   * Helper function to set up the dpo vector of FE_PyramidP and FE_PyramidDGP for a given @p degree.
    */
   template <int dim>
-  std::pair<const internal::GenericDoFsPerObject, const std::vector<Point<dim>>>
-  get_support_points_dpo_vector_fe_pyramid_dgp(const unsigned int degree)
+  internal::GenericDoFsPerObject
+  get_dpo(const unsigned int degree, const typename FiniteElementData<dim>::Conformity conformity)
   {
     AssertDimension(dim, 3);
-    const auto support_points =
-      get_support_points_dpo_vector_fe_pyramid_p<dim>(degree).second;
+    internal::GenericDoFsPerObject dpo;
 
-    std::pair<internal::GenericDoFsPerObject, std::vector<Point<dim>>>
-      dpos_support_points;
-    dpos_support_points.second = support_points;
-    dpos_support_points.first =
-      internal::expand(3,
-                       {{0, 0, 0, compute_n_dofs(dim, degree)}},
-                       ReferenceCells::Pyramid);
+    if (conformity == FiniteElementData<dim>::L2)
+    {
+      dpo =
+        internal::expand(3,
+                        {{0, 0, 0, compute_n_dofs(dim, degree)}},
+                        ReferenceCells::Pyramid);
+    }
+    else if(conformity == FiniteElementData<dim>::H1)
+    {
+      // set dpo for linear case and then add for higher orders
+      dpo.dofs_per_object_exclusive = {{1}, {degree - 1}, {0, 0, 0, 0, 0}, {0}};
+      dpo.dofs_per_object_inclusive = {{1},
+                                      {degree + 1},
+                                      {4, 3, 3, 3, 3},
+                                      {compute_n_dofs(dim, degree)}};
+      dpo.object_index = {{}, {5, 5, 5, 5, 5, 5, 5, 5}, {5, 5, 5, 5, 5}, {5}};
+      dpo.first_object_index_on_face = {{}, {4, 3, 3, 3, 3}, {4, 3, 3, 3, 3}};
 
-    return dpos_support_points;
+
+    std::vector<unsigned int> n_dofs_total_per_object(4, 0);
+    std::vector<unsigned int> n_dofs_per_object(4, 0);
+
+    for (unsigned int current_degree = degree; current_degree > 0;
+         --current_degree)
+      {
+        FE_Q<2> fe_q(current_degree);
+
+        if (current_degree == degree)
+          {
+            // the first are the support points at the vertices
+            n_dofs_total_per_object[0] = fe_q.reference_cell().n_vertices() + 1;
+
+            // lines are on lines
+            n_dofs_total_per_object[1] =
+              fe_q.reference_cell().n_lines() * fe_q.n_dofs_per_line();
+            // faces are on faces
+            n_dofs_total_per_object[2] = fe_q.n_dofs_per_quad();
+            // nothing per hex
+            n_dofs_total_per_object[3] = 0;
+
+            n_dofs_per_object[0] =
+              fe_q.reference_cell().n_lines() * fe_q.n_dofs_per_line();
+            n_dofs_per_object[2] = fe_q.n_dofs_per_quad();
+
+            dpo.dofs_per_object_exclusive[2][0] = fe_q.n_dofs_per_quad();
+            dpo.dofs_per_object_inclusive[2][0] = fe_q.n_dofs_per_cell();
+
+            dpo.dofs_per_object_inclusive[2][1] += fe_q.n_dofs_per_line();
+            dpo.dofs_per_object_inclusive[2][2] += fe_q.n_dofs_per_line();
+            dpo.dofs_per_object_inclusive[2][3] += fe_q.n_dofs_per_line();
+            dpo.dofs_per_object_inclusive[2][4] += fe_q.n_dofs_per_line();
+
+            dpo.first_object_index_on_face[2][0] += n_dofs_per_object[0];
+            dpo.first_object_index_on_face[2][1] += fe_q.n_dofs_per_line();
+            dpo.first_object_index_on_face[2][2] += fe_q.n_dofs_per_line();
+            dpo.first_object_index_on_face[2][3] += fe_q.n_dofs_per_line();
+            dpo.first_object_index_on_face[2][4] += fe_q.n_dofs_per_line();
+
+
+            dpo.object_index[1][1] += fe_q.n_dofs_per_line();
+            dpo.object_index[1][2] += 2 * fe_q.n_dofs_per_line();
+            dpo.object_index[1][3] += 3 * fe_q.n_dofs_per_line();
+          }
+        else
+          {
+            // on the vertex here is on the line in the pyramid
+            n_dofs_total_per_object[1] += fe_q.reference_cell().n_vertices();
+
+            dpo.first_object_index_on_face[2][1] += 2;
+            dpo.first_object_index_on_face[2][2] += 2;
+            dpo.first_object_index_on_face[2][3] += 2;
+            dpo.first_object_index_on_face[2][4] += 2;
+
+            // on the lines here are on faces in the pyramid
+            n_dofs_total_per_object[2] +=
+              fe_q.reference_cell().n_lines() * fe_q.n_dofs_per_line();
+
+            dpo.dofs_per_object_exclusive[2][1] += fe_q.n_dofs_per_line();
+            dpo.dofs_per_object_exclusive[2][2] += fe_q.n_dofs_per_line();
+            dpo.dofs_per_object_exclusive[2][3] += fe_q.n_dofs_per_line();
+            dpo.dofs_per_object_exclusive[2][4] += fe_q.n_dofs_per_line();
+            dpo.dofs_per_object_inclusive[2][1] += fe_q.n_dofs_per_line() + 2;
+            dpo.dofs_per_object_inclusive[2][2] += fe_q.n_dofs_per_line() + 2;
+            dpo.dofs_per_object_inclusive[2][3] += fe_q.n_dofs_per_line() + 2;
+            dpo.dofs_per_object_inclusive[2][4] += fe_q.n_dofs_per_line() + 2;
+
+
+            // on the faces here is in the volume of the pyramid
+            n_dofs_total_per_object[3] += fe_q.n_dofs_per_quad();
+            dpo.dofs_per_object_exclusive[3][0] += fe_q.n_dofs_per_quad();
+
+
+            n_dofs_per_object[1] += 1;
+            n_dofs_per_object[3] += fe_q.n_dofs_per_line();
+          }
+  }
+    dpo.object_index[1][4] = n_dofs_total_per_object[0] + n_dofs_per_object[0];
+    dpo.object_index[1][5] = n_dofs_total_per_object[0] + n_dofs_per_object[0] + n_dofs_per_object[1];
+    dpo.object_index[1][6] = n_dofs_total_per_object[0] + n_dofs_per_object[0] + 2 * n_dofs_per_object[1];
+    dpo.object_index[1][7] = n_dofs_total_per_object[0] + n_dofs_per_object[0] + 3 * n_dofs_per_object[1];
+
+    dpo.object_index[2][0] =
+      n_dofs_total_per_object[0] + n_dofs_total_per_object[1];
+    dpo.object_index[2][1] = n_dofs_total_per_object[0] + n_dofs_total_per_object[1] +
+    n_dofs_per_object[2];
+    dpo.object_index[2][2] = n_dofs_total_per_object[0] + n_dofs_total_per_object[1] +
+    n_dofs_per_object[2] + n_dofs_per_object[3];
+    dpo.object_index[2][3] = n_dofs_total_per_object[0] + n_dofs_total_per_object[1] +
+    n_dofs_per_object[2] + 2 * n_dofs_per_object[3];
+    dpo.object_index[2][4] = n_dofs_total_per_object[0] + n_dofs_total_per_object[1] +
+    n_dofs_per_object[2] + 3 * n_dofs_per_object[3];
+
+    dpo.object_index[3][0] = n_dofs_total_per_object[0] +
+    n_dofs_total_per_object[1] +
+    n_dofs_total_per_object[2];
+    }
+    else
+      DEAL_II_ASSERT_UNREACHABLE();
+
+    return dpo;
   }
 } // namespace
 
@@ -298,27 +343,27 @@ namespace
 template <int dim, int spacedim>
 FE_PyramidPoly<dim, spacedim>::FE_PyramidPoly(
   const unsigned int degree,
-  std::pair<const internal::GenericDoFsPerObject, const std::vector<Point<dim>>>
-                                                    dpos_support_points,
+  const internal::GenericDoFsPerObject dpos,
+  const std::vector<Point<dim>> support_points,
   const bool                                        prolongation_is_additive,
   const typename FiniteElementData<dim>::Conformity conformity)
   : dealii::FE_Poly<dim, spacedim>(
       ScalarLagrangePolynomialPyramid<dim>(degree,
                                            compute_n_dofs(dim, degree),
-                                           dpos_support_points.second),
-      FiniteElementData<dim>(dpos_support_points.first,
+                                           support_points),
+      FiniteElementData<dim>(dpos,
                              ReferenceCells::Pyramid,
                              1,
                              degree,
                              conformity),
-      std::vector<bool>(FiniteElementData<dim>(dpos_support_points.first,
+      std::vector<bool>(FiniteElementData<dim>(dpos,
                                                ReferenceCells::Pyramid,
                                                1,
                                                degree)
                           .dofs_per_cell,
                         prolongation_is_additive),
       std::vector<ComponentMask>(
-        FiniteElementData<dim>(dpos_support_points.first,
+        FiniteElementData<dim>(dpos,
                                ReferenceCells::Pyramid,
                                1,
                                degree)
@@ -327,7 +372,7 @@ FE_PyramidPoly<dim, spacedim>::FE_PyramidPoly(
 {
   AssertDimension(dim, 3);
 
-  for (auto &support_point : dpos_support_points.second)
+  for (auto &support_point : support_points)
     this->unit_support_points.emplace_back(support_point);
 
   if (conformity == FiniteElementData<dim>::H1)
@@ -395,7 +440,8 @@ template <int dim, int spacedim>
 FE_PyramidP<dim, spacedim>::FE_PyramidP(const unsigned int degree)
   : FE_PyramidPoly<dim, spacedim>(
       degree,
-      get_support_points_dpo_vector_fe_pyramid_p<dim>(degree),
+      get_dpo<dim>(degree, FiniteElementData<dim>::H1),
+      get_support_points<dim>(degree),
       false,
       FiniteElementData<dim>::H1)
 {}
@@ -579,7 +625,8 @@ template <int dim, int spacedim>
 FE_PyramidDGP<dim, spacedim>::FE_PyramidDGP(const unsigned int degree)
   : FE_PyramidPoly<dim, spacedim>(
       degree,
-      get_support_points_dpo_vector_fe_pyramid_dgp<dim>(degree),
+      get_dpo<dim>(degree, FiniteElementData<dim>::L2),
+      get_support_points<dim>(degree),
       true,
       FiniteElementData<dim>::L2)
 {}

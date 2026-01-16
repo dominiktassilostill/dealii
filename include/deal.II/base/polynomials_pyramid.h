@@ -30,8 +30,8 @@ DEAL_II_NAMESPACE_OPEN
  * Polynomials defined on pyramid entities. This class is basis of
  * FE_PyramidP.
  * The polynomials are based on @cite Bergot2010. We first use the
- * Jacobi-Polynomials to construct a modal basis (Proposition 1.10). With the
- * modal basis the Vandermonde is calculated which leads to a nodal basis. For
+ * Jacobi polynomials to construct a modal basis (Proposition 1.10). With the
+ * modal basis a Vandermonde matrix is calculated which leads to a nodal basis. For
  * computing the values of the nodal basis the Vandermonde matrix is multiplied
  * with the modal basis vector evaluated at the evaluation point.
  */
@@ -138,10 +138,10 @@ private:
   /**
    * Inverse of the Vandermonde matrix
    */
-  FullMatrix<double> VDM_inverse;
+  FullMatrix<double> vandermonde_matrix_inverse;
 
   /**
-   * Evaluate orthogonal base at point @p p
+   * Evaluate orthogonal basis at point @p p.
    */
   double
   compute_polynomial_space(const unsigned int i,
@@ -150,13 +150,13 @@ private:
                            const Point<dim>  &p) const;
 
   /**
-   * Evaluate orthogonal basis function @p i at point @p p
+   * Evaluate orthogonal basis function @p i at point @p p.
    */
   double
   compute_jacobi_basis(const unsigned int i, const Point<dim> &p) const;
 
   /**
-   * Evaluate the derivative of the orthogonal base at point @p p
+   * Evaluate the derivative of the orthogonal basis at point @p p.
    */
   Tensor<1, dim>
   compute_polynomial_space_derivative(const unsigned int i,
@@ -165,7 +165,7 @@ private:
                                       const Point<dim>  &p) const;
 
   /**
-   * Evaluate the derivative of the orthogonal basis @p i at point @p p
+   * Evaluate the derivative of the orthogonal basis @p i at point @p p.
    */
   Tensor<1, dim>
   compute_jacobi_derivative(const unsigned int i, const Point<dim> &p) const;
