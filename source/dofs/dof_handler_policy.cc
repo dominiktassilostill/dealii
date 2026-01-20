@@ -182,6 +182,7 @@ namespace internal
                              .template n_dofs_per_object<structdim>(face_no_2),
                          ExcInternalError());
                 };
+
               for (const auto &identity : reduced_identities)
                 {
                   // If the second element is a pyramid we have to see if we are
@@ -2300,9 +2301,9 @@ namespace internal
                         dof_handler.get_fe(quad->nth_active_fe_index(0))
                           .reference_cell();
                       for (unsigned int f = 0; f < n_active_fe_indices; ++f)
-                        if (!(reference_cell ==
+                        if (reference_cell !=
                               dof_handler.get_fe(quad->nth_active_fe_index(f))
-                                .reference_cell()))
+                                .reference_cell())
                           is_mixed_mesh = true;
 
                       auto hypercube_or_simplex_fe_index =
@@ -2329,7 +2330,7 @@ namespace internal
                           // hypercube or simplex element we can be on any face
                           // index q while on pyramids or wedges the face index
                           // q changes how many DoFs there are on the face, so
-                          // taking the wrong face wont merge the corresponding
+                          // taking the wrong face won't merge the corresponding
                           // DoFs. To avoid errors on the faces take the number
                           // of DoFs from the hypercube/simplex element
                           const unsigned int n_dofs_per_quad =

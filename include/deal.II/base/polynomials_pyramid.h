@@ -29,9 +29,9 @@ DEAL_II_NAMESPACE_OPEN
  * FE_PyramidP.
  * The polynomials are based on @cite Bergot2010. We first use the
  * Jacobi polynomials to construct a modal basis (Proposition 1.10). With the
- * modal basis a Vandermonde matrix is calculated which leads to a nodal basis. For
- * computing the values of the nodal basis the Vandermonde matrix is multiplied
- * with the modal basis vector evaluated at the evaluation point.
+ * modal basis a Vandermonde matrix is calculated which leads to a nodal basis.
+ * For computing the values of the nodal basis the Vandermonde matrix is
+ * multiplied with the modal basis vector evaluated at the evaluation point.
  */
 template <int dim>
 class ScalarLagrangePolynomialPyramid : public ScalarPolynomialsBase<dim>
