@@ -770,7 +770,7 @@ namespace Polynomials
                           const int          alpha,
                           const int          beta,
                           const Number       x,
-                          const bool         rescale_to_dealii_unit_interval = true);
+                          const bool rescale_to_dealii_unit_interval = true);
 
   /*
    * Evaluate the derivative of the Jacobi polynomial $ d P_n^{\alpha, \beta}(x)
@@ -784,11 +784,12 @@ namespace Polynomials
    */
   template <typename Number>
   Number
-  jacobi_polynomial_derivative(const unsigned int degree,
-                               const int          alpha,
-                               const int          beta,
-                               const Number       x,
-                               const bool         rescale_to_dealii_unit_interval = true);
+  jacobi_polynomial_derivative(
+    const unsigned int degree,
+    const int          alpha,
+    const int          beta,
+    const Number       x,
+    const bool         rescale_to_dealii_unit_interval = true);
 
   /**
    * Compute the roots of the Jacobi polynomials on the unit interval $[0, 1]$
@@ -1075,7 +1076,8 @@ namespace Polynomials
 
     // The recursion formula is defined for the interval [-1, 1], so rescale
     // to that interval here
-    const Number xeval = rescale_to_dealii_unit_interval ? Number(-1) + 2. * x : x;
+    const Number xeval =
+      rescale_to_dealii_unit_interval ? Number(-1) + 2. * x : x;
 
     // initial values P_0(x), P_1(x):
     p0 = 1.0;
@@ -1107,7 +1109,7 @@ namespace Polynomials
                                const int          alpha,
                                const int          beta,
                                const Number       x,
-                               const bool         rescale_to_dealii_unit_interval)
+                               const bool rescale_to_dealii_unit_interval)
   {
     Assert(alpha >= 0 && beta >= 0,
            ExcNotImplemented("Negative alpha/beta coefficients not supported"));

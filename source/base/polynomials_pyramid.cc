@@ -27,7 +27,14 @@ DEAL_II_NAMESPACE_OPEN
 template <int dim>
 ScalarLagrangePolynomialPyramid<dim>::ScalarLagrangePolynomialPyramid(
   const unsigned int degree)
-  : ScalarLagrangePolynomialPyramid<dim>(1, 5, {ReferenceCells::Pyramid.vertex<dim>(0), ReferenceCells::Pyramid.vertex<dim>(1), ReferenceCells::Pyramid.vertex<dim>(2), ReferenceCells::Pyramid.vertex<dim>(3), ReferenceCells::Pyramid.vertex<dim>(4)})
+  : ScalarLagrangePolynomialPyramid<dim>(
+      1,
+      5,
+      {ReferenceCells::Pyramid.vertex<dim>(0),
+       ReferenceCells::Pyramid.vertex<dim>(1),
+       ReferenceCells::Pyramid.vertex<dim>(2),
+       ReferenceCells::Pyramid.vertex<dim>(3),
+       ReferenceCells::Pyramid.vertex<dim>(4)})
 {
   AssertThrow(degree == 1,
               ExcNotImplemented(
@@ -44,8 +51,7 @@ ScalarLagrangePolynomialPyramid<dim>::ScalarLagrangePolynomialPyramid(
   : ScalarPolynomialsBase<dim>(degree, n_dofs)
 {
   AssertThrow(dim == 3,
-    ExcNotImplemented(
-      "Pyramid elements only make sense in 3D"));
+              ExcNotImplemented("Pyramid elements only make sense in 3D"));
 
 
   // fill VDM Matrix
@@ -260,7 +266,8 @@ ScalarLagrangePolynomialPyramid<dim>::compute_value(const unsigned int i,
 
   double result = 0;
   for (unsigned int j = 0; j < vandermonde_matrix_inverse.n(); ++j)
-    result += vandermonde_matrix_inverse[i][j] * this->compute_jacobi_basis(j, p);
+    result +=
+      vandermonde_matrix_inverse[i][j] * this->compute_jacobi_basis(j, p);
 
   if (std::fabs(result) < 1e-14)
     result = 0.0;
@@ -281,7 +288,8 @@ ScalarLagrangePolynomialPyramid<dim>::compute_grad(const unsigned int i,
   Tensor<1, dim> grad;
 
   for (unsigned int j = 0; j < vandermonde_matrix_inverse.n(); ++j)
-    grad += vandermonde_matrix_inverse[i][j] * this->compute_jacobi_derivative(j, p);
+    grad +=
+      vandermonde_matrix_inverse[i][j] * this->compute_jacobi_derivative(j, p);
 
   for (unsigned int d = 0; d < dim; ++d)
     if (std::fabs(grad[d]) < 1e-14)
