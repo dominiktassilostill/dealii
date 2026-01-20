@@ -2302,8 +2302,8 @@ namespace internal
                           .reference_cell();
                       for (unsigned int f = 0; f < n_active_fe_indices; ++f)
                         if (reference_cell !=
-                              dof_handler.get_fe(quad->nth_active_fe_index(f))
-                                .reference_cell())
+                            dof_handler.get_fe(quad->nth_active_fe_index(f))
+                              .reference_cell())
                           is_mixed_mesh = true;
 
                       auto hypercube_or_simplex_fe_index =
