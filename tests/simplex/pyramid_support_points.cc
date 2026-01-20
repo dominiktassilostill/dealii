@@ -17,27 +17,28 @@
 
 #include "../tests.h"
 
-template<int dim>
-void test(const unsigned int degree)
+template <int dim>
+void
+test(const unsigned int degree)
 {
   {
     deallog << "FE_PyramidP degree: " << degree << std::endl;
-  const FE_PyramidP<dim> fe(degree);
-  const auto points = fe.get_unit_support_points();
+    const FE_PyramidP<dim> fe(degree);
+    const auto             points = fe.get_unit_support_points();
 
-  for(const auto &p: points)
-    deallog << p  << std::endl;
-  deallog << std::endl;
-}
-{
+    for (const auto &p : points)
+      deallog << p << std::endl;
+    deallog << std::endl;
+  }
+  {
     deallog << "FE_PyramidDGP degree: " << degree << std::endl;
 
-  const FE_PyramidDGP<dim> fe(degree);
-  const auto points = fe.get_unit_support_points();
+    const FE_PyramidDGP<dim> fe(degree);
+    const auto               points = fe.get_unit_support_points();
 
-  for(const auto &p: points)
-    deallog << p  << std::endl;
-  deallog << std::endl;
+    for (const auto &p : points)
+      deallog << p << std::endl;
+    deallog << std::endl;
   }
 }
 
@@ -46,6 +47,6 @@ main()
 {
   initlog();
 
-  for(unsigned int i = 0; i < 4; ++i)
+  for (unsigned int i = 0; i < 4; ++i)
     tests<3>(i);
 }

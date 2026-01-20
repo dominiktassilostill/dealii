@@ -18,6 +18,7 @@
 #include <deal.II/base/polynomials_barycentric.h>
 #include <deal.II/base/polynomials_pyramid.h>
 #include <deal.II/base/quadrature_lib.h>
+
 #include <deal.II/grid/reference_cell.h>
 
 DEAL_II_NAMESPACE_OPEN
