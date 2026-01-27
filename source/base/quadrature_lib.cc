@@ -2378,7 +2378,7 @@ QGaussPyramid<dim>::QGaussPyramid(const unsigned int n_points_1D)
 {
   AssertDimension(dim, 3);
 
-  if (n_points_1D == 1)
+  if (false && n_points_1D == 1)
     {
       const double Q14 = 1.0 / 4.0;
       const double Q43 = 4.0 / 3.0;
@@ -2386,7 +2386,7 @@ QGaussPyramid<dim>::QGaussPyramid(const unsigned int n_points_1D)
       this->quadrature_points.emplace_back(0, 0, Q14);
       this->weights.emplace_back(Q43);
     }
-  else if (n_points_1D == 2)
+  else if (false && n_points_1D == 2)
     {
       // clang-format off
         this->quadrature_points.emplace_back(-0.26318405556971, -0.26318405556971, 0.54415184401122);

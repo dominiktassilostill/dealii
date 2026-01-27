@@ -382,56 +382,58 @@ FE_PyramidP<dim, spacedim>::FE_PyramidP(const unsigned int degree)
                                   FiniteElementData<dim>::H1)
 {
   if (degree > 2)
+  {
     for (unsigned int i = 0; i < this->n_dofs_per_line(); ++i)
       this->adjust_line_dof_index_for_line_orientation_table[i] =
         this->n_dofs_per_line() - 1 - i - i;
 
-  // do the quad face first
-  const unsigned int n            = degree - 1;
-  const unsigned int face_no_quad = 0;
-  Assert(n * n == this->n_dofs_per_quad(face_no_quad), ExcInternalError());
-  // see fe_q_base.cc
-  for (unsigned int local = 0; local < this->n_dofs_per_quad(face_no_quad);
-       ++local)
-    {
-      unsigned int i = local % n, j = local / n;
+    // do the quad face first
+    const unsigned int n            = degree - 1;
+    const unsigned int face_no_quad = 0;
+    Assert(n * n == this->n_dofs_per_quad(face_no_quad), ExcInternalError());
+    // see fe_q_base.cc
+    for (unsigned int local = 0; local < this->n_dofs_per_quad(face_no_quad);
+        ++local)
+      {
+        unsigned int i = local % n, j = local / n;
 
-      // face_orientation=false, face_flip=false, face_rotation=false
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(false, false, false)) =
-        j + i * n - local;
-      // face_orientation=false, face_flip=false, face_rotation=true
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(false, true, false)) =
-        i + (n - 1 - j) * n - local;
-      // face_orientation=false, face_flip=true,  face_rotation=false
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(false, false, true)) =
-        (n - 1 - j) + (n - 1 - i) * n - local;
-      // face_orientation=false, face_flip=true,  face_rotation=true
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(false, true, true)) =
-        (n - 1 - i) + j * n - local;
-      // face_orientation=true,  face_flip=false, face_rotation=false
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(true, false, false)) = 0;
-      // face_orientation=true,  face_flip=false, face_rotation=true
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(true, true, false)) =
-        j + (n - 1 - i) * n - local;
-      // face_orientation=true,  face_flip=true,  face_rotation=false
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(true, false, true)) =
-        (n - 1 - i) + (n - 1 - j) * n - local;
-      // face_orientation=true,  face_flip=true,  face_rotation=true
-      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
-        local, internal::combined_face_orientation(true, true, true)) =
-        (n - 1 - j) + i * n - local;
-    }
+        // face_orientation=false, face_flip=false, face_rotation=false
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(false, false, false)) =
+          j + i * n - local;
+        // face_orientation=false, face_flip=false, face_rotation=true
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(false, true, false)) =
+          i + (n - 1 - j) * n - local;
+        // face_orientation=false, face_flip=true,  face_rotation=false
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(false, false, true)) =
+          (n - 1 - j) + (n - 1 - i) * n - local;
+        // face_orientation=false, face_flip=true,  face_rotation=true
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(false, true, true)) =
+          (n - 1 - i) + j * n - local;
+        // face_orientation=true,  face_flip=false, face_rotation=false
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(true, false, false)) = 0;
+        // face_orientation=true,  face_flip=false, face_rotation=true
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(true, true, false)) =
+          j + (n - 1 - i) * n - local;
+        // face_orientation=true,  face_flip=true,  face_rotation=false
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(true, false, true)) =
+          (n - 1 - i) + (n - 1 - j) * n - local;
+        // face_orientation=true,  face_flip=true,  face_rotation=true
+        this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+          local, internal::combined_face_orientation(true, true, true)) =
+          (n - 1 - j) + i * n - local;
+      }
 
-  // Now do it for the triangular faces
-  // for degree 3 there is only 1 DoF on the face
-  Assert(degree <= 3, ExcNotImplemented());
+    // Now do it for the triangular faces
+    // for degree 3 there is only 1 DoF on the face
+    Assert(degree <= 3, ExcNotImplemented());
+  }
 }
 
 

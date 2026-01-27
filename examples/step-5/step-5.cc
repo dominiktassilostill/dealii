@@ -18,6 +18,8 @@
 
 // Again, the first few include files are already known, so we won't comment
 // on them:
+#include "./../../../tests/simplex/simplex_grids.h"
+
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/function.h>
 #include <deal.II/lac/vector.h>
@@ -30,7 +32,9 @@
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_pyramid_p.h>
 #include <deal.II/fe/fe_values.h>
+#include <deal.II/fe/mapping_fe.h>
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/matrix_tools.h>
 #include <deal.II/numerics/data_out.h>
@@ -72,9 +76,9 @@ private:
   void solve();
   void output_results(const unsigned int cycle) const;
 
-  Triangulation<dim> triangulation;
-  const FE_Q<dim>    fe;
-  DoFHandler<dim>    dof_handler;
+  Triangulation<dim>     triangulation;
+  const FE_PyramidP<dim> fe;
+  DoFHandler<dim>        dof_handler;
 
   SparsityPattern      sparsity_pattern;
   SparseMatrix<double> system_matrix;
@@ -154,7 +158,7 @@ void Step5<dim>::setup_system()
 template <int dim>
 void Step5<dim>::assemble_system()
 {
-  const QGauss<dim> quadrature_formula(fe.degree + 1);
+  const QGaussPyramid<dim> quadrature_formula(fe.degree + 1);
 
   FEValues<dim> fe_values(fe,
                           quadrature_formula,
@@ -318,9 +322,9 @@ void Step5<dim>::output_results(const unsigned int cycle) const
 template <int dim>
 void Step5<dim>::run()
 {
-  GridIn<dim> grid_in;
-  grid_in.attach_triangulation(triangulation);
-  std::ifstream input_file("circle-grid.inp");
+  // GridIn<dim> grid_in;
+  // grid_in.attach_triangulation(triangulation);
+  // std::ifstream input_file("circle-grid.inp");
   // We would now like to read the file. However, the input file is only for a
   // two-dimensional triangulation, while this function is a template for
   // arbitrary dimension. Since this is only a demonstration program, we will
@@ -364,7 +368,7 @@ void Step5<dim>::run()
   // it will later also be linked to libraries that have been compiled for
   // optimized mode. In order to switch back to debug mode, simply recompile
   // with the command <code>make debug</code>.
-  Assert(dim == 2, ExcNotImplemented());
+  // Assert(dim == 2, ExcNotImplemented());
   // ExcNotImplemented is a globally defined exception, which may be thrown
   // whenever a piece of code has simply not been implemented for a case
   // other than the condition checked in the assertion. Here, it would not
@@ -384,7 +388,7 @@ void Step5<dim>::run()
   // actually read the grid. It is in UCD (unstructured cell data) format
   // (though the convention is to use the suffix <code>inp</code> for UCD
   // files):
-  grid_in.read_ucd(input_file);
+  // grid_in.read_ucd(input_file);
   // If you like to use another input format, you have to use one of the other
   // <code>grid_in.read_xxx</code> function. (See the documentation of the
   // <code>GridIn</code> class to find out what input formats are presently
@@ -397,16 +401,17 @@ void Step5<dim>::run()
   // GridGenerator::hyper_shell) we have to explicitly attach a manifold to
   // the boundary after creating the triangulation to get the correct result
   // when we refine the mesh.
-  const SphericalManifold<dim> boundary;
-  triangulation.set_all_manifold_ids_on_boundary(0);
-  triangulation.set_manifold(0, boundary);
+  // const SphericalManifold<dim> boundary;
+  // triangulation.set_all_manifold_ids_on_boundary(0);
+  // triangulation.set_manifold(0, boundary);
 
   for (unsigned int cycle = 0; cycle < 6; ++cycle)
     {
       std::cout << "Cycle " << cycle << ':' << std::endl;
 
-      if (cycle != 0)
-        triangulation.refine_global(1);
+      triangulation.clear();
+      GridGenerator::subdivided_hyper_cube_with_pyramids(triangulation,
+                                                         8 + cycle);
 
       // Now that we have a mesh for sure, we write some output and do all the
       // things that we have already seen in the previous examples.
@@ -431,7 +436,7 @@ void Step5<dim>::run()
 // won't comment on it further:
 int main()
 {
-  Step5<2> laplace_problem_2d;
+  Step5<3> laplace_problem_2d;
   laplace_problem_2d.run();
   return 0;
 }
