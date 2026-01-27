@@ -71,6 +71,7 @@ main()
 
   test(FE_PyramidP<3>(1));
   test(FE_PyramidP<3>(2));
+  test(FE_PyramidP<3>(3));
 
   test(FE_WedgeP<3>(1));
   test(FE_WedgeP<3>(2));
