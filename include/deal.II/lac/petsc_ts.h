@@ -19,8 +19,8 @@
 
 #ifdef DEAL_II_WITH_PETSC
 #  include <deal.II/base/mpi.h>
+#  include <deal.II/base/observer_pointer.h>
 #  include <deal.II/base/parameter_handler.h>
-#  include <deal.II/base/smartpointer.h>
 
 #  include <deal.II/lac/petsc_matrix_base.h>
 #  include <deal.II/lac/petsc_precondition.h>
@@ -210,7 +210,8 @@ namespace PETScWrappers
   /**
    * Interface to the PETSc TS solver for Ordinary Differential Equations
    * and Differential-Algebraic Equations. The TS solver is described in the
-   * [PETSc manual](https://petsc.org/release/manual/ts/).
+   * [PETSc manual](https://petsc.org/release/manual/ts/). This class is used
+   * and extensively discussed in step-86.
    *
    * This class supports two kinds of formulations.
    * The explicit formulation:
@@ -238,7 +239,7 @@ namespace PETScWrappers
    * methods:
    *
    * @code
-   * class VectorType : public Subscriptor
+   * class VectorType : public EnableObserverPointer
    *    ...
    *    explicit VectorType(Vec);
    *    ...
@@ -247,7 +248,7 @@ namespace PETScWrappers
    * @endcode
    *
    * @code
-   * class MatrixType : public Subscriptor
+   * class MatrixType : public EnableObserverPointer
    *    ...
    *    explicit MatrixType(Mat);
    *    ...
@@ -616,7 +617,7 @@ namespace PETScWrappers
      * @deprecated This callback is equivalent to `update_constrained_components`, but is
      * deprecated. Use `update_constrained_components` instead.
      */
-    DEAL_II_DEPRECATED_EARLY
+    DEAL_II_DEPRECATED
     std::function<void(const real_type t, VectorType &y)> distribute;
 
     /**
@@ -647,7 +648,7 @@ namespace PETScWrappers
      * object instead of a plain return value. This callback is
      * deprecated. Use `decide_and_prepare_for_remeshing` instead.
      */
-    DEAL_II_DEPRECATED_EARLY
+    DEAL_II_DEPRECATED
     std::function<void(const real_type    t,
                        const unsigned int step,
                        const VectorType  &y,
@@ -678,22 +679,33 @@ namespace PETScWrappers
       decide_and_prepare_for_remeshing;
 
     /**
-     * Callback to interpolate vectors and perform mesh adaption.
+     * @deprecated This callback is equivalent to `transfer_solution_vectors_to_new_mesh`, but is
+     * deprecated. Use `transfer_solution_vectors_to_new_mesh` instead.
+     */
+    DEAL_II_DEPRECATED
+    std::function<void(const std::vector<VectorType> &all_in,
+                       std::vector<VectorType>       &all_out)>
+      interpolate;
+
+    /**
+     * Callback to perform mesh adaptation and transfer solution vectors
+     * from the old to the new mesh.
      *
      * Implementation of this function is mandatory if
-     * TimeStepper::decide_for_coarsening_and_refinement is used.
+     * TimeStepper::decide_and_prepare_for_remeshing is used.
      * This function must perform mesh adaption and interpolate the discrete
-     * functions that are stored in @p all_in onto the refined and/or coarsenend grid.
-     * Output vectors must be created inside the callback.
+     * functions that are stored in @p all_in onto the refined and/or coarsened grid.
+     * The output vectors must be sized correctly within this callback.
      *
      * @note This variable represents a
      * @ref GlossUserProvidedCallBack "user provided callback".
      * See there for a description of how to deal with errors and other
      * requirements and conventions.
      */
-    std::function<void(const std::vector<VectorType> &all_in,
+    std::function<void(const real_type                t,
+                       const std::vector<VectorType> &all_in,
                        std::vector<VectorType>       &all_out)>
-      interpolate;
+      transfer_solution_vectors_to_new_mesh;
 
   private:
     /**
@@ -704,8 +716,8 @@ namespace PETScWrappers
     /**
      * Pointers to the internal PETSc matrix objects.
      */
-    SmartPointer<AMatrixType, TimeStepper> A;
-    SmartPointer<PMatrixType, TimeStepper> P;
+    ObserverPointer<AMatrixType, TimeStepper> A;
+    ObserverPointer<PMatrixType, TimeStepper> P;
 
     /**
      * Object to apply solve_with_jacobian.
@@ -763,6 +775,14 @@ namespace PETScWrappers
 
 } // namespace PETScWrappers
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

@@ -118,7 +118,7 @@ namespace Step55
     // with an option to specify a preconditioner, and to allow for different
     // vector types in the vmult function.
     template <class Matrix, class Preconditioner>
-    class InverseMatrix : public Subscriptor
+    class InverseMatrix : public EnableObserverPointer
     {
     public:
       InverseMatrix(const Matrix &m, const Preconditioner &preconditioner);
@@ -128,8 +128,8 @@ namespace Step55
       vmult(VectorType &dst, const VectorType &src) const;
 
     private:
-      const SmartPointer<const Matrix> matrix;
-      const Preconditioner            &preconditioner;
+      const ObserverPointer<const Matrix> matrix;
+      const Preconditioner               &preconditioner;
     };
 
 
@@ -170,7 +170,7 @@ namespace Step55
     // The class A template class for a simple block diagonal preconditioner
     // for 2x2 matrices.
     template <class PreconditionerA, class PreconditionerS>
-    class BlockDiagonalPreconditioner : public Subscriptor
+    class BlockDiagonalPreconditioner : public EnableObserverPointer
     {
     public:
       BlockDiagonalPreconditioner(const PreconditionerA &preconditioner_A,
@@ -465,7 +465,8 @@ namespace Step55
     // to put this function call in, in case adaptive refinement gets
     // introduced later.
     {
-      constraints.reinit(locally_relevant_dofs);
+      constraints.reinit(dof_handler.locally_owned_dofs(),
+                         locally_relevant_dofs);
 
       const FEValuesExtractors::Vector velocities(0);
       DoFTools::make_hanging_node_constraints(dof_handler, constraints);

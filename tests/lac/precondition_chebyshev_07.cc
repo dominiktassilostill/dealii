@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -98,7 +98,7 @@ private:
 };
 
 template <typename SparseMatrixType>
-class MySparseMatrix : public Subscriptor
+class MySparseMatrix : public EnableObserverPointer
 {
 public:
   MySparseMatrix(const SparseMatrixType &sparse_matrix)

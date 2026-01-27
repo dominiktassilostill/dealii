@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -97,8 +97,8 @@ namespace internal
 
       /**
        * In 3d, one of the two cells adjacent to a face might use a different
-       * orientation (also called as face orientation, face flip and face
-       * rotation) than the standard orientation. This variable stores the
+       * orientation (also called as face orientation, face rotation and face
+       * flip) than the standard orientation. This variable stores the
        * values of face orientation, face flip and face
        * rotation (for one of the interior or exterior side) for the present
        * batch of faces in the first free bits. The forth bit is one if the

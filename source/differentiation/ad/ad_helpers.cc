@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -1881,13 +1881,13 @@ namespace Differentiation
 
 
 /* --- Explicit instantiations --- */
-#  include "ad_helpers.inst"
+#  include "differentiation/ad/ad_helpers.inst"
 
 #  ifdef DEAL_II_WITH_ADOLC
-#    include "ad_helpers.inst1"
+#    include "differentiation/ad/ad_helpers.inst1"
 #  endif
 #  ifdef DEAL_II_TRILINOS_WITH_SACADO
-#    include "ad_helpers.inst2"
+#    include "differentiation/ad/ad_helpers.inst2"
 #  endif
 
 

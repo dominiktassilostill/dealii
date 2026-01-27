@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2023 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -25,7 +25,6 @@
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/manifold_lib.h>
 
 #include <deal.II/hp/fe_values.h>
 
@@ -92,14 +91,8 @@ void
 test()
 {
   using number = double;
-  const SphericalManifold<dim> manifold;
-  Triangulation<dim>           tria;
+  Triangulation<dim> tria;
   GridGenerator::hyper_ball(tria);
-  for (const auto &cell : tria.active_cell_iterators())
-    for (const unsigned int f : GeometryInfo<dim>::face_indices())
-      if (cell->at_boundary(f))
-        cell->face(f)->set_all_manifold_ids(0);
-  tria.set_manifold(0, manifold);
   tria.refine_global(1);
 
   // refine a few cells

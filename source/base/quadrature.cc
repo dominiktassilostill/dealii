@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -186,17 +186,18 @@ Quadrature<dim>::Quadrature(const SubQuadrature &q1, const Quadrature<1> &q2)
         ++present_index;
       }
 
-#ifdef DEBUG
-  if (size() > 0)
+  if constexpr (running_in_debug_mode())
     {
-      double sum = 0;
-      for (unsigned int i = 0; i < size(); ++i)
-        sum += weights[i];
-      // we cannot guarantee the sum of weights to be exactly one, but it should
-      // be near that.
-      Assert((sum > 0.999999) && (sum < 1.000001), ExcInternalError());
+      if (size() > 0)
+        {
+          double sum = 0;
+          for (unsigned int i = 0; i < size(); ++i)
+            sum += weights[i];
+          // we cannot guarantee the sum of weights to be exactly one, but it
+          // should be near that.
+          Assert((sum > 0.999999) && (sum < 1.000001), ExcInternalError());
+        }
     }
-#endif
 
   if (is_tensor_product_flag)
     {
@@ -227,24 +228,25 @@ Quadrature<1>::Quadrature(const SubQuadrature &, const Quadrature<1> &q2)
       ++present_index;
     }
 
-#  ifdef DEBUG
-  if (size() > 0)
+  if constexpr (running_in_debug_mode())
     {
-      double sum = 0;
-      for (unsigned int i = 0; i < size(); ++i)
-        sum += weights[i];
-      // we cannot guarantee the sum of weights to be exactly one, but it should
-      // be near that.
-      Assert((sum > 0.999999) && (sum < 1.000001), ExcInternalError());
+      if (size() > 0)
+        {
+          double sum = 0;
+          for (unsigned int i = 0; i < size(); ++i)
+            sum += weights[i];
+          // we cannot guarantee the sum of weights to be exactly one, but it
+          // should be near that.
+          Assert((sum > 0.999999) && (sum < 1.000001), ExcInternalError());
+        }
     }
-#  endif
 }
 
 
 
 template <>
 Quadrature<0>::Quadrature(const Quadrature<1> &)
-  : Subscriptor()
+  : EnableObserverPointer()
   , quadrature_points(1)
   , weights(1, 1.)
   , is_tensor_product_flag(false)
@@ -253,7 +255,7 @@ Quadrature<0>::Quadrature(const Quadrature<1> &)
 
 template <>
 Quadrature<1>::Quadrature(const Quadrature<0> &)
-  : Subscriptor()
+  : EnableObserverPointer()
 {
   // this function should never be called -- this should be the copy constructor
   // in 1d...
@@ -265,7 +267,7 @@ Quadrature<1>::Quadrature(const Quadrature<0> &)
 
 template <int dim>
 Quadrature<dim>::Quadrature(const Quadrature<dim != 1 ? 1 : 0> &q)
-  : Subscriptor()
+  : EnableObserverPointer()
   , quadrature_points(Utilities::fixed_power<dim>(q.size()))
   , weights(Utilities::fixed_power<dim>(q.size()))
   , is_tensor_product_flag(true)
@@ -303,7 +305,7 @@ Quadrature<dim>::Quadrature(const Quadrature<dim != 1 ? 1 : 0> &q)
 
 template <int dim>
 Quadrature<dim>::Quadrature(const Quadrature<dim> &q)
-  : Subscriptor()
+  : EnableObserverPointer()
   , quadrature_points(q.quadrature_points)
   , weights(q.weights)
   , is_tensor_product_flag(q.is_tensor_product_flag)
@@ -623,12 +625,13 @@ QIterated<1>::QIterated(const Quadrature<1>         &base_quadrature,
     else if (std::abs(i[0] - 1.0) < 1e-12)
       i[0] = 1.0;
 
-#ifdef DEBUG
-  double sum_of_weights = 0;
-  for (unsigned int i = 0; i < this->size(); ++i)
-    sum_of_weights += this->weight(i);
-  Assert(std::fabs(sum_of_weights - 1) < 1e-13, ExcInternalError());
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      double sum_of_weights = 0;
+      for (unsigned int i = 0; i < this->size(); ++i)
+        sum_of_weights += this->weight(i);
+      Assert(std::fabs(sum_of_weights - 1) < 1e-13, ExcInternalError());
+    }
 }
 
 

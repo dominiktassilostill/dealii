@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -42,6 +42,8 @@
 #include <deal.II/lac/sparsity_pattern.h>
 #include <deal.II/lac/sparsity_pattern_base.h>
 #include <deal.II/lac/vector.h>
+
+#include <deal.II/numerics/vector_tools_interpolate.h>
 
 #include <algorithm>
 #include <numeric>
@@ -1267,12 +1269,13 @@ namespace DoFTools
   namespace internal
   {
     template <int dim, int spacedim>
-    void
+    std::vector<std::vector<bool>>
     extract_constant_modes(const DoFHandler<dim, spacedim> &dof_handler,
                            const ComponentMask             &component_mask,
-                           const unsigned int               mg_level,
-                           std::vector<std::vector<bool>>  &constant_modes)
+                           const unsigned int               mg_level)
     {
+      std::vector<std::vector<bool>> constant_modes;
+
       const auto &locally_owned_dofs =
         (mg_level == numbers::invalid_unsigned_int) ?
           dof_handler.locally_owned_dofs() :
@@ -1282,8 +1285,7 @@ namespace DoFTools
       // constant_modes object:
       if (locally_owned_dofs.n_elements() == 0)
         {
-          constant_modes = std::vector<std::vector<bool>>(0);
-          return;
+          return std::vector<std::vector<bool>>(0);
         }
 
       const unsigned int n_components = dof_handler.get_fe(0).n_components();
@@ -1406,8 +1408,146 @@ namespace DoFTools
                       indices.second, i);
             }
       });
+
+      return constant_modes;
     }
+
+
+
+    /**
+     * Definition of the rigid body motions for linear elasticity.
+     */
+    template <int dim>
+    class RigidBodyMotion : public Function<dim>
+    {
+    public:
+      static constexpr unsigned int n_modes = dim * (dim + 1) / 2;
+
+      RigidBodyMotion(const unsigned int type);
+
+      virtual double
+      value(const Point<dim> &p, const unsigned int component) const override;
+
+    private:
+      const unsigned int type;
+    };
+
+
+
+    template <int dim>
+    RigidBodyMotion<dim>::RigidBodyMotion(const unsigned int type)
+      : Function<dim>(dim)
+      , type(type)
+    {
+      Assert(type < n_modes, ExcNotImplemented());
+    }
+
+
+
+    Tensor<1, 2>
+    cross_product(const Tensor<1, 2> &tensor1, const Tensor<1, 1> &tensor2)
+    {
+      // |a|   |0|   |+bc|
+      // |b| x |0| = |-ac|
+      // |0|   |c|   | 0 |
+
+      Tensor<1, 2> cproduct;
+      cproduct[0] = +tensor1[1] * tensor2[0];
+      cproduct[1] = -tensor1[0] * tensor2[0];
+      return cproduct;
+    }
+
+
+
+    Tensor<1, 3>
+    cross_product(const Tensor<1, 3> &tensor1, const Tensor<1, 3> &tensor2)
+    {
+      Tensor<1, 3> cproduct;
+      cproduct[0] = +tensor1[1] * tensor2[2] - tensor1[2] * tensor2[1];
+      cproduct[1] = +tensor1[2] * tensor2[0] - tensor1[0] * tensor2[2];
+      cproduct[2] = +tensor1[0] * tensor2[1] - tensor1[1] * tensor2[0];
+      return cproduct;
+    }
+
+
+
+    template <int dim>
+    double
+    RigidBodyMotion<dim>::value(const Point<dim>  &p,
+                                const unsigned int component) const
+    {
+      if (type < dim) // translation modes
+        return static_cast<double>(component == type);
+
+      if constexpr (dim >= 2) // rotation modes
+        {
+          Tensor<1, n_modes - dim> dir;
+          dir[type - dim] = 1.0;
+
+          return cross_product(p, dir)[component];
+        }
+      else
+        {
+          Assert(false, ExcNotImplemented());
+
+          return 0.0;
+        }
+    }
+
+
+
+    template <int dim, int spacedim>
+    std::vector<std::vector<double>>
+    extract_rigid_body_modes(const Mapping<dim, spacedim>    &mapping,
+                             const DoFHandler<dim, spacedim> &dof_handler,
+                             const ComponentMask             &component_mask,
+                             const unsigned int               mg_level)
+    {
+      AssertDimension(dim, spacedim);
+
+      constexpr unsigned int n_modes = RigidBodyMotion<dim>::n_modes;
+
+      std::vector<std::vector<double>> rigid_body_modes(n_modes);
+
+      LinearAlgebra::distributed::Vector<double> rigid_body_modes_dealii(
+        mg_level == numbers::invalid_unsigned_int ?
+          dof_handler.locally_owned_dofs() :
+          dof_handler.locally_owned_mg_dofs(mg_level),
+        mg_level == numbers::invalid_unsigned_int ?
+          DoFTools::extract_locally_active_dofs(dof_handler) :
+          DoFTools::extract_locally_active_level_dofs(dof_handler, mg_level),
+        dof_handler.get_communicator());
+
+      for (unsigned int i = 0; i < n_modes; ++i)
+        {
+          VectorTools::interpolate(mapping,
+                                   dof_handler,
+                                   RigidBodyMotion<dim>(i),
+                                   rigid_body_modes_dealii,
+                                   component_mask,
+                                   mg_level);
+
+          // copy to right format
+          rigid_body_modes[i].assign(rigid_body_modes_dealii.begin(),
+                                     rigid_body_modes_dealii.end());
+        }
+
+      return rigid_body_modes;
+    }
+
   } // namespace internal
+
+
+
+  template <int dim, int spacedim>
+  std::vector<std::vector<bool>>
+  extract_constant_modes(const DoFHandler<dim, spacedim> &dof_handler,
+                         const ComponentMask             &component_mask)
+  {
+    return internal::extract_constant_modes(dof_handler,
+                                            component_mask,
+                                            numbers::invalid_unsigned_int);
+  }
 
 
 
@@ -1417,10 +1557,22 @@ namespace DoFTools
                          const ComponentMask             &component_mask,
                          std::vector<std::vector<bool>>  &constant_modes)
   {
-    internal::extract_constant_modes(dof_handler,
-                                     component_mask,
-                                     numbers::invalid_unsigned_int,
-                                     constant_modes);
+    const auto temp =
+      internal::extract_constant_modes(dof_handler,
+                                       component_mask,
+                                       numbers::invalid_unsigned_int);
+    constant_modes = temp;
+  }
+
+
+
+  template <int dim, int spacedim>
+  std::vector<std::vector<bool>>
+  extract_level_constant_modes(const unsigned int               level,
+                               const DoFHandler<dim, spacedim> &dof_handler,
+                               const ComponentMask             &component_mask)
+  {
+    return internal::extract_constant_modes(dof_handler, component_mask, level);
   }
 
 
@@ -1432,10 +1584,38 @@ namespace DoFTools
                                const ComponentMask             &component_mask,
                                std::vector<std::vector<bool>>  &constant_modes)
   {
-    internal::extract_constant_modes(dof_handler,
-                                     component_mask,
-                                     level,
-                                     constant_modes);
+    const auto temp =
+      internal::extract_constant_modes(dof_handler, component_mask, level);
+    constant_modes = temp;
+  }
+
+
+
+  template <int dim, int spacedim>
+  std::vector<std::vector<double>>
+  extract_rigid_body_modes(const Mapping<dim, spacedim>    &mapping,
+                           const DoFHandler<dim, spacedim> &dof_handler,
+                           const ComponentMask             &component_mask)
+  {
+    return internal::extract_rigid_body_modes(mapping,
+                                              dof_handler,
+                                              component_mask,
+                                              numbers::invalid_unsigned_int);
+  }
+
+
+
+  template <int dim, int spacedim>
+  std::vector<std::vector<double>>
+  extract_level_rigid_body_modes(const unsigned int               level,
+                                 const Mapping<dim, spacedim>    &mapping,
+                                 const DoFHandler<dim, spacedim> &dof_handler,
+                                 const ComponentMask &component_mask)
+  {
+    return internal::extract_rigid_body_modes(mapping,
+                                              dof_handler,
+                                              component_mask,
+                                              level);
   }
 
 
@@ -1557,7 +1737,7 @@ namespace DoFTools
          Utilities::MPI::n_mpi_processes(
            dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
              &dof_handler.get_triangulation())
-             ->get_communicator()));
+             ->get_mpi_communicator()));
     Assert(n_subdomains > *std::max_element(subdomain_association.begin(),
                                             subdomain_association.end()),
            ExcInternalError());
@@ -2084,12 +2264,13 @@ namespace DoFTools
         std::vector<types::global_dof_index> local_dof_count =
           dofs_per_component;
 
-        const int ierr = MPI_Allreduce(local_dof_count.data(),
-                                       dofs_per_component.data(),
-                                       n_target_components,
-                                       DEAL_II_DOF_INDEX_MPI_TYPE,
-                                       MPI_SUM,
-                                       tria->get_communicator());
+        const int ierr = MPI_Allreduce(
+          local_dof_count.data(),
+          dofs_per_component.data(),
+          n_target_components,
+          Utilities::MPI::mpi_type_id_for_type<types::global_dof_index>,
+          MPI_SUM,
+          tria->get_mpi_communicator());
         AssertThrowMPI(ierr);
       }
 #endif
@@ -2172,12 +2353,13 @@ namespace DoFTools
           {
             std::vector<types::global_dof_index> local_dof_count =
               dofs_per_block;
-            const int ierr = MPI_Allreduce(local_dof_count.data(),
-                                           dofs_per_block.data(),
-                                           n_target_blocks,
-                                           DEAL_II_DOF_INDEX_MPI_TYPE,
-                                           MPI_SUM,
-                                           tria->get_communicator());
+            const int ierr = MPI_Allreduce(
+              local_dof_count.data(),
+              dofs_per_block.data(),
+              n_target_blocks,
+              Utilities::MPI::mpi_type_id_for_type<types::global_dof_index>,
+              MPI_SUM,
+              tria->get_mpi_communicator());
             AssertThrowMPI(ierr);
           }
 #endif
@@ -2278,7 +2460,8 @@ namespace DoFTools
       map_dofs_to_support_points(
         const hp::MappingCollection<dim, spacedim> &mapping,
         const DoFHandler<dim, spacedim>            &dof_handler,
-        const ComponentMask                        &in_mask)
+        const ComponentMask                        &in_mask,
+        const bool                                  map_locally_relevant_dofs)
       {
         std::map<types::global_dof_index, Point<spacedim>> support_points;
 
@@ -2315,10 +2498,16 @@ namespace DoFTools
                                                  q_coll_dummy,
                                                  update_quadrature_points);
 
+        const IndexSet &locally_owned_dofs = dof_handler.locally_owned_dofs();
         std::vector<types::global_dof_index> local_dof_indices;
         for (const auto &cell : dof_handler.active_cell_iterators())
-          // only work on locally relevant cells
-          if (cell->is_artificial() == false)
+          // Only work on locally relevant cells. Exclude cells
+          // without DoFs (e.g., if a cell has FE_Nothing associated
+          // with it) because that trips up internal assertions about
+          // using FEValues with quadrature formulas without
+          // quadrature points.
+          if ((cell->is_artificial() == false) &&
+              (cell->get_fe().n_dofs_per_cell() > 0))
             {
               hp_fe_values.reinit(cell);
               const FEValues<dim, spacedim> &fe_values =
@@ -2337,7 +2526,41 @@ namespace DoFTools
 
                   // insert the values into the map if it is a valid component
                   if (mask[dof_comp])
-                    support_points[local_dof_indices[i]] = points[i];
+                    {
+                      // For continuous elements, we encounter some DoFs more
+                      // than once, namely from each cell that is adjacent to a
+                      // DoF. If everything is alright then a DoF should have
+                      // the same support point on all elements over which it
+                      // has support.
+                      //
+                      // This assertion verifies exactly that: if a DoF is
+                      // encountered more than once in this function, then its
+                      // support point should be the same (up to a numerical
+                      // tolerance).
+                      if constexpr (running_in_debug_mode())
+                        {
+                          const auto it =
+                            support_points.find(local_dof_indices[i]);
+                          // if we have degree p Lagrange elements and width dx
+                          // cells, then points are approximately dx / (p ** 2)
+                          // apart. Make that tolerance stricter (we should
+                          // catch other errors), but not much stricter so that
+                          // we don't unnecessarily constrain huge elements
+                          // which may exhibit major roundoff problems when we
+                          // subtract
+                          if (it != support_points.end())
+                            {
+                              const auto p = cell->get_fe().tensor_degree();
+                              Assert((it->second - points[i]).norm() <
+                                       cell->diameter() / (4.0 * p * p),
+                                     ExcInternalError());
+                            }
+                        }
+
+                      if (map_locally_relevant_dofs ||
+                          locally_owned_dofs.is_element(local_dof_indices[i]))
+                        support_points[local_dof_indices[i]] = points[i];
+                    }
                 }
             }
 
@@ -2350,14 +2573,15 @@ namespace DoFTools
       map_dofs_to_support_points_vector(
         const hp::MappingCollection<dim, spacedim> &mapping,
         const DoFHandler<dim, spacedim>            &dof_handler,
-        const ComponentMask                        &mask)
+        const ComponentMask                        &mask,
+        const bool                                  map_locally_relevant_dofs)
       {
         std::vector<Point<spacedim>> support_points(dof_handler.n_dofs());
 
         // get the data in the form of the map as above
         const std::map<types::global_dof_index, Point<spacedim>>
-          x_support_points =
-            map_dofs_to_support_points(mapping, dof_handler, mask);
+          x_support_points = map_dofs_to_support_points(
+            mapping, dof_handler, mask, map_locally_relevant_dofs);
 
         // now convert from the map to the linear vector. make sure every
         // entry really appeared in the map
@@ -2380,7 +2604,8 @@ namespace DoFTools
   map_dofs_to_support_points(const Mapping<dim, spacedim>    &mapping,
                              const DoFHandler<dim, spacedim> &dof_handler,
                              std::vector<Point<spacedim>>    &support_points,
-                             const ComponentMask             &mask)
+                             const ComponentMask             &mask,
+                             const bool map_locally_relevant_dofs)
   {
     AssertDimension(support_points.size(), dof_handler.n_dofs());
     Assert((dynamic_cast<
@@ -2394,10 +2619,8 @@ namespace DoFTools
     // gets a MappingCollection
     const hp::MappingCollection<dim, spacedim> mapping_collection(mapping);
 
-    support_points =
-      internal::map_dofs_to_support_points_vector(mapping_collection,
-                                                  dof_handler,
-                                                  mask);
+    support_points = internal::map_dofs_to_support_points_vector(
+      mapping_collection, dof_handler, mask, map_locally_relevant_dofs);
   }
 
 
@@ -2407,7 +2630,8 @@ namespace DoFTools
     const hp::MappingCollection<dim, spacedim> &mapping,
     const DoFHandler<dim, spacedim>            &dof_handler,
     std::vector<Point<spacedim>>               &support_points,
-    const ComponentMask                        &mask)
+    const ComponentMask                        &mask,
+    const bool                                  map_locally_relevant_dofs)
   {
     AssertDimension(support_points.size(), dof_handler.n_dofs());
     Assert((dynamic_cast<
@@ -2419,8 +2643,8 @@ namespace DoFTools
 
     // Let the internal function do all the work, just make sure that it
     // gets a MappingCollection
-    support_points =
-      internal::map_dofs_to_support_points_vector(mapping, dof_handler, mask);
+    support_points = internal::map_dofs_to_support_points_vector(
+      mapping, dof_handler, mask, map_locally_relevant_dofs);
   }
 
 
@@ -2431,7 +2655,8 @@ namespace DoFTools
     const Mapping<dim, spacedim>                       &mapping,
     const DoFHandler<dim, spacedim>                    &dof_handler,
     std::map<types::global_dof_index, Point<spacedim>> &support_points,
-    const ComponentMask                                &mask)
+    const ComponentMask                                &mask,
+    const bool map_locally_relevant_dofs)
   {
     support_points.clear();
 
@@ -2439,9 +2664,8 @@ namespace DoFTools
     // gets a MappingCollection
     const hp::MappingCollection<dim, spacedim> mapping_collection(mapping);
 
-    support_points = internal::map_dofs_to_support_points(mapping_collection,
-                                                          dof_handler,
-                                                          mask);
+    support_points = internal::map_dofs_to_support_points(
+      mapping_collection, dof_handler, mask, map_locally_relevant_dofs);
   }
 
 
@@ -2452,14 +2676,15 @@ namespace DoFTools
     const hp::MappingCollection<dim, spacedim>         &mapping,
     const DoFHandler<dim, spacedim>                    &dof_handler,
     std::map<types::global_dof_index, Point<spacedim>> &support_points,
-    const ComponentMask                                &mask)
+    const ComponentMask                                &mask,
+    const bool map_locally_relevant_dofs)
   {
     support_points.clear();
 
     // Let the internal function do all the work, just make sure that it
     // gets a MappingCollection
-    support_points =
-      internal::map_dofs_to_support_points(mapping, dof_handler, mask);
+    support_points = internal::map_dofs_to_support_points(
+      mapping, dof_handler, mask, map_locally_relevant_dofs);
   }
 
 
@@ -2467,7 +2692,8 @@ namespace DoFTools
   std::map<types::global_dof_index, Point<spacedim>>
   map_dofs_to_support_points(const Mapping<dim, spacedim>    &mapping,
                              const DoFHandler<dim, spacedim> &dof_handler,
-                             const ComponentMask             &mask)
+                             const ComponentMask             &mask,
+                             const bool map_locally_relevant_dofs)
   {
     // Let the internal function do all the work, just make sure that it
     // gets a MappingCollection
@@ -2475,7 +2701,8 @@ namespace DoFTools
 
     return internal::map_dofs_to_support_points(mapping_collection,
                                                 dof_handler,
-                                                mask);
+                                                mask,
+                                                map_locally_relevant_dofs);
   }
 
 
@@ -2484,9 +2711,13 @@ namespace DoFTools
   map_dofs_to_support_points(
     const hp::MappingCollection<dim, spacedim> &mapping,
     const DoFHandler<dim, spacedim>            &dof_handler,
-    const ComponentMask                        &mask)
+    const ComponentMask                        &mask,
+    const bool                                  map_locally_relevant_dofs)
   {
-    return internal::map_dofs_to_support_points(mapping, dof_handler, mask);
+    return internal::map_dofs_to_support_points(mapping,
+                                                dof_handler,
+                                                mask,
+                                                map_locally_relevant_dofs);
   }
 
 
@@ -2974,7 +3205,7 @@ namespace DoFTools
 
 // explicit instantiations
 
-#include "dof_tools.inst"
+#include "dofs/dof_tools.inst"
 
 
 

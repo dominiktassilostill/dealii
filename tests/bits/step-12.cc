@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2024 by the deal.II authors
+// Copyright (C) 2006 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -476,7 +476,6 @@ DGMethod<dim>::assemble_system1()
             {
               typename DoFHandler<dim>::cell_iterator neighbor =
                 cell->neighbor(face_no);
-              ;
 
               if (face->has_children())
                 {

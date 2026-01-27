@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,6 +19,8 @@
 #include <deal.II/fe/fe_dgq.h>
 
 #include <deal.II/grid/grid_generator.h>
+
+#include <deal.II/lac/diagonal_matrix.h>
 
 #include <deal.II/matrix_free/fe_evaluation.h>
 #include <deal.II/matrix_free/matrix_free.h>
@@ -238,7 +240,7 @@ test()
           deallog << std::endl;
         }
 
-  // Compute diagonal via MatrixFreeTools
+  // Compute diagonal via MatrixFreeTools::compute_diagonal
   VectorType diagonal_mft;
   matrix_free.initialize_dof_vector(diagonal_mft);
 
@@ -260,6 +262,35 @@ test()
         deallog << std::endl;
 
         diagonal_mft.print(deallog.get_file_stream());
+        deallog << std::endl;
+      }
+
+  // Compute diagonal via MatrixFreeTools::compute_matrix
+  VectorType diagonal_2;
+  matrix_free.initialize_dof_vector(diagonal_2);
+  DiagonalMatrix<VectorType> diagonal_matrix(diagonal_2);
+
+  MatrixFreeTools::compute_matrix<dim,
+                                  fe_degree,
+                                  n_points,
+                                  n_components,
+                                  Number,
+                                  VectorizedArrayType>(matrix_free,
+                                                       constraints,
+                                                       diagonal_matrix,
+                                                       cell_operation,
+                                                       face_operation,
+                                                       boundary_operation);
+
+  diagonal_2 = diagonal_matrix.get_vector();
+
+  for (unsigned int i = 0; i < diagonal_2.size(); ++i)
+    if (std::abs(diagonal[i] - diagonal_2[i]) > 1e-6)
+      {
+        diagonal.print(deallog.get_file_stream());
+        deallog << std::endl;
+
+        diagonal_2.print(deallog.get_file_stream());
         deallog << std::endl;
       }
 

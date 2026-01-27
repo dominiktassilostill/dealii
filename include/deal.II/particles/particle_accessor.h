@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,6 +24,12 @@
 
 #include <deal.II/particles/particle.h>
 #include <deal.II/particles/property_pool.h>
+
+#include <boost/geometry/index/indexable.hpp>
+#include <boost/serialization/array_wrapper.hpp>
+
+#include <list>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -326,7 +332,21 @@ namespace Particles
      * @return An ArrayView of the properties of this particle.
      */
     ArrayView<double>
-    get_properties();
+    get_properties()
+    {
+      // The implementation is up here inside the class declaration because
+      // NVCC (at least in 12.5 and 12.6) otherwise produce a compile error:
+      //
+      // error: no declaration matches ‘dealii::ArrayView<__remove_cv(const
+      // double)> dealii::Particles::ParticleAccessor<dim,
+      // spacedim>::get_properties()’
+      //
+      // See https://github.com/dealii/dealii/issues/17148
+      Assert(state() == IteratorState::valid, ExcInternalError());
+
+      return property_pool->get_properties(get_handle());
+    }
+
 
     /**
      * Get read-access to properties of this particle.
@@ -335,21 +355,6 @@ namespace Particles
      */
     ArrayView<const double>
     get_properties() const;
-
-    /**
-     * Tell the particle where to store its properties (even if it does not
-     * own properties). Usually this is only done once per particle, but
-     * since the particle generator does not know about the properties
-     * we want to do it not at construction time. Another use for this
-     * function is after particle transfer to a new process.
-     *
-     * @deprecated This function is only kept for backward compatibility
-     * and has no meaning any more. ParticleAccessors always use the
-     * property pool of the owning particle handler.
-     */
-    DEAL_II_DEPRECATED
-    void
-    set_property_pool(PropertyPool<dim, spacedim> &property_pool);
 
     /**
      * Return the size in bytes this particle occupies if all of its data is
@@ -378,10 +383,6 @@ namespace Particles
      * Read the data of this object from a stream for the purpose of
      * serialization using the [BOOST serialization
      * library](https://www.boost.org/doc/libs/1_74_0/libs/serialization/doc/index.html).
-     * Note that in order to store the properties correctly, the property pool
-     * of this particle has to be known at the time of reading, i.e.
-     * set_property_pool() has to have been called, before this function is
-     * called.
      */
     template <class Archive>
     void
@@ -817,17 +818,6 @@ namespace Particles
 
 
   template <int dim, int spacedim>
-  inline void
-  ParticleAccessor<dim, spacedim>::set_property_pool(
-    PropertyPool<dim, spacedim> &new_property_pool)
-  {
-    Assert(&new_property_pool == property_pool, ExcInternalError());
-    (void)new_property_pool;
-  }
-
-
-
-  template <int dim, int spacedim>
   inline const typename Triangulation<dim, spacedim>::cell_iterator &
   ParticleAccessor<dim, spacedim>::get_surrounding_cell() const
   {
@@ -840,14 +830,9 @@ namespace Particles
 
 
 
-  template <int dim, int spacedim>
-  inline ArrayView<double>
-  ParticleAccessor<dim, spacedim>::get_properties()
-  {
-    Assert(state() == IteratorState::valid, ExcInternalError());
-
-    return property_pool->get_properties(get_handle());
-  }
+  // template <int dim, int spacedim>
+  // inline ArrayView<double>
+  //   ParticleAccessor<dim, spacedim>::get_properties()
 
 
 
@@ -974,10 +959,6 @@ namespace boost
   {
     namespace index
     {
-      // Forward declaration of bgi::indexable
-      template <class T>
-      struct indexable;
-
       /**
        * Make sure we can construct an RTree from Particles::ParticleAccessor
        * objects.

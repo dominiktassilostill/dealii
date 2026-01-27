@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2023 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,6 +22,11 @@
 
 #  include <functional>
 #  include <utility>
+
+#  ifdef DEAL_II_WITH_ADOLC
+#    include <adolc/adouble.h> // Taped double
+#    include <adolc/adtl.h>    // Tapeless double
+#  endif
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -82,7 +87,7 @@ namespace numbers
 
 /*---------------------- Explicit Instantiations ----------------------*/
 
-#  include "adolc_number_types.inst"
+#  include "differentiation/ad/adolc_number_types.inst"
 
 DEAL_II_NAMESPACE_CLOSE
 

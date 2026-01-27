@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2024 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,9 +24,7 @@
 #include <deal.II/matrix_free/matrix_free.h>
 #include <deal.II/matrix_free/type_traits.h>
 
-#ifdef DEBUG
-#  include <boost/algorithm/string/join.hpp>
-#endif
+#include <boost/algorithm/string/join.hpp>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -177,14 +175,10 @@ namespace internal
                              VectorType> * = nullptr>
   inline void
   check_vector_compatibility(
-    const VectorType                                   &vec,
-    const MatrixFree<dim, Number, VectorizedArrayType> &matrix_free,
-    const internal::MatrixFreeFunctions::DoFInfo       &dof_info)
+    const VectorType &vec,
+    const MatrixFree<dim, Number, VectorizedArrayType> & /*matrix_free*/,
+    const internal::MatrixFreeFunctions::DoFInfo &dof_info)
   {
-    (void)vec;
-    (void)matrix_free;
-    (void)dof_info;
-
     AssertDimension(vec.size(), dof_info.vector_partitioner->size());
   }
 
@@ -207,64 +201,68 @@ namespace internal
     (void)matrix_free;
     (void)dof_info;
 
-#ifdef DEBUG
-    if (vec.partitioners_are_compatible(*dof_info.vector_partitioner) == false)
+    if constexpr (running_in_debug_mode())
       {
-        unsigned int dof_index = numbers::invalid_unsigned_int;
-
-        for (unsigned int i = 0; i < matrix_free.n_components(); ++i)
-          if (&matrix_free.get_dof_info(i) == &dof_info)
-            {
-              dof_index = i;
-              break;
-            }
-
-        Assert(dof_index != numbers::invalid_unsigned_int, ExcInternalError());
-
-        std::vector<std::string> dof_indices_with_compatible_partitioners;
-
-        for (unsigned int i = 0; i < matrix_free.n_components(); ++i)
-          if (vec.partitioners_are_compatible(
-                *matrix_free.get_dof_info(i).vector_partitioner))
-            dof_indices_with_compatible_partitioners.push_back(
-              std::to_string(i));
-
-        if (dof_indices_with_compatible_partitioners.empty())
+        if (vec.partitioners_are_compatible(*dof_info.vector_partitioner) ==
+            false)
           {
-            Assert(false,
-                   ExcMessage("The parallel layout of the given vector is "
-                              "compatible neither with the Partitioner of the "
-                              "current FEEvaluation with dof_handler_index=" +
-                              std::to_string(dof_index) +
-                              " nor with any Partitioner in MatrixFree. A "
-                              "potential reason is that you did not use "
-                              "MatrixFree::initialize_dof_vector() to get a "
-                              "compatible vector."));
-          }
-        else
-          {
-            Assert(
-              false,
-              ExcMessage(
-                "The parallel layout of the given vector is "
-                "not compatible with the Partitioner of the "
-                "current FEEvaluation with dof_handler_index=" +
-                std::to_string(dof_index) +
-                ". However, the underlying "
-                "MatrixFree contains Partitioner objects that are compatible. "
-                "They have the following dof_handler_index values: " +
-                boost::algorithm::join(dof_indices_with_compatible_partitioners,
-                                       ", ") +
-                ". Did you want to pass any of these values to the "
-                "constructor of the current FEEvaluation object or "
-                "did you not use MatrixFree::initialize_dof_vector() "
-                "with dof_handler_index=" +
-                std::to_string(dof_index) +
-                " to get a "
-                "compatible vector?"));
+            unsigned int dof_index = numbers::invalid_unsigned_int;
+
+            for (unsigned int i = 0; i < matrix_free.n_components(); ++i)
+              if (&matrix_free.get_dof_info(i) == &dof_info)
+                {
+                  dof_index = i;
+                  break;
+                }
+
+            Assert(dof_index != numbers::invalid_unsigned_int,
+                   ExcInternalError());
+
+            std::vector<std::string> dof_indices_with_compatible_partitioners;
+
+            for (unsigned int i = 0; i < matrix_free.n_components(); ++i)
+              if (vec.partitioners_are_compatible(
+                    *matrix_free.get_dof_info(i).vector_partitioner))
+                dof_indices_with_compatible_partitioners.push_back(
+                  std::to_string(i));
+
+            if (dof_indices_with_compatible_partitioners.empty())
+              {
+                Assert(false,
+                       ExcMessage(
+                         "The parallel layout of the given vector is "
+                         "compatible neither with the Partitioner of the "
+                         "current FEEvaluation with dof_handler_index=" +
+                         std::to_string(dof_index) +
+                         " nor with any Partitioner in MatrixFree. A "
+                         "potential reason is that you did not use "
+                         "MatrixFree::initialize_dof_vector() to get a "
+                         "compatible vector."));
+              }
+            else
+              {
+                Assert(
+                  false,
+                  ExcMessage(
+                    "The parallel layout of the given vector is "
+                    "not compatible with the Partitioner of the "
+                    "current FEEvaluation with dof_handler_index=" +
+                    std::to_string(dof_index) +
+                    ". However, the underlying "
+                    "MatrixFree contains Partitioner objects that are compatible. "
+                    "They have the following dof_handler_index values: " +
+                    boost::algorithm::join(
+                      dof_indices_with_compatible_partitioners, ", ") +
+                    ". Did you want to pass any of these values to the "
+                    "constructor of the current FEEvaluation object or "
+                    "did you not use MatrixFree::initialize_dof_vector() "
+                    "with dof_handler_index=" +
+                    std::to_string(dof_index) +
+                    " to get a "
+                    "compatible vector?"));
+              }
           }
       }
-#endif
   }
 
 
@@ -306,17 +304,23 @@ namespace internal
                             VectorizedArrayType *dof_values,
                             std::bool_constant<true>) const
     {
-#ifdef DEBUG
-      // in debug mode, run non-vectorized version because this path
-      // has additional checks (e.g., regarding ghosting)
-      process_dofs_vectorized(
-        dofs_per_cell, dof_index, vec, dof_values, std::bool_constant<false>());
-#else
-      const Number *vec_ptr = vec.begin() + dof_index;
-      for (unsigned int i = 0; i < dofs_per_cell;
-           ++i, vec_ptr += VectorizedArrayType::size())
-        dof_values[i].load(vec_ptr);
-#endif
+      if constexpr (running_in_debug_mode())
+        {
+          // in debug mode, run non-vectorized version because this path
+          // has additional checks (e.g., regarding ghosting)
+          process_dofs_vectorized(dofs_per_cell,
+                                  dof_index,
+                                  vec,
+                                  dof_values,
+                                  std::bool_constant<false>());
+        }
+      else
+        {
+          const Number *vec_ptr = vec.begin() + dof_index;
+          for (unsigned int i = 0; i < dofs_per_cell;
+               ++i, vec_ptr += VectorizedArrayType::size())
+            dof_values[i].load(vec_ptr);
+        }
     }
 
 
@@ -441,19 +445,22 @@ namespace internal
       (void)constant_offset;
       (void)vec;
 
-#ifdef DEBUG
-      // in debug mode, run non-vectorized version because this path
-      // has additional checks (e.g., regarding ghosting)
-      Assert(vec_ptr == vec.begin() + constant_offset, ExcInternalError());
-      process_dof_gather(indices,
-                         vec,
-                         constant_offset,
-                         vec_ptr,
-                         res,
-                         std::bool_constant<false>());
-#else
-      res.gather(vec_ptr, indices);
-#endif
+      if constexpr (running_in_debug_mode())
+        {
+          // in debug mode, run non-vectorized version because this path
+          // has additional checks (e.g., regarding ghosting)
+          Assert(vec_ptr == vec.begin() + constant_offset, ExcInternalError());
+          process_dof_gather(indices,
+                             vec,
+                             constant_offset,
+                             vec_ptr,
+                             res,
+                             std::bool_constant<false>());
+        }
+      else
+        {
+          res.gather(vec_ptr, indices);
+        }
     }
 
 
@@ -921,9 +928,6 @@ namespace internal
                        VectorizedArrayType             &res,
                        std::bool_constant<true>) const
     {
-      (void)vec_ptr;
-      (void)constant_offset;
-      (void)vec;
       Assert(vec_ptr == vec.begin() + constant_offset, ExcInternalError());
       res.scatter(indices, vec_ptr);
     }

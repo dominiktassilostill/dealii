@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,7 +33,7 @@
 #include "../tests.h"
 
 // In https://github.com/dealii/dealii/pull/14342, we have observed that
-// overlapping comunication/computation does not work properly since
+// overlapping communication/computation does not work properly since
 // ghost faces might be assigned to the wrong partition if
 // FE_Nothing is used. This is a test which shows this problem by
 // running the same problem on a large mesh where 50% of the

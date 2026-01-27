@@ -337,8 +337,6 @@ namespace Euler_DG
                            VectorType     &vec_ri,
                            VectorType     &vec_ki) const
     {
-      AssertDimension(ai.size() + 1, bi.size());
-
       pde_operator.perform_stage(current_time,
                                  bi[0] * time_step,
                                  ai[0] * time_step,
@@ -1773,7 +1771,7 @@ namespace Euler_DG
 #endif
 
     const FESystem<dim> fe;
-    MappingQ<dim>       mapping;
+    const MappingQ<dim> mapping;
     DoFHandler<dim>     dof_handler;
 
     TimerOutput timer;

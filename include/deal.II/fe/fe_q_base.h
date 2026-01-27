@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2024 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -184,17 +184,17 @@ public:
    * @param face The number of the face this degree of freedom lives on. This
    * number must be between zero and GeometryInfo::faces_per_cell.
    * @param combined_orientation The combined orientation flag containing the
-   * orientation, rotation, and flip of the face. See @ref GlossFaceOrientation.
+   * orientation, rotation, and flip of the face. See
+   * @ref GlossCombinedOrientation.
    * @return The index of this degree of freedom within the set of degrees of
    * freedom on the entire cell. The returned value will be between zero and
    * dofs_per_cell.
    */
   virtual unsigned int
-  face_to_cell_index(
-    const unsigned int  face_dof_index,
-    const unsigned int  face,
-    const unsigned char combined_orientation =
-      ReferenceCell::default_combined_face_orientation()) const override;
+  face_to_cell_index(const unsigned int                 face_dof_index,
+                     const unsigned int                 face,
+                     const types::geometric_orientation combined_orientation =
+                       numbers::default_geometric_orientation) const override;
 
   /**
    * Return a list of constant modes of the element. For this element, the

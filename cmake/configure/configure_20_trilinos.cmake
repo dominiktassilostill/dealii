@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2024 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -22,7 +22,7 @@ set(FEATURE_TRILINOS_DEPENDS MPI)
 # A list of optional Trilinos modules we use:
 #
 set(_deal_ii_trilinos_optional_modules
-  Amesos2 Belos EpetraExt Kokkos MueLu NOX ROL Sacado SEACAS Tpetra Zoltan 
+  Amesos2 Belos EpetraExt Ifpack2 Kokkos MueLu NOX ROL Sacado SEACAS Tpetra Zoltan 
 )
 
 #
@@ -79,18 +79,17 @@ macro(feature_trilinos_find_external var)
     endif()
 
     #
-    # We require at least Trilinos 12.4
+    # We require at least Trilinos 13.2
     #
-    if(TRILINOS_VERSION VERSION_LESS 12.4)
-
+    if(TRILINOS_VERSION VERSION_LESS 13.2)
       message(STATUS "Could not find a sufficient Trilinos installation: "
-        "deal.II requires at least version 12.4, but version ${TRILINOS_VERSION} was found."
+        "deal.II requires at least version 13.2, but version ${TRILINOS_VERSION} was found."
       )
       set(TRILINOS_ADDITIONAL_ERROR_STRING
         ${TRILINOS_ADDITIONAL_ERROR_STRING}
         "The Trilinos installation (found at \"${TRILINOS_DIR}\")\n"
         "with version ${TRILINOS_VERSION} is too old.\n"
-        "deal.II requires at least version 12.4.\n\n"
+        "deal.II requires at least version 13.2.\n\n"
       )
       set(${var} FALSE)
     endif()
@@ -197,31 +196,13 @@ macro(feature_trilinos_find_external var)
       endif()
 
       #
-      # We require at least Trilinos 12.14.1
+      # When configuring Kokkos we have to ensure that we actually pick up the
+      # correct Kokkos installation coming from Trilinos.
       #
-      if(TRILINOS_VERSION VERSION_LESS 12.14.1)
-        message(STATUS "Could not find a sufficient Trilinos installation: "
-          "deal.II requires at least version 12.14.1 if the Trilinos installation includes Kokkos, "
-          "but version ${TRILINOS_VERSION} was found."
-        )
-        set(TRILINOS_ADDITIONAL_ERROR_STRING
-          ${TRILINOS_ADDITIONAL_ERROR_STRING}
-          "The Trilinos installation (found at \"${TRILINOS_DIR}\")\n"
-          "with version ${TRILINOS_VERSION} is too old.\n"
-          "deal.II requires at least version 12.14.1 if the Trilinos installation includes Kokkos.\n\n"
-        )
-        set(${var} FALSE)
-      endif()
-    endif()
-
-    if(TRILINOS_WITH_KOKKOS AND Kokkos_ENABLE_CUDA)
-      # We need to disable SIMD vectorization for CUDA device code.
-      # Otherwise, nvcc compilers from version 9 on will emit an error message like:
-      # "[...] contains a vector, which is not supported in device code". We
-      # would like to set the variable in check_01_cpu_feature but at that point
-      # we don't know if CUDA support is enabled in Kokkos
-      set(DEAL_II_VECTORIZATION_WIDTH_IN_BITS 0)
-      KOKKOS_CHECK(OPTIONS CUDA_LAMBDA)
+      # FIXME: this logic should probably be refactored into
+      # FindDEAL_II_TRILINOS.cmake...
+      #
+      set(TRILINOS_KOKKOS_DIR "${TRILINOS_CONFIG_DIR}/..")
     endif()
 
     if(TRILINOS_WITH_TPETRA)
@@ -264,62 +245,82 @@ macro(feature_trilinos_find_external var)
       )
 
       if(TRILINOS_TPETRA_IS_FUNCTIONAL)
-        check_cxx_symbol_exists(HAVE_TPETRA_INST_FLOAT "TpetraCore_config.h" DEAL_II_HAVE_TPETRA_INST_FLOAT)
-        check_cxx_symbol_exists(HAVE_TPETRA_INST_DOUBLE "TpetraCore_config.h" DEAL_II_HAVE_TPETRA_INST_DOUBLE)
-        check_cxx_symbol_exists(HAVE_TPETRA_INST_COMPLEX_FLOAT "TpetraCore_config.h" DEAL_II_HAVE_TPETRA_INST_COMPLEX_FLOAT)
-        check_cxx_symbol_exists(HAVE_TPETRA_INST_COMPLEX_DOUBLE "TpetraCore_config.h" DEAL_II_HAVE_TPETRA_INST_COMPLEX_DOUBLE)
+        #
+        # We need to figure out what instantiations are used in Tpetra so
+        # that we can populate our DEAL_II_EXPAND_TPETRA correctly. We need
+        # to dof this here prior to the call to reset_cmake_required().
+        #
+        check_cxx_symbol_exists(HAVE_TPETRA_INST_DOUBLE "TpetraCore_config.h" DEAL_II_TRILINOS_WITH_TPETRA_INST_DOUBLE)
+        check_cxx_symbol_exists(HAVE_TPETRA_INST_FLOAT "TpetraCore_config.h" DEAL_II_TRILINOS_WITH_TPETRA_INST_FLOAT)
+        check_cxx_symbol_exists(HAVE_TPETRA_INST_COMPLEX_DOUBLE "TpetraCore_config.h" DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_DOUBLE)
+        check_cxx_symbol_exists(HAVE_TPETRA_INST_COMPLEX_FLOAT "TpetraCore_config.h" DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_FLOAT)
       else()
-        message(
-          STATUS
-          "Tpetra was found but is not usable! Disabling Tpetra support and searching for common errors."
-        )
+        message(STATUS "Tpetra was found but is not usable due to a mismatch in ordinal number types.")
         set(TRILINOS_WITH_TPETRA OFF)
 
-        check_cxx_symbol_exists(HAVE_TPETRA_INT_INT "TpetraCore_config.h" DEAL_II_HAVE_TPETRA_INT_INT)
-        check_cxx_symbol_exists(HAVE_TPETRA_INT_LONG "TpetraCore_config.h" DEAL_II_HAVE_TPETRA_INT_LONG)
-        check_cxx_symbol_exists(HAVE_TPETRA_INT_LONG_LONG "TpetraCore_config.h" DEAL_II_HAVE_TPETRA_INT_LONG_LONG)
+        check_cxx_symbol_exists(HAVE_TPETRA_INT_INT "TpetraCore_config.h" _tpetra_int_int)
+        check_cxx_symbol_exists(HAVE_TPETRA_INT_LONG_LONG "TpetraCore_config.h" _tpetra_int_long_long)
 
-        if(NOT DEAL_II_HAVE_TPETRA_INT_LONG_LONG AND DEAL_II_WITH_64BIT_INDICES)
-          message(
-            STATUS
-            "  Tpetra wasn't configured with support for 64-bit global indices\n"
-            "  but deal.II is configured to use 64-bit global indices.\n"
-            "  Either reconfigure deal.II with -DDEAL_II_WITH_64BIT_INDICES=OFF\n"
-            "  or rebuild Trilinos with -DTpetra_INST_INT_LONG_LONG=ON"
-          )
-          if(DEAL_II_HAVE_TPETRA_INT_LONG)
-            message(
-              STATUS
-              "  and -DTpetra_INST_INT_LONG=OFF."
+        if(NOT _tpetra_int_long_long AND DEAL_II_WITH_64BIT_INDICES)
+          message( STATUS
+            "  Tpetra was configured *without* support for 64-bit global indices"
+            " but deal.II is configured to use 64-bit global indices."
             )
-          elseif(DEAL_II_HAVE_TPETRA_INT_INT)
-            message(
-              STATUS
-              "  and -DTpetra_INST_INT_INT=OFF."
+          message(STATUS
+            "  Either reconfigure deal.II with -DDEAL_II_WITH_64BIT_INDICES=OFF"
+            " or rebuild Trilinos with -DTpetra_INST_INT_LONG_LONG=ON"
             )
-          endif()
-        elseif(NOT DEAL_II_HAVE_TPETRA_INT_INT AND NOT DEAL_II_WITH_64BIT_INDICES)
-          message(
-            STATUS
-            "  Tpetra wasn't configured with support for 32-bit global indices\n"
-            "  but deal.II is configured to use 32-bit global indices.\n"
-            "  Either reconfigure deal.II with -DDEAL_II_WITH_64BIT_INDICES=ON\n"
-            "  or rebuild Trilinos with -DTpetra_INST_INT_INT=ON"
-          )
-          if(DEAL_II_HAVE_TPETRA_INT_LONG)
-            message(
-              STATUS
-              "  and -DTpetra_INST_INT_LONG=OFF."
+
+        elseif(NOT _tpetra_int_int AND NOT DEAL_II_WITH_64BIT_INDICES)
+          message( STATUS
+            "  Tpetra was configured *without* support for 32-bit global indices"
+            " but deal.II is configured to use 32-bit global indices."
             )
-          elseif(DEAL_II_HAVE_TPETRA_INT_LONG_LONG)
-            message(
-              STATUS
-              "  and -DTpetra_INST_INT_LONG_LONG=OFF."
+          message(STATUS
+            "  Either reconfigure deal.II with -DDEAL_II_WITH_64BIT_INDICES=ON"
+            " or rebuild Trilinos with -DTpetra_INST_INT_INT=ON"
             )
-          endif()
         endif()
 
         reset_cmake_required()
+      endif()
+    endif()
+
+    if(TRILINOS_WITH_MUELU AND TRILINOS_WITH_TPETRA)
+      #
+      # Check if MueLu is actually usable.
+      #
+      list(APPEND CMAKE_REQUIRED_INCLUDES ${Trilinos_INCLUDE_DIRS})
+      list(APPEND CMAKE_REQUIRED_INCLUDES ${MPI_CXX_INCLUDE_PATH})
+
+      list(APPEND CMAKE_REQUIRED_LIBRARIES ${Trilinos_LIBRARIES} ${MPI_LIBRARIES})
+      list(APPEND CMAKE_REQUIRED_FLAGS ${TRILINOS_CXX_FLAGS})
+
+      CHECK_CXX_SOURCE_COMPILES(
+        "
+        #include <MueLu_CreateTpetraPreconditioner.hpp>
+        int
+        main()
+        {
+        Tpetra::CrsMatrix<>  *matrix;
+          const auto teuchos_wrapped_matrix = Teuchos::rcp(matrix, false);
+          Teuchos::ParameterList parameters;
+          Teuchos::RCP<Tpetra::Operator<>> op = teuchos_wrapped_matrix;
+         MueLu::CreateTpetraPreconditioner(op, parameters);
+          return 0;
+        }
+        "
+        DEAL_II_TRILINOS_WITH_TPETRA_MUELU
+      )
+
+      reset_cmake_required()
+
+      if(NOT DEAL_II_TRILINOS_WITH_TPETRA_MUELU)
+        message(
+          STATUS
+          "MueLu was found but is not usable through Tpetra! Disabling
+          MueLu support with Tpetra."
+        )
       endif()
     endif()
 
@@ -354,7 +355,8 @@ macro(feature_trilinos_find_external var)
       if(NOT TRILINOS_MUELU_IS_FUNCTIONAL)
         message(
           STATUS
-          "MueLu was found but is not usable through Epetra! Disabling MueLu support."
+          "MueLu was found but is not usable through Epetra! Disabling
+          MueLu support with Epetra."
         )
         set(TRILINOS_WITH_MUELU OFF)
       endif()
@@ -451,6 +453,18 @@ macro(feature_trilinos_configure_external)
   endforeach()
 
   #
+  # For gcc-11 (or older) we need to manually disable preprocessor warnings
+  # in order to avoid flooding the screen with Epetra deprecation notices.
+  # Newer versions support selectively setting the "-Wno-cpp" flag via a
+  # compiler pragma.
+  #
+  if(TRILINOS_VERSION VERSION_GREATER_EQUAL 16.0)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS "12.0")
+      enable_if_supported(DEAL_II_WARNING_FLAGS "-Wno-cpp")
+    endif()
+  endif()
+
+  #
   # Figure out all the possible instantiations we need:
   #
 
@@ -462,19 +476,42 @@ macro(feature_trilinos_configure_external)
   set(DEAL_II_EXPAND_EPETRA_VECTOR "LinearAlgebra::EpetraWrappers::Vector")
 
   if(${DEAL_II_TRILINOS_WITH_TPETRA})
-    if(DEAL_II_HAVE_TPETRA_INST_DOUBLE)
+    if(DEAL_II_TRILINOS_WITH_TPETRA_INST_DOUBLE)
       set(DEAL_II_EXPAND_TPETRA_TYPES "double")
-      set(DEAL_II_EXPAND_TPETRA_VECTOR_DOUBLE "LinearAlgebra::TpetraWrappers::Vector<double>")
+      set(DEAL_II_EXPAND_TPETRA_VECTOR_DOUBLE
+        "LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Host>"
+        "LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default>")
+      set(DEAL_II_EXPAND_TPETRA_BLOCKVECTOR_DOUBLE
+        "LinearAlgebra::TpetraWrappers::BlockVector<double, MemorySpace::Host>"
+        "LinearAlgebra::TpetraWrappers::BlockVector<double, MemorySpace::Default>")
     endif()
-    if(DEAL_II_HAVE_TPETRA_INST_FLOAT)
-      set(DEAL_II_EXPAND_TPETRA_VECTOR_FLOAT "LinearAlgebra::TpetraWrappers::Vector<float>")
+
+    if(DEAL_II_TRILINOS_WITH_TPETRA_INST_FLOAT)
+      set(DEAL_II_EXPAND_TPETRA_VECTOR_FLOAT
+        "LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Host>"
+        "LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Default>")
+      set(DEAL_II_EXPAND_TPETRA_BLOCKVECTOR_FLOAT
+        "LinearAlgebra::TpetraWrappers::BlockVector<float, MemorySpace::Host>"
+        "LinearAlgebra::TpetraWrappers::BlockVector<float, MemorySpace::Default>")
     endif()
+
     if(${DEAL_II_WITH_COMPLEX_NUMBERS})
-      if(DEAL_II_HAVE_TPETRA_INST_COMPLEX_DOUBLE)
-        set(DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_DOUBLE "LinearAlgebra::TpetraWrappers::Vector<std::complex<double>>")
+      if(DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_DOUBLE)
+        set(DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_DOUBLE
+          "LinearAlgebra::TpetraWrappers::Vector<std::complex<double>, MemorySpace::Host>"
+          "LinearAlgebra::TpetraWrappers::Vector<std::complex<double>, MemorySpace::Default>")
+        set(DEAL_II_EXPAND_TPETRA_BLOCKVECTOR_COMPLEX_DOUBLE
+          "LinearAlgebra::TpetraWrappers::BlockVector<std::complex<double>, MemorySpace::Host>"
+          "LinearAlgebra::TpetraWrappers::BlockVector<std::complex<double>, MemorySpace::Default>")
       endif()
-      if(DEAL_II_HAVE_TPETRA_INST_COMPLEX_FLOAT)
-        set(DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_FLOAT "LinearAlgebra::TpetraWrappers::Vector<std::complex<float>>")
+
+      if(DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_FLOAT)
+        set(DEAL_II_EXPAND_TPETRA_VECTOR_COMPLEX_FLOAT
+          "LinearAlgebra::TpetraWrappers::Vector<std::complex<float>, MemorySpace::Host>"
+          "LinearAlgebra::TpetraWrappers::Vector<std::complex<float>, MemorySpace::Default>")
+        set(DEAL_II_EXPAND_TPETRA_BLOCKVECTOR_COMPLEX_FLOAT
+          "LinearAlgebra::TpetraWrappers::BlockVector<std::complex<float>, MemorySpace::Host>"
+          "LinearAlgebra::TpetraWrappers::BlockVector<std::complex<float>, MemorySpace::Default>")
       endif()
     endif()
   endif()
@@ -485,13 +522,13 @@ macro(feature_trilinos_configure_external)
       "Sacado::Fad::DFad<float>"
       "Sacado::Fad::DFad<Sacado::Fad::DFad<double>>"
       "Sacado::Fad::DFad<Sacado::Fad::DFad<float>>"
-    )
+      )
     set(DEAL_II_EXPAND_TRILINOS_SACADO_TYPES_RAD
       "Sacado::Rad::ADvar<double>"
       "Sacado::Rad::ADvar<float>"
       "Sacado::Rad::ADvar<Sacado::Fad::DFad<double>>"
       "Sacado::Rad::ADvar<Sacado::Fad::DFad<float>>"
-    )
+      )
     if(TRILINOS_CXX_SUPPORTS_SACADO_COMPLEX_RAD)
       set(DEAL_II_TRILINOS_CXX_SUPPORTS_SACADO_COMPLEX_RAD ${TRILINOS_CXX_SUPPORTS_SACADO_COMPLEX_RAD})
     endif()

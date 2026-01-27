@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -79,7 +79,7 @@ class FE_Enriched;
  * tutorial programs, for example step-8, step-20, step-21, step-22, and in
  * particular in the
  * @ref vector_valued
- * module.
+ * topic.
  *
  * @dealiiVideoLecture{19,20}
  *
@@ -233,7 +233,7 @@ public:
    *
    * This constructor (or its variants below) is used in essentially all
    * tutorial programs that deal with vector valued problems. See step-8,
-   * step-20, step-22 and others for use cases. Also see the module on
+   * step-20, step-22 and others for use cases. Also see the topic on
    * @ref vector_valued "Handling vector valued problems".
    *
    * @dealiiVideoLecture{19,20}
@@ -880,17 +880,17 @@ public:
    * @param face The number of the face this degree of freedom lives on. This
    * number must be between zero and GeometryInfo::faces_per_cell.
    * @param combined_orientation The combined orientation flag containing the
-   * orientation, rotation, and flip of the face. See @ref GlossFaceOrientation.
+   * orientation, rotation, and flip of the face. See
+   * @ref GlossCombinedOrientation.
    * @return The index of this degree of freedom within the set of degrees of
    * freedom on the entire cell. The returned value will be between zero and
    * dofs_per_cell.
    */
   virtual unsigned int
-  face_to_cell_index(
-    const unsigned int  face_dof_index,
-    const unsigned int  face,
-    const unsigned char combined_orientation =
-      ReferenceCell::default_combined_face_orientation()) const override;
+  face_to_cell_index(const unsigned int                 face_dof_index,
+                     const unsigned int                 face,
+                     const types::geometric_orientation combined_orientation =
+                       numbers::default_geometric_orientation) const override;
 
   /**
    * Implementation of the respective function in the base class.

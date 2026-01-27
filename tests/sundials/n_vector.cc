@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,7 @@
 // are created by calling NVectorView on one of the internal vector types.
 
 #include <deal.II/base/logstream.h>
+#include <deal.II/base/mpi.h>
 
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/la_parallel_block_vector.h>
@@ -25,10 +26,6 @@
 
 #include <deal.II/sundials/n_vector.h>
 #include <deal.II/sundials/n_vector.templates.h>
-
-#ifdef DEAL_II_WITH_MPI
-#  include <mpi.h>
-#endif
 
 #include "../tests.h"
 
@@ -346,7 +343,7 @@ test_destroy()
 template <typename VectorType,
           std::enable_if_t<is_serial_vector<VectorType>::value, int> = 0>
 void
-test_get_communicator()
+test_get_mpi_communicator()
 {
   auto vector   = create_test_vector<VectorType>();
   auto n_vector = make_nvector_view(vector
@@ -355,8 +352,10 @@ test_get_communicator()
                                     global_nvector_context
 #endif
   );
+#if DEAL_II_SUNDIALS_VERSION_LT(7, 0, 0)
   // required by SUNDIALS: MPI-unaware vectors should return the nullptr
   Assert(N_VGetCommunicator(n_vector) == nullptr, NVectorTestError());
+#endif
 
   deallog << "test_get_communicator OK" << std::endl;
 }
@@ -366,7 +365,7 @@ test_get_communicator()
 template <typename VectorType,
           std::enable_if_t<!is_serial_vector<VectorType>::value, int> = 0>
 void
-test_get_communicator()
+test_get_mpi_communicator()
 {
   auto vector   = create_test_vector<VectorType>();
   auto n_vector = make_nvector_view(vector
@@ -1079,7 +1078,7 @@ run_all_tests(const std::string &prefix)
   // test vector operations
   test_clone<VectorType>();
   test_destroy<VectorType>();
-  test_get_communicator<VectorType>();
+  test_get_mpi_communicator<VectorType>();
   test_length<VectorType>();
   test_linear_sum<VectorType>();
   test_linear_combination<VectorType>();

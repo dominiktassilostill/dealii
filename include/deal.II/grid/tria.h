@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,19 +18,20 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/geometry_info.h>
 #include <deal.II/base/iterator_range.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/partitioner.h>
 #include <deal.II/base/point.h>
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/grid/cell_id.h>
 #include <deal.II/grid/cell_status.h>
-#include <deal.II/grid/tria_description.h>
+#include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator_selector.h>
 #include <deal.II/grid/tria_levels.h>
 
+#include <boost/range/iterator_range_core.hpp>
 #include <boost/serialization/map.hpp>
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/unique_ptr.hpp>
@@ -367,7 +368,7 @@ namespace internal
    * will be, attached to cells via the register_data_attach() function
    * and later retrieved via notify_ready_to_unpack().
    *
-   * This internalclass is dedicated to the data serialization and transfer
+   * This internal class is dedicated to the data serialization and transfer
    * across repartitioned meshes and to/from the file system.
    *
    * It is designed to store all data buffers intended for serialization.
@@ -378,6 +379,12 @@ namespace internal
   {
   public:
     using cell_iterator = TriaIterator<CellAccessor<dim, spacedim>>;
+
+    /**
+     * Version number stored in the .info file written by
+     * Triangulation::save().
+     */
+    static inline constexpr unsigned int version_number = 5;
 
     /**
      * Auxiliary data structure for assigning a CellStatus to a deal.II cell
@@ -442,13 +449,13 @@ namespace internal
     /**
      * Serialize data to file system.
      *
-     * The data will be written in a separate file, whose name
-     * consists of the stem @p filename and an attached identifier
+     * The data will be written in a number of file whose names
+     * consists of the stem @p file_basename and an attached identifier
      * <tt>_fixed.data</tt> for fixed size data and <tt>_variable.data</tt>
      * for variable size data.
      *
      * If MPI support is enabled, all processors write into these files
-     * simultaneously via MPIIO. Each processor's position to write to will be
+     * simultaneously via MPI I/O. Each processor's position to write to will be
      * determined from the provided input parameters.
      *
      * Data has to be previously packed with pack_data().
@@ -456,14 +463,14 @@ namespace internal
     void
     save(const unsigned int global_first_cell,
          const unsigned int global_num_cells,
-         const std::string &filename,
+         const std::string &file_basename,
          const MPI_Comm    &mpi_communicator) const;
 
     /**
      * Deserialize data from file system.
      *
-     * The data will be read from separate file, whose name
-     * consists of the stem @p filename and an attached identifier
+     * The data will be read from separate files whose names
+     * consists of the stem @p file_basename and an attached identifier
      * <tt>_fixed.data</tt> for fixed size data and <tt>_variable.data</tt>
      * for variable size data.
      * The @p n_attached_deserialize_fixed and @p n_attached_deserialize_variable
@@ -481,7 +488,7 @@ namespace internal
     load(const unsigned int global_first_cell,
          const unsigned int global_num_cells,
          const unsigned int local_num_cells,
-         const std::string &filename,
+         const std::string &file_basename,
          const unsigned int n_attached_deserialize_fixed,
          const unsigned int n_attached_deserialize_variable,
          const MPI_Comm    &mpi_communicator);
@@ -994,7 +1001,7 @@ namespace internal
  * inheriting from Manifold; see the documentation of Manifold, step-49, or
  * the
  * @ref manifold
- * module for examples and a complete description of the algorithms. By
+ * topic for examples and a complete description of the algorithms. By
  * default, all cells in a Triangulation have a flat geometry, meaning that
  * all lines in the Triangulation are assumed to be straight. If a cell has a
  * manifold_id that is not equal to numbers::flat_manifold_id then the
@@ -1313,7 +1320,7 @@ namespace internal
  */
 template <int dim, int spacedim = dim>
 DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
-class Triangulation : public Subscriptor
+class Triangulation : public EnableObserverPointer
 {
 private:
   /**
@@ -1535,7 +1542,7 @@ public:
   /**
    * An alias that is used to identify cell iterators. The concept of
    * iterators is discussed at length in the
-   * @ref Iterators "iterators documentation module".
+   * @ref Iterators "iterators documentation topic".
    *
    * The current alias identifies cells in a triangulation. The TriaIterator
    * class works like a pointer that when you dereference it yields an object
@@ -1559,7 +1566,7 @@ public:
    * An alias that is used to identify
    * @ref GlossActive "active cell iterators".
    * The concept of iterators is discussed at length in the
-   * @ref Iterators "iterators documentation module".
+   * @ref Iterators "iterators documentation topic".
    *
    * The current alias identifies active cells in a triangulation. The
    * TriaActiveIterator class works like a pointer to active objects that when
@@ -1576,7 +1583,7 @@ public:
   /**
    * An alias that is used to identify iterators that point to faces.
    * The concept of iterators is discussed at length in the
-   * @ref Iterators "iterators documentation module".
+   * @ref Iterators "iterators documentation topic".
    *
    * The current alias identifies faces in a triangulation. The
    * TriaIterator class works like a pointer to objects that when
@@ -1606,7 +1613,7 @@ public:
    * An alias that defines an iterator type to iterate over
    * vertices of a mesh.  The concept of iterators is discussed at
    * length in the
-   * @ref Iterators "iterators documentation module".
+   * @ref Iterators "iterators documentation topic".
    *
    * @ingroup Iterators
    */
@@ -1616,7 +1623,7 @@ public:
    * An alias that defines an iterator type to iterate over
    * vertices of a mesh.  The concept of iterators is discussed at
    * length in the
-   * @ref Iterators "iterators documentation module".
+   * @ref Iterators "iterators documentation topic".
    *
    * This alias is in fact identical to the @p vertex_iterator alias
    * above since all vertices in a mesh are active (i.e., are a vertex of
@@ -1804,10 +1811,21 @@ public:
   clear();
 
   /**
-   * Return MPI communicator used by this triangulation. In the case of
-   * a serial Triangulation object, MPI_COMM_SELF is returned.
+   * Return the MPI communicator used by this triangulation. In the case of a
+   * serial Triangulation object, MPI_COMM_SELF is returned.
    */
   virtual MPI_Comm
+  get_mpi_communicator() const;
+
+  /**
+   * Return the MPI communicator used by this triangulation. In the case of
+   * a serial Triangulation object, MPI_COMM_SELF is returned.
+   *
+   * @deprecated Use get_mpi_communicator() instead.
+   */
+  DEAL_II_DEPRECATED_WITH_COMMENT(
+    "Access the MPI communicator with get_mpi_communicator() instead.")
+  MPI_Comm
   get_communicator() const;
 
   /**
@@ -1942,7 +1960,9 @@ public:
    * Return a constant reference to a Manifold object used for this
    * triangulation. @p number is the same as in set_manifold().
    *
-   * @note If no manifold could be found, the default flat manifold is returned.
+   * @note In debug mode, this function checks that @p number has been
+   * previously associated with a Manifold via set_manifold(). If it has not
+   * then an assertion is triggered.
    *
    * @ingroup manifold
    *
@@ -2219,34 +2239,34 @@ public:
    * @deprecated This is an alias for backward compatibility. Use
    * ::dealii::CellStatus directly.
    */
-  using CellStatus DEAL_II_DEPRECATED_EARLY = ::dealii::CellStatus;
+  using CellStatus DEAL_II_DEPRECATED = ::dealii::CellStatus;
 
   /**
    * @deprecated This is an alias for backward compatibility. Use
    * ::dealii::CellStatus directly.
    */
-  static constexpr auto CELL_PERSIST DEAL_II_DEPRECATED_EARLY =
+  static constexpr auto CELL_PERSIST DEAL_II_DEPRECATED =
     ::dealii::CellStatus::cell_will_persist;
 
   /**
    * @deprecated This is an alias for backward compatibility. Use
    * ::dealii::CellStatus directly.
    */
-  static constexpr auto CELL_REFINE DEAL_II_DEPRECATED_EARLY =
+  static constexpr auto CELL_REFINE DEAL_II_DEPRECATED =
     ::dealii::CellStatus::cell_will_be_refined;
 
   /**
    * @deprecated This is an alias for backward compatibility. Use
    * ::dealii::CellStatus directly.
    */
-  static constexpr auto CELL_COARSEN DEAL_II_DEPRECATED_EARLY =
+  static constexpr auto CELL_COARSEN DEAL_II_DEPRECATED =
     ::dealii::CellStatus::children_will_be_coarsened;
 
   /**
    * @deprecated This is an alias for backward compatibility. Use
    * ::dealii::CellStatus directly.
    */
-  static constexpr auto CELL_INVALID DEAL_II_DEPRECATED_EARLY =
+  static constexpr auto CELL_INVALID DEAL_II_DEPRECATED =
     ::dealii::CellStatus::cell_invalid;
 
 
@@ -3588,19 +3608,21 @@ public:
 
 
   /**
+   * Save the mesh and associated information into a number of files
+   * that all use the provided basename as a starting prefix, plus some
+   * suffixes that indicate the specific use of that file.
+   *
    * Save the triangulation into the given file. Internally, this
-   * function calls the save function which uses BOOST archives. This
-   * is a placeholder implementation that, in the near future, will also
-   * attach the data associated with the triangulation
+   * function calls the save function which uses BOOST archives.
    */
   virtual void
-  save(const std::string &filename) const;
+  save(const std::string &file_basename) const;
 
   /**
    * Load the triangulation saved with save() back in.
    */
   virtual void
-  load(const std::string &filename);
+  load(const std::string &file_basename);
 
 
   /**
@@ -3625,9 +3647,9 @@ public:
   /**
    * Return the periodic_face_map.
    */
-  const std::map<
-    std::pair<cell_iterator, unsigned int>,
-    std::pair<std::pair<cell_iterator, unsigned int>, unsigned char>> &
+  const std::map<std::pair<cell_iterator, unsigned int>,
+                 std::pair<std::pair<cell_iterator, unsigned int>,
+                           types::geometric_orientation>> &
   get_periodic_face_map() const;
 
   /**
@@ -3664,6 +3686,8 @@ public:
    * Write and read the data of this object from a stream for the purpose
    * of serialization. using the [BOOST serialization
    * library](https://www.boost.org/doc/libs/1_74_0/libs/serialization/doc/index.html).
+   *
+   * This function is used in step-83.
    */
   template <class Archive>
   void
@@ -3855,7 +3879,8 @@ public:
 
 protected:
   /**
-   * Save additional cell-attached data into the given file. The first
+   * Save additional cell-attached data from files all starting with
+   * the base name given as last argument. The first
    * arguments are used to determine the offsets where to write buffers to.
    *
    * Called by @ref save.
@@ -3863,10 +3888,11 @@ protected:
   void
   save_attached_data(const unsigned int global_first_cell,
                      const unsigned int global_num_cells,
-                     const std::string &filename) const;
+                     const std::string &file_basename) const;
 
   /**
-   * Load additional cell-attached data from the given file, if any was saved.
+   * Load additional cell-attached data files all starting with the
+   * base name given as fourth argument, if any was saved.
    * The first arguments are used to determine the offsets where to read
    * buffers from.
    *
@@ -3876,23 +3902,37 @@ protected:
   load_attached_data(const unsigned int global_first_cell,
                      const unsigned int global_num_cells,
                      const unsigned int local_num_cells,
-                     const std::string &filename,
+                     const std::string &file_basename,
                      const unsigned int n_attached_deserialize_fixed,
                      const unsigned int n_attached_deserialize_variable);
 
   /**
-   * A function to record the CellStatus of currently active cells that
-   * are locally owned. This information is mandatory to transfer data
-   * between meshes during adaptation or serialization, e.g., using
-   * parallel::distributed::SolutionTransfer.
+   * A function to record the CellStatus of currently active cells.
+   * This information is mandatory to transfer data between meshes
+   * during adaptation or serialization, e.g., using SolutionTransfer.
    *
    * Relations will be stored in the private member local_cell_relations. For
    * an extensive description of CellStatus, see the documentation for the
    * member function register_data_attach().
    */
-  virtual void
-  update_cell_relations()
-  {}
+  void
+  update_cell_relations();
+
+  /**
+   * Function to pack data for
+   * SolutionTransfer::prepare_for_coarsening_and_refinement() in the case of a
+   * serial triangulation.
+   */
+  void
+  pack_data_serial();
+
+
+  /**
+   * Function to unpack data for SolutionTransfer::interpolate() in the case of
+   * a serial triangulation.
+   */
+  void
+  unpack_data_serial();
 
   /**
    * Vector of pairs, each containing a deal.II cell iterator and its
@@ -4067,7 +4107,8 @@ private:
    * face pairs.
    */
   std::map<std::pair<cell_iterator, unsigned int>,
-           std::pair<std::pair<cell_iterator, unsigned int>, unsigned char>>
+           std::pair<std::pair<cell_iterator, unsigned int>,
+                     types::geometric_orientation>>
     periodic_face_map;
 
   /**
@@ -4462,8 +4503,7 @@ private:
   std::vector<bool> vertices_used;
 
   /**
-   * Collection of manifold objects. We store only objects, which are not of
-   * type FlatManifold.
+   * Collection of Manifold objects.
    */
   std::map<types::manifold_id, std::unique_ptr<const Manifold<dim, spacedim>>>
     manifolds;
@@ -4897,21 +4937,31 @@ bool
 Triangulation<1, 3>::prepare_coarsening_and_refinement();
 
 
+// Declare the existence of explicit instantiations of the class
+// above. This is not strictly necessary, but tells the compiler to
+// avoid instantiating templates that we know are instantiated in
+// .cc files and so can be referenced without implicit
+// instantiations.
+//
+// Unfortunately, this does not seem to work when building modules
+// with clang++ versions before 22 because they then just don't
+// instantiate these classes at all, even though their members are
+// defined and explicitly instantiated in a .cc file.
+//
+// See https://github.com/llvm/llvm-project/issues/153225 for the
+// corresponding bug report.
+#  if !(defined(DEAL_II_BUILDING_CXX20_MODULE) && defined(__clang__) && \
+        (__clang_major__ < 22))
 extern template class Triangulation<1, 1>;
 extern template class Triangulation<1, 2>;
 extern template class Triangulation<1, 3>;
 extern template class Triangulation<2, 2>;
 extern template class Triangulation<2, 3>;
 extern template class Triangulation<3, 3>;
+#  endif
 
 #endif // DOXYGEN
 
 DEAL_II_NAMESPACE_CLOSE
-
-// Include tria_accessor.h here, so that it is possible for an end
-// user to use the iterators of Triangulation<dim> directly without
-// the need to include tria_accessor.h separately. (Otherwise the
-// iterators are an 'opaque' or 'incomplete' type.)
-#include <deal.II/grid/tria_accessor.h>
 
 #endif

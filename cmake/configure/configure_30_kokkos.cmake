@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2021 - 2022 by the deal.II authors
+## Copyright (C) 2021 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -23,10 +23,10 @@ set(DEAL_II_WITH_KOKKOS ON # Always true. We need it :-]
 
 configure_feature(KOKKOS)
 
-
 #
 # DEAL_II_WITH_KOKKOS is always required.
 #
+
 if(NOT DEAL_II_WITH_KOKKOS)
   if(DEAL_II_FEATURE_AUTODETECTION)
     feature_error_message("KOKKOS")
@@ -38,3 +38,34 @@ if(NOT DEAL_II_WITH_KOKKOS)
   endif()
 endif()
 
+if(KOKKOS_VERSION VERSION_LESS 4.0.0 AND (Kokkos_ENABLE_CUDA OR Kokkos_ENABLE_HIP OR Kokkos_ENABLE_SYCL))
+  # In versions older than 4.0.0, we would need several workarounds if
+  # device support is enabled. So, to simplify our work, require a more
+  # modern version:
+  message(FATAL_ERROR "\n"
+    "We require Kokkos version 4.0.0 or newer to enable device support (CUDA/HIP/SYCL)."
+    )
+endif()
+
+#
+# Sanity check: Make sure we do not accidentally end up using bundled
+# Kokkos with Trilinos and PETSc built against an external Kokkos library.
+# We should have never gotten into this situation. So all we can do now is
+# to issue a FATAL_ERROR.
+#
+
+if(DEAL_II_FEATURE_KOKKOS_BUNDLED_CONFIGURED AND DEAL_II_WITH_TRILINOS AND TRILINOS_WITH_KOKKOS)
+  message(FATAL_ERROR "\n"
+    "Internal build system error: We have selected Trilinos shipping with (or "
+    "built against) an external Kokkos library, but ended up selecting our "
+    "bundled Kokkos library.\n\n"
+    )
+endif()
+
+if(DEAL_II_FEATURE_KOKKOS_BUNDLED_CONFIGURED AND DEAL_II_WITH_PETSC AND PETSC_WITH_KOKKOS)
+  message(FATAL_ERROR "\n"
+    "Internal build system error: We have selected PETSc built against an "
+    "external Kokkos library, but ended up selecting our bundled Kokkos "
+    "library.\n\n"
+    )
+endif()

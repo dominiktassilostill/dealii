@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2024 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,10 +18,10 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/aligned_vector.h>
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/linear_index_iterator.h>
 #include <deal.II/base/memory_consumption.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/table_indices.h>
 
 #include <algorithm>
@@ -165,8 +165,8 @@ namespace internal
       using iterator       = typename Types<N, T, C>::iterator;
       using const_iterator = typename Types<N, T, C>::const_iterator;
 
-      using size_type       = size_t;
-      using difference_type = ptrdiff_t;
+      using size_type       = std::size_t;
+      using difference_type = std::ptrdiff_t;
 
     private:
       /**
@@ -251,8 +251,8 @@ namespace internal
       using reference       = typename Types<N, T, C>::reference;
       using const_reference = typename Types<N, T, C>::const_reference;
 
-      using size_type       = size_t;
-      using difference_type = ptrdiff_t;
+      using size_type       = std::size_t;
+      using difference_type = std::ptrdiff_t;
 
       /**
        * Import an alias from the switch class above.
@@ -269,7 +269,7 @@ namespace internal
        * objects around. The only way to create such objects is via the
        * <tt>Table</tt> class, which only generates them as temporary objects.
        * This guarantees that the accessor objects go out of scope earlier
-       * than the mother object, avoid problems with data consistency.
+       * than the parent object, avoid problems with data consistency.
        */
       Accessor(const TableType &table, const iterator data);
 
@@ -437,7 +437,7 @@ namespace internal
  * @ingroup data
  */
 template <int N, typename T>
-class TableBase : public Subscriptor
+class TableBase : public EnableObserverPointer
 {
 public:
   using value_type = T;
@@ -2165,7 +2165,7 @@ TableBase<N, T>::TableBase(const TableIndices<N> &sizes,
 
 template <int N, typename T>
 TableBase<N, T>::TableBase(const TableBase<N, T> &src)
-  : Subscriptor()
+  : EnableObserverPointer()
   , values(src.values)
   , table_size(src.table_size)
 {}
@@ -2185,7 +2185,7 @@ TableBase<N, T>::TableBase(const TableBase<N, T2> &src)
 
 template <int N, typename T>
 TableBase<N, T>::TableBase(TableBase<N, T> &&src) noexcept
-  : Subscriptor(std::move(src))
+  : EnableObserverPointer(std::move(src))
   , values(std::move(src.values))
   , table_size(src.table_size)
 {
@@ -2199,7 +2199,7 @@ template <class Archive>
 inline void
 TableBase<N, T>::serialize(Archive &ar, const unsigned int)
 {
-  ar &static_cast<Subscriptor &>(*this);
+  ar &static_cast<EnableObserverPointer &>(*this);
 
   ar &values &table_size;
 }
@@ -2342,10 +2342,11 @@ template <int N, typename T>
 inline TableBase<N, T> &
 TableBase<N, T>::operator=(TableBase<N, T> &&m) noexcept
 {
-  static_cast<Subscriptor &>(*this) = std::move(static_cast<Subscriptor &>(m));
-  values                            = std::move(m.values);
-  table_size                        = m.table_size;
-  m.table_size                      = TableIndices<N>();
+  static_cast<EnableObserverPointer &>(*this) =
+    std::move(static_cast<EnableObserverPointer &>(m));
+  values       = std::move(m.values);
+  table_size   = m.table_size;
+  m.table_size = TableIndices<N>();
 
   return *this;
 }

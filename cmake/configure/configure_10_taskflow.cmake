@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2013 - 2024 by the deal.II authors
+## Copyright (C) 2013 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -17,12 +17,6 @@
 # library:
 #
 
-#
-# Disallow the default detection of taskflow for the time being to avoid
-# unpleasant surprises on user side.
-#
-set(DEAL_II_WITH_TASKFLOW OFF CACHE BOOL "")
-
 macro(feature_taskflow_find_external var)
   find_package(DEAL_II_TASKFLOW)
 
@@ -30,19 +24,19 @@ macro(feature_taskflow_find_external var)
     set(${var} TRUE)
   endif()
 
-  if(TASKFLOW_VERSION VERSION_LESS "3.7")
+  if(TASKFLOW_VERSION VERSION_LESS "3.10")
     # Clear the previously determined version numbers to avoid confusion
     set(TASKFLOW_VERSION "bundled")
     set(TASKFLOW_VERSION_MAJOR "")
     set(TASKFLOW_VERSION_MINOR "")
 
     message(STATUS
-      "The externally provided Taskflow library is older than version 3.7, "
+      "The externally provided Taskflow library is older than version 3.10, "
       "which cannot be used with deal.II."
       )
     set(TASKFLOW_ADDITIONAL_ERROR_STRING
       "The externally provided Taskflow library is older than version\n"
-      "3.7, which is the oldest version compatible with deal.II."
+      "3.10, which is the oldest version compatible with deal.II."
       )
     set(${var} FALSE)
   endif()
@@ -50,4 +44,3 @@ endmacro()
 
 
 configure_feature(TASKFLOW)
-

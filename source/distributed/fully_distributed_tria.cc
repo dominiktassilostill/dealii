@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2024 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -120,16 +120,20 @@ namespace parallel
             construction_data.coarse_cell_index_to_coarse_cell_id;
 
           // 2) set up `coarse-cell id to coarse-cell index`-mapping
-          std::map<types::coarse_cell_id, unsigned int>
-            coarse_cell_id_to_coarse_cell_index_vector;
+          this->coarse_cell_id_to_coarse_cell_index_vector.resize(
+            construction_data.coarse_cell_index_to_coarse_cell_id.size());
           for (unsigned int i = 0;
                i < construction_data.coarse_cell_index_to_coarse_cell_id.size();
                ++i)
-            coarse_cell_id_to_coarse_cell_index_vector
-              [construction_data.coarse_cell_index_to_coarse_cell_id[i]] = i;
+            this->coarse_cell_id_to_coarse_cell_index_vector[i] =
+              std::make_pair(
+                construction_data.coarse_cell_index_to_coarse_cell_id[i], i);
 
-          for (auto i : coarse_cell_id_to_coarse_cell_index_vector)
-            this->coarse_cell_id_to_coarse_cell_index_vector.emplace_back(i);
+          std::sort(this->coarse_cell_id_to_coarse_cell_index_vector.begin(),
+                    this->coarse_cell_id_to_coarse_cell_index_vector.end(),
+                    [](const auto &a, const auto &b) {
+                      return a.first < b.first;
+                    });
 
           // create locally-relevant
           currently_processing_prepare_coarsening_and_refinement_for_internal_usage =
@@ -149,8 +153,8 @@ namespace parallel
           for (auto &cell_info : cell_infos)
             std::sort(cell_info.begin(),
                       cell_info.end(),
-                      [&](TriangulationDescription::CellData<dim> a,
-                          TriangulationDescription::CellData<dim> b) {
+                      [&](const TriangulationDescription::CellData<dim> &a,
+                          const TriangulationDescription::CellData<dim> &b) {
                         const CellId a_id(a.id);
                         const CellId b_id(b.id);
 
@@ -225,17 +229,25 @@ namespace parallel
       Assert(
         currently_processing_create_triangulation_for_internal_usage,
         ExcMessage(
-          "You have called the method parallel::fullydistributed::Triangulation::create_triangulation() \n"
-          "that takes 3 arguments. If you have not called this function directly, \n"
-          "it might have been called via a function from the GridGenerator or GridIn \n"
-          "namespace. To be able to set up a fully-distributed Triangulation with these \n"
-          "utility functions nevertheless, please follow the following three steps:\n"
-          "  1) call the utility function for a (serial) Triangulation, \n"
-          "     a parallel::shared::Triangulation, or a parallel::distributed::Triangulation object,\n"
-          "  2) use the functions TriangulationDescription::Utilities::create_description_from_triangulation() \n"
-          "     or ::create_description_from_triangulation_in_groups() to create the \n"
-          "     description of the local partition, and\n"
-          "  3) pass the created description to parallel::fullydistributed::Triangulation::create_triangulation()."));
+          "You have called the overload of\n"
+          "\n"
+          "    parallel::fullydistributed::Triangulation::"
+          "create_triangulation()\n"
+          "\n"
+          "which takes 3 arguments. This function is not yet implemented for "
+          "this class. If you have not called this function directly, it "
+          "might have been called via a function from the GridGenerator or "
+          "GridIn namespace. To set up a fully-distributed Triangulation with "
+          "these utility functions, please start by using the same process to "
+          "set up a serial Triangulation, parallel::shared::Triangulation, or "
+          "a parallel::distributed::Triangulation. Once that is complete use "
+          "the copy_triangulation() member function to finish setting up the "
+          "original fully distributed Triangulation. Alternatively, you can "
+          "use TriangulationDescription::Utilities::"
+          "create_description_from_triangulation() or "
+          "create_description_from_triangulation_in_groups() to create the "
+          "description of the local partition, and pass that description to "
+          "parallel::fullydistributed::Triangulation::create_triangulation()."));
 
       dealii::Triangulation<dim, spacedim>::create_triangulation(vertices,
                                                                  cells,
@@ -491,11 +503,12 @@ namespace parallel
           std::ofstream f(fname);
           f << "version nproc n_attached_fixed_size_objs n_attached_variable_size_objs n_global_active_cells"
             << std::endl
-            << 4 << " "
-            << Utilities::MPI::n_mpi_processes(this->mpi_communicator) << " "
-            << this->cell_attached_data.pack_callbacks_fixed.size() << " "
-            << this->cell_attached_data.pack_callbacks_variable.size() << " "
-            << this->n_global_active_cells() << std::endl;
+            << ::dealii::internal::CellAttachedDataSerializer<dim, spacedim>::
+                 version_number
+            << " " << Utilities::MPI::n_mpi_processes(this->mpi_communicator)
+            << " " << this->cell_attached_data.pack_callbacks_fixed.size()
+            << " " << this->cell_attached_data.pack_callbacks_variable.size()
+            << " " << this->n_global_active_cells() << std::endl;
         }
 
       // Save cell attached data.
@@ -606,12 +619,15 @@ namespace parallel
         std::ifstream f(fname);
         AssertThrow(f.fail() == false, ExcIO());
         std::string firstline;
-        getline(f, firstline); // skip first line
+        getline(f, firstline);
         f >> version >> numcpus >> attached_count_fixed >>
           attached_count_variable >> n_global_active_cells;
       }
 
-      AssertThrow(version == 4,
+      const auto expected_version = ::dealii::internal::
+        CellAttachedDataSerializer<dim, spacedim>::version_number;
+
+      AssertThrow(version == expected_version,
                   ExcMessage("Incompatible version found in .info file."));
 
       // Load description and construct the triangulation.
@@ -738,17 +754,6 @@ namespace parallel
 
     template <int dim, int spacedim>
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
-    void Triangulation<dim, spacedim>::load(const std::string &filename,
-                                            const bool         autopartition)
-    {
-      (void)autopartition;
-      load(filename);
-    }
-
-
-
-    template <int dim, int spacedim>
-    DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
     void Triangulation<dim, spacedim>::update_number_cache()
     {
       dealii::parallel::TriangulationBase<dim, spacedim>::update_number_cache();
@@ -778,7 +783,7 @@ namespace parallel
 
 
 /*-------------- Explicit Instantiations -------------------------------*/
-#include "fully_distributed_tria.inst"
+#include "distributed/fully_distributed_tria.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

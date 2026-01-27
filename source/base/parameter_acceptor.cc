@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,12 +13,13 @@
 // ------------------------------------------------------------------------
 
 #include <deal.II/base/parameter_acceptor.h>
-#include <deal.II/base/path_search.h>
 #include <deal.II/base/utilities.h>
 
 #include <boost/core/demangle.hpp>
 
 #include <fstream>
+#include <set>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -91,7 +92,7 @@ ParameterAcceptor::initialize(
         {
           prm.parse_input(filename);
         }
-      catch (const dealii::PathSearch::ExcFileNotFound &)
+      catch (const dealii::ExcFileNotOpen &)
         {
           prm.print_parameters(filename, output_style_for_filename);
           AssertThrow(false,

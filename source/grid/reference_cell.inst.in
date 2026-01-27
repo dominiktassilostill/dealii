@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,11 +26,23 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
 
 for (deal_II_dimension : DIMENSIONS)
   {
+    template Point<deal_II_dimension> ReferenceCell::subface_vertex_location(
+      const unsigned int,
+      const unsigned int,
+      const unsigned int,
+      const RefinementCase<deal_II_dimension - 1>) const;
+
     template Quadrature<deal_II_dimension>
     ReferenceCell::get_gauss_type_quadrature(const unsigned n_points_1D) const;
 
     template const Quadrature<deal_II_dimension> &
     ReferenceCell::get_nodal_type_quadrature() const;
+
+    template std::pair<unsigned int, RefinementCase<deal_II_dimension - 1>>
+    ReferenceCell::equivalent_refinement_case(
+      const types::geometric_orientation,
+      const internal::SubfaceCase<deal_II_dimension>,
+      const unsigned int) const;
 
     template Point<deal_II_dimension> ReferenceCell::closest_point(
       const Point<deal_II_dimension> &) const;

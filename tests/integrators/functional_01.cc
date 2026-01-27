@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2023 by the deal.II authors
+// Copyright (C) 2011 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,7 +43,7 @@
 const unsigned int n_functionals = 3;
 
 template <int dim>
-class Local : public Subscriptor
+class Local : public EnableObserverPointer
 {
 public:
   using CellInfo = EmptyInfo;

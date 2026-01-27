@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -131,6 +131,6 @@ TensorFunctionParser<rank, dim, Number>::value_list(
 }
 
 // explicit instantiations
-#include "tensor_function_parser.inst"
+#include "base/tensor_function_parser.inst"
 
 DEAL_II_NAMESPACE_CLOSE

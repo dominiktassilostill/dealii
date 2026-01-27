@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2024 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -154,9 +154,9 @@ generate_grid(Triangulation<3> &triangulation)
  */
 template <typename FaceIterator>
 void
-print_match(const FaceIterator &face_1,
-            const FaceIterator &face_2,
-            const unsigned char combined_orientation)
+print_match(const FaceIterator                &face_1,
+            const FaceIterator                &face_2,
+            const types::geometric_orientation combined_orientation)
 {
   static const int dim = FaceIterator::AccessorType::dimension;
 

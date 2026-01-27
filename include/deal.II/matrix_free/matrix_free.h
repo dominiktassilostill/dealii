@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2024 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,6 +20,7 @@
 
 #include <deal.II/base/aligned_vector.h>
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/numbers.h>
 #include <deal.II/base/quadrature.h>
 #include <deal.II/base/template_constraints.h>
 #include <deal.II/base/thread_local_storage.h>
@@ -101,7 +102,7 @@ DEAL_II_NAMESPACE_OPEN
  *
  * For details on usage of this class, see the description of FEEvaluation or
  * the
- * @ref matrixfree "matrix-free module".
+ * @ref matrixfree "matrix-free topic".
  *
  * @ingroup matrixfree
  */
@@ -109,7 +110,7 @@ DEAL_II_NAMESPACE_OPEN
 template <int dim,
           typename Number              = double,
           typename VectorizedArrayType = VectorizedArray<Number>>
-class MatrixFree : public Subscriptor
+class MatrixFree : public EnableObserverPointer
 {
   static_assert(
     std::is_same_v<Number, typename VectorizedArrayType::value_type>,
@@ -249,6 +250,7 @@ public:
       , cell_vectorization_categories_strict(
           cell_vectorization_categories_strict)
       , allow_ghosted_vectors_in_loops(allow_ghosted_vectors_in_loops)
+      , store_ghost_cells(false)
       , communicator_sm(MPI_COMM_SELF)
     {}
 
@@ -275,6 +277,7 @@ public:
       , cell_vectorization_categories_strict(
           other.cell_vectorization_categories_strict)
       , allow_ghosted_vectors_in_loops(other.allow_ghosted_vectors_in_loops)
+      , store_ghost_cells(other.store_ghost_cells)
       , communicator_sm(other.communicator_sm)
     {}
 
@@ -282,31 +285,7 @@ public:
      * Copy assignment.
      */
     AdditionalData &
-    operator=(const AdditionalData &other)
-    {
-      tasks_parallel_scheme = other.tasks_parallel_scheme;
-      tasks_block_size      = other.tasks_block_size;
-      mapping_update_flags  = other.mapping_update_flags;
-      mapping_update_flags_boundary_faces =
-        other.mapping_update_flags_boundary_faces;
-      mapping_update_flags_inner_faces = other.mapping_update_flags_inner_faces;
-      mapping_update_flags_faces_by_cells =
-        other.mapping_update_flags_faces_by_cells;
-      mg_level            = other.mg_level;
-      store_plain_indices = other.store_plain_indices;
-      initialize_indices  = other.initialize_indices;
-      initialize_mapping  = other.initialize_mapping;
-      overlap_communication_computation =
-        other.overlap_communication_computation;
-      hold_all_faces_to_owned_cells = other.hold_all_faces_to_owned_cells;
-      cell_vectorization_category   = other.cell_vectorization_category;
-      cell_vectorization_categories_strict =
-        other.cell_vectorization_categories_strict;
-      allow_ghosted_vectors_in_loops = other.allow_ghosted_vectors_in_loops;
-      communicator_sm                = other.communicator_sm;
-
-      return *this;
-    }
+    operator=(const AdditionalData &other) = default;
 
     /**
      * Set the scheme for task parallelism. There are four options available.
@@ -503,19 +482,23 @@ public:
 
     /**
      * This data structure allows to assign a fraction of cells to different
-     * categories when building the information for vectorization. It is used
+     * categories when building batches of cells for vectorizatios. It is used
      * implicitly when working with hp-adaptivity (with each active index
      * being a category) but can also be useful in other contexts where one
-     * would like to control which cells together can form a batch of cells.
+     * would like to control which cells can be placed into the same batch.
      * Such an example is "local time stepping", where cells of different
      * categories progress with different time-step sizes and, as a
-     * consequence, can only processed together with cells with the same
+     * consequence, can only be processed together with cells with the same
      * category.
      *
-     * This array is accessed by the number given by cell->active_cell_index()
-     * when working on the active cells (with
-     * @p mg_level set to numbers::invalid_unsigned_int) and by cell->index()
-     * for the level cells.
+     * This array works by assigned each active cell, accessed by the number
+     * given by cell->active_cell_index() when working on the active cells
+     * (with @p mg_level set to numbers::invalid_unsigned_int) and by
+     * cell->index() for the level cells, an integer number. Cells given the
+     * same number are eligible to be placed in the same batch, with the
+     * possibility to merge cells of a lower number with the next higher
+     * categories according to the variable
+     * @p cell_vectorization_categories_strict.
      *
      * @note This field is empty upon construction of AdditionalData. It is
      * the responsibility of the user to resize this field to
@@ -526,12 +509,12 @@ public:
 
     /**
      * By default, the different categories in @p cell_vectorization_category
-     * can be mixed and the algorithm is allowed to merge lower categories with
-     * the next higher categories if it is necessary inside the algorithm. This
-     * gives a better utilization of the vectorization but might need special
-     * treatment, in particular for face integrals. If set to @p true, the
-     * algorithm will instead keep different categories separate and not mix
-     * them in a single vectorized array.
+     * can be mixed and the algorithm is allowed to merge lower categories
+     * with the next higher categories if it is necessary to avoid only
+     * partially filled batches. This gives a better utilization of the
+     * vectorization but might need special treatment, in particular for face
+     * integrals. If set to @p true, the algorithm will instead keep different
+     * categories separate and not mix them in a single vectorized array.
      */
     bool cell_vectorization_categories_strict;
 
@@ -546,6 +529,13 @@ public:
      * difference is only in whether the initial non-ghosted state is restored.
      */
     bool allow_ghosted_vectors_in_loops;
+
+    /**
+     * Option to control whether data should be generated on ghost cells.
+     * If set to true, the data on ghost cells will be generated.
+     * The default value is false.
+     */
+    bool store_ghost_cells;
 
     /**
      * Shared-memory MPI communicator. Default: MPI_COMM_SELF.
@@ -1622,14 +1612,17 @@ public:
    */
   unsigned int
   get_cell_active_fe_index(
-    const std::pair<unsigned int, unsigned int> range) const;
+    const std::pair<unsigned int, unsigned int> range,
+    const unsigned int dof_handler_index = numbers::invalid_unsigned_int) const;
 
   /**
    * In the hp-adaptive case, return the active FE index of a face range.
    */
   unsigned int
-  get_face_active_fe_index(const std::pair<unsigned int, unsigned int> range,
-                           const bool is_interior_face = true) const;
+  get_face_active_fe_index(
+    const std::pair<unsigned int, unsigned int> range,
+    const bool                                  is_interior_face = true,
+    const unsigned int dof_handler_index = numbers::invalid_unsigned_int) const;
 
   /** @} */
 
@@ -1690,10 +1683,24 @@ public:
    * accessed in matrix-vector products and result in too much data sent
    * around which impacts the performance.
    */
-  template <typename Number2>
+  template <typename Number2, typename MemorySpace>
   void
-  initialize_dof_vector(LinearAlgebra::distributed::Vector<Number2> &vec,
-                        const unsigned int dof_handler_index = 0) const;
+  initialize_dof_vector(
+    LinearAlgebra::distributed::Vector<Number2, MemorySpace> &vec,
+    const unsigned int dof_handler_index = 0) const;
+
+  /**
+   * Specialization of the method initialize_dof_vector() for the class
+   * LinearAlgebra::distributed::BlockVector@<Number@>.
+   *
+   * This function initializes a block vector with one block for every
+   * DoFHandler passed to reinit().
+   *
+   */
+  template <typename Number2, typename MemorySpace>
+  void
+  initialize_dof_vector(
+    LinearAlgebra::distributed::BlockVector<Number2, MemorySpace> &vec) const;
 
   /**
    * Return the partitioner that represents the locally owned data and the
@@ -2023,7 +2030,8 @@ public:
    */
   unsigned int
   get_cell_range_category(
-    const std::pair<unsigned int, unsigned int> cell_batch_range) const;
+    const std::pair<unsigned int, unsigned int> cell_batch_range,
+    const unsigned int dof_handler_index = numbers::invalid_unsigned_int) const;
 
   /**
    * Return the category of the cells on the two sides of the current batch
@@ -2031,7 +2039,8 @@ public:
    */
   std::pair<unsigned int, unsigned int>
   get_face_range_category(
-    const std::pair<unsigned int, unsigned int> face_batch_range) const;
+    const std::pair<unsigned int, unsigned int> face_batch_range,
+    const unsigned int dof_handler_index = numbers::invalid_unsigned_int) const;
 
   /**
    * Return the category the current batch of cells was assigned to. Categories
@@ -2045,14 +2054,18 @@ public:
    * enabled, it is guaranteed that all cells have the same category.
    */
   unsigned int
-  get_cell_category(const unsigned int cell_batch_index) const;
+  get_cell_category(
+    const unsigned int cell_batch_index,
+    const unsigned int dof_handler_index = numbers::invalid_unsigned_int) const;
 
   /**
    * Return the category of the cells on the two sides of the current batch of
    * faces.
    */
   std::pair<unsigned int, unsigned int>
-  get_face_category(const unsigned int face_batch_index) const;
+  get_face_category(
+    const unsigned int face_batch_index,
+    const unsigned int dof_handler_index = numbers::invalid_unsigned_int) const;
 
   /**
    * Queries whether or not the indexation has been set.
@@ -2252,7 +2265,7 @@ private:
   /**
    * Pointers to the DoFHandlers underlying the current problem.
    */
-  std::vector<SmartPointer<const DoFHandler<dim>>> dof_handlers;
+  std::vector<ObserverPointer<const DoFHandler<dim>>> dof_handlers;
 
   /**
    * Pointers to the AffineConstraints underlying the current problem. Only
@@ -2260,7 +2273,8 @@ private:
    * template parameter as the `Number` template of MatrixFree is passed to
    * reinit(). Filled with nullptr otherwise.
    */
-  std::vector<SmartPointer<const AffineConstraints<Number>>> affine_constraints;
+  std::vector<ObserverPointer<const AffineConstraints<Number>>>
+    affine_constraints;
 
   /**
    * Contains the information about degrees of freedom on the individual cells
@@ -2362,6 +2376,12 @@ private:
    * Stored the level of the mesh to be worked on.
    */
   unsigned int mg_level;
+
+  /**
+   * Stores the index of the first DoFHandler that is in hp-mode. If no
+   * DoFHandler is in hp-mode, the value is 0.
+   */
+  unsigned int first_hp_dof_handler_index;
 };
 
 
@@ -2415,14 +2435,29 @@ MatrixFree<dim, Number, VectorizedArrayType>::initialize_dof_vector(
 
 
 template <int dim, typename Number, typename VectorizedArrayType>
-template <typename Number2>
+template <typename Number2, typename MemorySpace>
 inline void
 MatrixFree<dim, Number, VectorizedArrayType>::initialize_dof_vector(
-  LinearAlgebra::distributed::Vector<Number2> &vec,
-  const unsigned int                           comp) const
+  LinearAlgebra::distributed::Vector<Number2, MemorySpace> &vec,
+  const unsigned int                                        comp) const
 {
   AssertIndexRange(comp, n_components());
   vec.reinit(dof_info[comp].vector_partitioner, task_info.communicator_sm);
+}
+
+
+
+template <int dim, typename Number, typename VectorizedArrayType>
+template <typename Number2, typename MemorySpace>
+inline void
+MatrixFree<dim, Number, VectorizedArrayType>::initialize_dof_vector(
+  LinearAlgebra::distributed::BlockVector<Number2, MemorySpace> &vec) const
+{
+  vec.reinit(n_components());
+  for (unsigned int c = 0; c < n_components(); ++c)
+    this->initialize_dof_vector(vec.block(c), c);
+
+  vec.collect_sizes();
 }
 
 
@@ -2462,11 +2497,11 @@ MatrixFree<dim, Number, VectorizedArrayType>::n_components() const
 template <int dim, typename Number, typename VectorizedArrayType>
 inline unsigned int
 MatrixFree<dim, Number, VectorizedArrayType>::n_base_elements(
-  const unsigned int dof_no) const
+  const unsigned int dof_handler_index) const
 {
   AssertDimension(dof_handlers.size(), dof_info.size());
-  AssertIndexRange(dof_no, dof_handlers.size());
-  return dof_handlers[dof_no]->get_fe().n_base_elements();
+  AssertIndexRange(dof_handler_index, dof_handlers.size());
+  return dof_handlers[dof_handler_index]->get_fe().n_base_elements();
 }
 
 
@@ -2564,7 +2599,7 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_faces_by_cells_boundary_id(
   const unsigned int face_number) const
 {
   AssertIndexRange(cell_batch_index, n_cell_batches());
-  AssertIndexRange(face_number, GeometryInfo<dim>::faces_per_cell);
+  AssertIndexRange(face_number, ReferenceCells::max_n_faces<dim>());
   Assert(face_info.cell_and_face_boundary_id.size(0) >= n_cell_batches(),
          ExcNotInitialized());
   std::array<types::boundary_id, VectorizedArrayType::size()> result;
@@ -2692,12 +2727,19 @@ MatrixFree<dim, Number, VectorizedArrayType>::n_active_fe_indices() const
 template <int dim, typename Number, typename VectorizedArrayType>
 unsigned int
 MatrixFree<dim, Number, VectorizedArrayType>::get_cell_active_fe_index(
-  const std::pair<unsigned int, unsigned int> range) const
+  const std::pair<unsigned int, unsigned int> range,
+  const unsigned int                          dof_handler_index) const
 {
-  const auto &fe_indices = dof_info[0].cell_active_fe_index;
+  const unsigned int dof_handler_index_local =
+    dof_handler_index == numbers::invalid_unsigned_int ?
+      first_hp_dof_handler_index :
+      dof_handler_index;
+
+  const auto &fe_indices =
+    dof_info[dof_handler_index_local].cell_active_fe_index;
 
   if (fe_indices.empty() == true ||
-      dof_handlers[0]->get_fe_collection().size() == 1)
+      dof_handlers[dof_handler_index_local]->get_fe_collection().size() == 1)
     return 0;
 
   const auto index = fe_indices[range.first];
@@ -2714,9 +2756,16 @@ template <int dim, typename Number, typename VectorizedArrayType>
 unsigned int
 MatrixFree<dim, Number, VectorizedArrayType>::get_face_active_fe_index(
   const std::pair<unsigned int, unsigned int> range,
-  const bool                                  is_interior_face) const
+  const bool                                  is_interior_face,
+  const unsigned int                          dof_handler_index) const
 {
-  const auto &fe_indices = dof_info[0].cell_active_fe_index;
+  const unsigned int dof_handler_index_local =
+    dof_handler_index == numbers::invalid_unsigned_int ?
+      first_hp_dof_handler_index :
+      dof_handler_index;
+
+  const auto &fe_indices =
+    dof_info[dof_handler_index_local].cell_active_fe_index;
 
   if (fe_indices.empty() == true)
     return 0;
@@ -2928,12 +2977,13 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_face_quadrature(
 template <int dim, typename Number, typename VectorizedArrayType>
 inline unsigned int
 MatrixFree<dim, Number, VectorizedArrayType>::get_cell_range_category(
-  const std::pair<unsigned int, unsigned int> range) const
+  const std::pair<unsigned int, unsigned int> range,
+  const unsigned int                          dof_handler_index) const
 {
-  auto result = get_cell_category(range.first);
+  auto result = get_cell_category(range.first, dof_handler_index);
 
   for (unsigned int i = range.first; i < range.second; ++i)
-    result = std::max(result, get_cell_category(i));
+    result = std::max(result, get_cell_category(i, dof_handler_index));
 
   return result;
 }
@@ -2943,14 +2993,17 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_cell_range_category(
 template <int dim, typename Number, typename VectorizedArrayType>
 inline std::pair<unsigned int, unsigned int>
 MatrixFree<dim, Number, VectorizedArrayType>::get_face_range_category(
-  const std::pair<unsigned int, unsigned int> range) const
+  const std::pair<unsigned int, unsigned int> range,
+  const unsigned int                          dof_handler_index) const
 {
-  auto result = get_face_category(range.first);
+  auto result = get_face_category(range.first, dof_handler_index);
 
   for (unsigned int i = range.first; i < range.second; ++i)
     {
-      result.first  = std::max(result.first, get_face_category(i).first);
-      result.second = std::max(result.second, get_face_category(i).second);
+      result.first =
+        std::max(result.first, get_face_category(i, dof_handler_index).first);
+      result.second =
+        std::max(result.second, get_face_category(i, dof_handler_index).second);
     }
 
   return result;
@@ -2961,14 +3014,24 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_face_range_category(
 template <int dim, typename Number, typename VectorizedArrayType>
 inline unsigned int
 MatrixFree<dim, Number, VectorizedArrayType>::get_cell_category(
-  const unsigned int cell_batch_index) const
+  const unsigned int cell_batch_index,
+  const unsigned int dof_handler_index) const
 {
   AssertIndexRange(0, dof_info.size());
-  AssertIndexRange(cell_batch_index, dof_info[0].cell_active_fe_index.size());
-  if (dof_info[0].cell_active_fe_index.empty())
+
+  const unsigned int dof_handler_index_local =
+    dof_handler_index == numbers::invalid_unsigned_int ?
+      first_hp_dof_handler_index :
+      dof_handler_index;
+
+  AssertIndexRange(
+    cell_batch_index,
+    dof_info[dof_handler_index_local].cell_active_fe_index.size());
+  if (dof_info[dof_handler_index_local].cell_active_fe_index.empty())
     return 0;
   else
-    return dof_info[0].cell_active_fe_index[cell_batch_index];
+    return dof_info[dof_handler_index_local]
+      .cell_active_fe_index[cell_batch_index];
 }
 
 
@@ -2976,10 +3039,16 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_cell_category(
 template <int dim, typename Number, typename VectorizedArrayType>
 inline std::pair<unsigned int, unsigned int>
 MatrixFree<dim, Number, VectorizedArrayType>::get_face_category(
-  const unsigned int face_batch_index) const
+  const unsigned int face_batch_index,
+  const unsigned int dof_handler_index) const
 {
+  const unsigned int dof_handler_index_local =
+    dof_handler_index == numbers::invalid_unsigned_int ?
+      first_hp_dof_handler_index :
+      dof_handler_index;
+
   AssertIndexRange(face_batch_index, face_info.faces.size());
-  if (dof_info[0].cell_active_fe_index.empty())
+  if (dof_info[dof_handler_index_local].cell_active_fe_index.empty())
     return std::make_pair(0U, 0U);
 
   std::pair<unsigned int, unsigned int> result = std::make_pair(0U, 0U);
@@ -2988,11 +3057,11 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_face_category(
        face_info.faces[face_batch_index].cells_interior[v] !=
          numbers::invalid_unsigned_int;
        ++v)
-    result.first = std::max(
-      result.first,
-      dof_info[0].cell_active_fe_index[face_info.faces[face_batch_index]
-                                         .cells_interior[v] /
-                                       VectorizedArrayType::size()]);
+    result.first =
+      std::max(result.first,
+               dof_info[dof_handler_index_local].cell_active_fe_index
+                 [face_info.faces[face_batch_index].cells_interior[v] /
+                  VectorizedArrayType::size()]);
   if (face_info.faces[face_batch_index].cells_exterior[0] !=
       numbers::invalid_unsigned_int)
     for (unsigned int v = 0;
@@ -3000,11 +3069,11 @@ MatrixFree<dim, Number, VectorizedArrayType>::get_face_category(
          face_info.faces[face_batch_index].cells_exterior[v] !=
            numbers::invalid_unsigned_int;
          ++v)
-      result.second = std::max(
-        result.second,
-        dof_info[0].cell_active_fe_index[face_info.faces[face_batch_index]
-                                           .cells_exterior[v] /
-                                         VectorizedArrayType::size()]);
+      result.second =
+        std::max(result.second,
+                 dof_info[dof_handler_index_local].cell_active_fe_index
+                   [face_info.faces[face_batch_index].cells_exterior[v] /
+                    VectorizedArrayType::size()]);
   else
     result.second = numbers::invalid_unsigned_int;
   return result;
@@ -3865,12 +3934,11 @@ namespace internal
 
           if (part.n_ghost_indices() > 0)
             {
-              part.reset_ghost_values(ArrayView<Number>(
-                const_cast<LinearAlgebra::distributed::Vector<Number> &>(vec)
-                    .begin() +
-                  part.locally_owned_size(),
-                matrix_free.get_dof_info(mf_component)
-                  .vector_partitioner->n_ghost_indices()));
+              part.reset_ghost_values(
+                ArrayView<Number>(const_cast<VectorType &>(vec).begin() +
+                                    part.locally_owned_size(),
+                                  matrix_free.get_dof_info(mf_component)
+                                    .vector_partitioner->n_ghost_indices()));
             }
 
 #  endif
@@ -3929,8 +3997,9 @@ namespace internal
      */
     template <typename VectorType,
               std::enable_if_t<!has_exchange_on_subset<VectorType>, VectorType>
-                                              * = nullptr,
-              typename VectorType::value_type * = nullptr>
+                * = nullptr,
+              std::enable_if_t<has_assignment_operator<VectorType>, VectorType>
+                * = nullptr>
     void
     zero_vector_region(const unsigned int range_index, VectorType &vec) const
     {
@@ -3952,14 +4021,15 @@ namespace internal
 
     /**
      * Zero out vector region for non-vector types, i.e., classes that do not
-     * have VectorType::value_type
+     * have operator=(const VectorType::value_type)
      */
     void
     zero_vector_region(const unsigned int, ...) const
     {
       Assert(false,
-             ExcNotImplemented("Zeroing is only implemented for vector types "
-                               "which provide VectorType::value_type"));
+             ExcNotImplemented(
+               "Zeroing is only implemented for vector types "
+               "which provide operator=(const VectorType::value_type)"));
     }
 
 

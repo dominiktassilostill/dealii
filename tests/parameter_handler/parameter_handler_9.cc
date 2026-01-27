@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,7 +14,7 @@
 
 
 
-// test ParameterHandler::log_parameters(Text)
+// test ParameterHandler::log_parameters(PRM)
 
 #include <deal.II/base/parameter_handler.h>
 

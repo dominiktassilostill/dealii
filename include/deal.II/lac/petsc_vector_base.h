@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2024 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,13 +21,13 @@
 #ifdef DEAL_II_WITH_PETSC
 
 #  include <deal.II/base/index_set.h>
-#  include <deal.II/base/subscriptor.h>
 
 #  include <deal.II/lac/exceptions.h>
 #  include <deal.II/lac/vector.h>
 #  include <deal.II/lac/vector_operation.h>
 
 #  include <boost/serialization/split_member.hpp>
+#  include <boost/serialization/utility.hpp>
 
 #  include <petscvec.h>
 
@@ -248,7 +248,7 @@ namespace PETScWrappers
    *
    * @ingroup PETScWrappers
    */
-  class VectorBase : public ReadVector<PetscScalar>, public Subscriptor
+  class VectorBase : public ReadVector<PetscScalar>
   {
   public:
     /**
@@ -487,7 +487,7 @@ namespace PETScWrappers
     virtual void
     extract_subvector_to(
       const ArrayView<const types::global_dof_index> &indices,
-      ArrayView<PetscScalar>                         &elements) const override;
+      const ArrayView<PetscScalar>                   &elements) const override;
 
     /**
      * Instead of getting individual elements of a vector via operator(),
@@ -851,6 +851,30 @@ namespace PETScWrappers
      */
     void
     determine_ghost_indices();
+
+    /**
+     * The ghost elements of the vector. Valid when
+     * acquire_ghost_form() has been called.
+     */
+    Vec ghost_vector;
+
+    /**
+     * The locally stored elements of the vector. Valid when
+     * acquire_ghost_form() has been called.
+     */
+    const PetscScalar *ghost_vector_array;
+
+    /**
+     * Acquire the ghost form of the vector.
+     */
+    void
+    acquire_ghost_form();
+
+    /**
+     * Release the ghost form of the vector.
+     */
+    void
+    release_ghost_form();
   };
 
 
@@ -1191,7 +1215,7 @@ namespace PETScWrappers
   inline void
   VectorBase::extract_subvector_to(
     const ArrayView<const types::global_dof_index> &indices,
-    ArrayView<PetscScalar>                         &elements) const
+    const ArrayView<PetscScalar>                   &elements) const
   {
     AssertDimension(indices.size(), elements.size());
     extract_subvector_to(indices.begin(), indices.end(), elements.begin());
@@ -1204,8 +1228,7 @@ namespace PETScWrappers
                                    const ForwardIterator indices_end,
                                    OutputIterator        values_begin) const
   {
-    const PetscInt n_idx = static_cast<PetscInt>(indices_end - indices_begin);
-    if (n_idx == 0)
+    if (indices_begin == indices_end)
       return;
 
     // if we are dealing
@@ -1229,47 +1252,42 @@ namespace PETScWrappers
         // ghost elements whose
         // position we can get from
         // an index set
+
+        Assert(ghost_vector != nullptr && ghost_vector_array != nullptr,
+               ExcInternalError(
+                 "Ghost elements are not acquired for the vector."));
+
         PetscInt       begin, end;
         PetscErrorCode ierr = VecGetOwnershipRange(vector, &begin, &end);
         AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        Vec locally_stored_elements = nullptr;
-        ierr = VecGhostGetLocalForm(vector, &locally_stored_elements);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
-
         PetscInt lsize;
-        ierr = VecGetSize(locally_stored_elements, &lsize);
+        ierr = VecGetSize(ghost_vector, &lsize);
         AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        const PetscScalar *ptr;
-        ierr = VecGetArrayRead(locally_stored_elements, &ptr);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
-
-        for (PetscInt i = 0; i < n_idx; ++i)
+        auto input  = indices_begin;
+        auto output = values_begin;
+        while (input != indices_end)
           {
-            const unsigned int index = *(indices_begin + i);
-            if (index >= static_cast<unsigned int>(begin) &&
-                index < static_cast<unsigned int>(end))
+            const auto index = static_cast<PetscInt>(*input);
+            AssertIntegerConversion(index, *input);
+            if (index >= begin && index < end)
               {
                 // local entry
-                *(values_begin + i) = *(ptr + index - begin);
+                *output = *(ghost_vector_array + index - begin);
               }
             else
               {
                 // ghost entry
-                const unsigned int ghostidx =
-                  ghost_indices.index_within_set(index);
+                const auto ghost_index = ghost_indices.index_within_set(*input);
 
-                AssertIndexRange(ghostidx + end - begin, lsize);
-                *(values_begin + i) = *(ptr + ghostidx + end - begin);
+                AssertIndexRange(ghost_index + end - begin, lsize);
+                *output = *(ghost_vector_array + ghost_index + end - begin);
               }
+
+            ++input;
+            ++output;
           }
-
-        ierr = VecRestoreArrayRead(locally_stored_elements, &ptr);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
-
-        ierr = VecGhostRestoreLocalForm(vector, &locally_stored_elements);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
       }
     // if the vector is local or the
     // caller, then simply access the
@@ -1284,12 +1302,14 @@ namespace PETScWrappers
         ierr = VecGetArrayRead(vector, &ptr);
         AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        for (PetscInt i = 0; i < n_idx; ++i)
+        auto input  = indices_begin;
+        auto output = values_begin;
+        while (input != indices_end)
           {
-            const unsigned int index = *(indices_begin + i);
+            const auto index = static_cast<PetscInt>(*input);
+            AssertIntegerConversion(index, *input);
 
-            Assert(index >= static_cast<unsigned int>(begin) &&
-                     index < static_cast<unsigned int>(end),
+            Assert(index >= begin && index < end,
                    ExcMessage("You are accessing elements of a vector without "
                               "ghost elements that are not actually owned by "
                               "this vector. A typical case where this may "
@@ -1299,7 +1319,10 @@ namespace PETScWrappers
                               "elements for all locally relevant or locally "
                               "active vector entries."));
 
-            *(values_begin + i) = *(ptr + index - begin);
+            *output = *(ptr + index - begin);
+
+            ++input;
+            ++output;
           }
 
         ierr = VecRestoreArrayRead(vector, &ptr);
@@ -1312,7 +1335,7 @@ namespace PETScWrappers
   VectorBase::save(Archive &ar, const unsigned int) const
   {
     // forward to serialization function in the base class.
-    ar &static_cast<const Subscriptor &>(*this);
+    ar &static_cast<const EnableObserverPointer &>(*this);
     ar &size();
     ar &local_range();
 
@@ -1334,7 +1357,7 @@ namespace PETScWrappers
   inline void
   VectorBase::load(Archive &ar, const unsigned int)
   {
-    ar &static_cast<Subscriptor &>(*this);
+    ar &static_cast<EnableObserverPointer &>(*this);
 
     size_type                       size = 0;
     std::pair<size_type, size_type> local_range;
@@ -1344,7 +1367,6 @@ namespace PETScWrappers
            ExcMessage("The serialized value of size (" + std::to_string(size) +
                       ") does not match the current size (" +
                       std::to_string(this->size()) + ")"));
-    (void)size;
     ar &local_range;
     Assert(local_range == this->local_range(),
            ExcMessage("The serialized value of local_range (" +
@@ -1353,7 +1375,6 @@ namespace PETScWrappers
                       ") does not match the current local_range (" +
                       std::to_string(this->local_range().first) + ", " +
                       std::to_string(this->local_range().second) + ")"));
-    (void)local_range;
 
     PetscScalar *array = nullptr;
     int          ierr  = VecGetArray(petsc_vector(), &array);
@@ -1369,6 +1390,14 @@ namespace PETScWrappers
 #  endif // DOXYGEN
 } // namespace PETScWrappers
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #define dealii_dof_iterators_h
 
 #include <deal.II/base/config.h>
+
+#include <deal.II/base/template_constraints.h>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -57,7 +59,7 @@ namespace internal
      * internal::TriangulationImplementation::Iterators<1,spacedim>, only the
      * treatment of templates is a little more complicated. See the
      * @ref Iterators
-     * module for more information.
+     * topic for more information.
      */
     template <int spacedim, bool lda>
     struct Iterators<1, spacedim, lda>
@@ -99,7 +101,7 @@ namespace internal
      * internal::TriangulationImplementation::Iterators<2,spacedim>, only the
      * treatment of templates is a little more complicated. See the
      * @ref Iterators
-     * module for more information.
+     * topic for more information.
      */
     template <int spacedim, bool lda>
     struct Iterators<2, spacedim, lda>
@@ -139,7 +141,7 @@ namespace internal
      * internal::TriangulationImplementation::Iterators<3,spacedim>, only the
      * treatment of templates is a little more complicated. See the
      * @ref Iterators
-     * module for more information.
+     * topic for more information.
      */
     template <int spacedim, bool lda>
     struct Iterators<3, spacedim, lda>

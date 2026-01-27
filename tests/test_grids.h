@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2024 by the deal.II authors
+// Copyright (C) 2006 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,7 @@
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/tria_accessor.h>
+#include <deal.II/grid/tria_description.h>
 #include <deal.II/grid/tria_iterator.h>
 
 #include <vector>
@@ -138,7 +139,7 @@ namespace TestGrids
    * x-coordinate direction.
    *
    * The domain this grid represents covers $[0,n_cells] \times [0,1]^{d-1}$.
-   * Thus, integer division of the x-cordinate $x // 1$ on any point in this
+   * Thus, integer division of the x-coordinate $x // 1$ on any point in this
    * triangulation gives you the index of the cell the point is located in.
    */
   template <int dim, int spacedim>

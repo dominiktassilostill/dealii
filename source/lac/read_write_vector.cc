@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2023 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-#include "read_write_vector.inst"
+#include "lac/read_write_vector.inst"
 
 namespace LinearAlgebra
 {
@@ -25,21 +25,23 @@ namespace LinearAlgebra
   // two template arguments that need to be different (the case of same
   // arguments is covered by the default copy constructor and copy operator that
   // is declared separately)
+#ifndef DOXYGEN
 
-#define TEMPL_COPY_CONSTRUCTOR(S1, S2)                         \
-  template ReadWriteVector<S1> &ReadWriteVector<S1>::operator= \
-    <S2>(const ReadWriteVector<S2> &)
+#  define TEMPL_COPY_CONSTRUCTOR(S1, S2)                         \
+    template ReadWriteVector<S1> &ReadWriteVector<S1>::operator= \
+      <S2>(const ReadWriteVector<S2> &)
 
   TEMPL_COPY_CONSTRUCTOR(double, float);
   TEMPL_COPY_CONSTRUCTOR(float, double);
-#ifdef DEAL_II_WITH_COMPLEX_VALUES
+#  ifdef DEAL_II_WITH_COMPLEX_VALUES
   TEMPL_COPY_CONSTRUCTOR(std::complex<double>, std::complex<float>);
   TEMPL_COPY_CONSTRUCTOR(std::complex<float>, std::complex<double>);
-#endif
+#  endif
 
-#undef TEMPL_COPY_CONSTRUCTOR
+#  undef TEMPL_COPY_CONSTRUCTOR
 
-#ifndef DOXYGEN
+
+
   template void
   ReadWriteVector<float>::import_elements(
     const distributed::Vector<float, ::dealii::MemorySpace::Host> &,
@@ -79,32 +81,56 @@ namespace LinearAlgebra
 
 
 
-#  ifdef HAVE_TPETRA_INST_FLOAT
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_FLOAT
   template void
   ReadWriteVector<float>::import_elements(
-    const LinearAlgebra::TpetraWrappers::Vector<float> &,
+    const LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Host> &,
+    VectorOperation::values,
+    const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
+  template void
+  ReadWriteVector<float>::import_elements(
+    const LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Default> &,
     VectorOperation::values,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
 #  endif
-#  ifdef HAVE_TPETRA_INST_DOUBLE
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_DOUBLE
   template void
   ReadWriteVector<double>::import_elements(
-    const LinearAlgebra::TpetraWrappers::Vector<double> &,
+    const LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Host> &,
+    VectorOperation::values,
+    const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
+  template void
+  ReadWriteVector<double>::import_elements(
+    const LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default> &,
     VectorOperation::values,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
 #  endif
 #  ifdef DEAL_II_WITH_COMPLEX_VALUES
-#    ifdef HAVE_TPETRA_INST_COMPLEX_FLOAT
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_FLOAT
   template void
   ReadWriteVector<std::complex<float>>::import_elements(
-    const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>> &,
+    const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>,
+                                                MemorySpace::Host> &,
+    VectorOperation::values,
+    const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
+  template void
+  ReadWriteVector<std::complex<float>>::import_elements(
+    const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>,
+                                                MemorySpace::Default> &,
     VectorOperation::values,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
 #    endif
-#    ifdef HAVE_TPETRA_INST_COMPLEX_DOUBLE
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_DOUBLE
   template void
   ReadWriteVector<std::complex<double>>::import_elements(
-    const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>> &,
+    const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>,
+                                                MemorySpace::Host> &,
+    VectorOperation::values,
+    const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
+  template void
+  ReadWriteVector<std::complex<double>>::import_elements(
+    const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>,
+                                                MemorySpace::Default> &,
     VectorOperation::values,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &);
 #    endif

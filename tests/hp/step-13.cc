@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2024 by the deal.II authors
+// Copyright (C) 2006 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -222,7 +222,7 @@ namespace LaplaceSolver
     n_dofs() const = 0;
 
   protected:
-    const SmartPointer<Triangulation<dim>> triangulation;
+    const ObserverPointer<Triangulation<dim>> triangulation;
   };
 
 
@@ -258,11 +258,11 @@ namespace LaplaceSolver
     n_dofs() const;
 
   protected:
-    const SmartPointer<const hp::FECollection<dim>> fe;
-    const SmartPointer<const hp::QCollection<dim>>  quadrature;
-    DoFHandler<dim>                                 dof_handler;
-    Vector<double>                                  solution;
-    const SmartPointer<const Function<dim>>         boundary_values;
+    const ObserverPointer<const hp::FECollection<dim>> fe;
+    const ObserverPointer<const hp::QCollection<dim>>  quadrature;
+    DoFHandler<dim>                                    dof_handler;
+    Vector<double>                                     solution;
+    const ObserverPointer<const Function<dim>>         boundary_values;
 
     virtual void
     assemble_rhs(Vector<double> &rhs) const = 0;
@@ -493,7 +493,7 @@ namespace LaplaceSolver
                  const Function<dim>         &boundary_values);
 
   protected:
-    const SmartPointer<const Function<dim>> rhs_function;
+    const ObserverPointer<const Function<dim>> rhs_function;
     virtual void
     assemble_rhs(Vector<double> &rhs) const;
   };
@@ -724,11 +724,11 @@ run_simulation(
   LaplaceSolver::Base<dim>                           &solver,
   const std::list<Evaluation::EvaluationBase<dim> *> &postprocessor_list)
 {
-  deallog << "Refinement cycle: ";
+  deallog << "Refinement cycle: " << std::endl;
 
   for (unsigned int step = 0; true; ++step)
     {
-      deallog << step << ' ' << std::flush;
+      deallog << step << ' ' << std::endl;
 
       solver.solve_problem();
 

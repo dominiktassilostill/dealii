@@ -18,10 +18,10 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/mpi_stub.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/partitioner.h>
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/template_constraints.h>
 
 #include <deal.II/grid/tria.h>
@@ -97,7 +97,7 @@ namespace parallel
      * Return MPI communicator used by this triangulation.
      */
     virtual MPI_Comm
-    get_communicator() const override;
+    get_mpi_communicator() const override;
 
     /**
      * Return if multilevel hierarchy is supported and has been constructed.
@@ -394,14 +394,14 @@ namespace parallel
     virtual void
     update_number_cache();
 
-    void
-    update_reference_cells() override;
-
     /**
      * Reset global active cell indices and global level cell indices.
      */
     void
     reset_global_cell_indices();
+
+    void
+    update_reference_cells() override;
   };
 
 
@@ -505,16 +505,6 @@ namespace parallel
      * spacedim>::load.
      */
     using Triangulation<dim, spacedim>::load;
-
-
-    /**
-     * Same as the function above.
-     *
-     * @deprecated The autopartition parameter has been removed.
-     */
-    DEAL_II_DEPRECATED
-    virtual void
-    load(const std::string &filename, const bool autopartition) = 0;
   };
 
 } // namespace parallel

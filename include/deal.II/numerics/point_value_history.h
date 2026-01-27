@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2023 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,9 +19,9 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/point.h>
 #include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/smartpointer.h>
 
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -34,6 +34,8 @@
 #include <deal.II/lac/vector.h>
 
 #include <deal.II/numerics/data_postprocessor.h>
+
+#include <boost/signals2/connection.hpp>
 
 #include <fstream>
 #include <iostream>
@@ -548,7 +550,7 @@ public:
     "sync. The class requires that the number of dataset keys is the same as "
     "the number of independent values sets and mesh linked value sets. The "
     "number of each of these is allowed to differ by one to allow new values "
-    "to be added with out restricting the order the user choses to do so. "
+    "to be added without restricting the order the user chooses to do so. "
     "Special cases of no FHandler and no independent values should not "
     "trigger this error.");
 
@@ -634,7 +636,7 @@ private:
    * A smart pointer to the dof_handler supplied to the constructor. This can
    * be released by calling @p clear().
    */
-  SmartPointer<const DoFHandler<dim>, PointValueHistory<dim>> dof_handler;
+  ObserverPointer<const DoFHandler<dim>, PointValueHistory<dim>> dof_handler;
 
 
   /**

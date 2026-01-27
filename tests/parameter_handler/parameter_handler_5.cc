@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,7 +33,7 @@ main()
       prm.declare_entry("int", "1", Patterns::Integer());
       prm.declare_entry("int", "2", Patterns::Integer());
 
-      prm.print_parameters(deallog.get_file_stream(), ParameterHandler::Text);
+      prm.print_parameters(deallog.get_file_stream(), ParameterHandler::PRM);
     }
   catch (const std::exception &exc)
     {

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2020 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -39,7 +39,6 @@ test()
     deallog << "symbolic a/b: " << symb_a_division_b << std::endl;
 
     const SD_number_t a_division_symb_b = a / symb_b;
-    ;
     deallog << "a/symbolic b: " << a_division_symb_b << std::endl;
 
     const SD_number_t substitute_symb_a_division_b =
@@ -56,7 +55,6 @@ test()
     deallog << "symbolic a*b: " << symb_a_product_b << std::endl;
 
     const SD_number_t a_product_symb_b = a * symb_b;
-    ;
     deallog << "a*symbolic b: " << a_product_symb_b << std::endl;
 
     const SD_number_t substitute_symb_a_product_b =

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2014 by the deal.II authors
+// Copyright (C) 2006 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
 /**
  * @defgroup VMemory Vector memory management
  *
- * This module groups a few classes that are used to avoid allocating and
+ * This page groups a few classes that are used to avoid allocating and
  * deallocating vectors over and over in iterative procedures. These methods
  * all use an object of the base class VectorMemory to get their auxiliary
  * vectors.

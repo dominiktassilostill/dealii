@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2022 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -26,9 +26,9 @@ macro(feature_p4est_find_external var)
     set(${var} TRUE)
 
     #
-    # We require at least version 2.0
+    # We require at least version 2.2
     #
-    set(_version_required 2.0)
+    set(_version_required 2.2)
     if(P4EST_VERSION VERSION_LESS ${_version_required})
       message(STATUS "Insufficient p4est installation found: "
         "At least version ${_version_required} is required."
@@ -76,7 +76,6 @@ endmacro()
 
 macro(feature_p4est_configure_external)
   set(DEAL_II_P4EST_WITH_VTK_BINARY ${P4EST_WITH_VTK_BINARY})
-  set(DEAL_II_P4EST_WITH_SEARCH_LOCAL ${P4EST_WITH_SEARCH_LOCAL})
 endmacro()
 
 

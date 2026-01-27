@@ -35,7 +35,7 @@
 #include <deal.II/lac/precondition.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/sparsity_tools.h>
-// #include <deal.II/lac/trilinos_precondition.h>
+#include <deal.II/lac/trilinos_tpetra_precondition.h>
 #include <deal.II/lac/trilinos_tpetra_solver_direct.h>
 #include <deal.II/lac/vector.h>
 
@@ -70,11 +70,14 @@ private:
   AffineConstraints<double> constraints;
   SparsityPattern           sparsity_pattern;
 
-  LinearAlgebra::TpetraWrappers::SparseMatrix<double> system_matrix;
+  LinearAlgebra::TpetraWrappers::SparseMatrix<double, MemorySpace::Default>
+    system_matrix;
 
-  LinearAlgebra::TpetraWrappers::Vector<double> solution;
-  LinearAlgebra::TpetraWrappers::Vector<double> system_rhs;
-  LinearAlgebra::TpetraWrappers::Vector<double> system_rhs_two;
+  LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default> solution;
+  LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default>
+    system_rhs;
+  LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default>
+    system_rhs_two;
 };
 
 
@@ -298,47 +301,45 @@ template <int dim>
 void
 Step4<dim>::solve()
 {
-  // TODO: implement precondition SSOR Wrappers
-  // // Compute 'reference' solution with CG solver and SSOR preconditioner
-  // TrilinosWrappers::PreconditionSSOR preconditioner;
-  // preconditioner.initialize(system_matrix);
-  LinearAlgebra::TpetraWrappers::Vector<double> temp_solution(system_rhs);
+  // Compute 'reference' solution with CG solver and SSOR preconditioner
+  LinearAlgebra::TpetraWrappers::PreconditionSSOR<double, MemorySpace::Default>
+    preconditioner;
+  preconditioner.initialize(system_matrix);
+  LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default>
+    temp_solution(system_rhs);
   temp_solution = 0;
   SolverControl solver_control(1000, 1e-12);
-  SolverCG<LinearAlgebra::TpetraWrappers::Vector<double>> solver(
-    solver_control);
+  SolverCG<LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default>>
+    solver(solver_control);
 
-  solver.solve(system_matrix,
-               temp_solution,
-               system_rhs,
-               PreconditionIdentity());
+  solver.solve(system_matrix, temp_solution, system_rhs, preconditioner);
 
   constraints.distribute(temp_solution);
   solution = temp_solution;
 
-  LinearAlgebra::TpetraWrappers::Vector<double> output(temp_solution);
+  LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default> output(
+    temp_solution);
 
   // do CG solve for new rhs
   temp_solution = 0;
   solution      = 0;
-  solver.solve(system_matrix,
-               temp_solution,
-               system_rhs_two,
-               PreconditionIdentity());
+  solver.solve(system_matrix, temp_solution, system_rhs_two, preconditioner);
 
   constraints.distribute(temp_solution);
   solution = temp_solution;
 
-  LinearAlgebra::TpetraWrappers::Vector<double> output_two(temp_solution);
+  LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default>
+    output_two(temp_solution);
 
   // factorize matrix for direct solver
   temp_solution = 0;
   solution      = 0;
 
   deallog.push("DirectKLU2");
-  LinearAlgebra::TpetraWrappers::SolverDirectKLU2<double>::AdditionalData data;
-  LinearAlgebra::TpetraWrappers::SolverDirectKLU2<double> direct_solver(
-    solver_control, data);
+  LinearAlgebra::TpetraWrappers::
+    SolverDirectKLU2<double, MemorySpace::Default>::AdditionalData data;
+  LinearAlgebra::TpetraWrappers::SolverDirectKLU2<double, MemorySpace::Default>
+    direct_solver(solver_control, data);
   direct_solver.initialize(system_matrix);
 
   // do solve 1

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2021 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #define dealii_mpi_tags_h
 
 #include <deal.II/base/config.h>
+
+#include <cstdint>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -40,7 +42,6 @@ namespace Utilities
        * - MPI_Isend, MPI_Irecv
        * - MPI_Probe, MPI_Iprobe
        * - MPI_Comm_create_group, MPI_Intercomm_create,
-       * Utilities::MPI::create_group
        */
       namespace Tags
       {
@@ -147,11 +148,6 @@ namespace Utilities
 
           // GridTools::internal::distributed_compute_point_locations
           distributed_compute_point_locations,
-
-          // AffineConstraints::make_consistent_in_parallel()
-          affine_constraints_make_consistent_in_parallel_0,
-          affine_constraints_make_consistent_in_parallel_1,
-
         };
       } // namespace Tags
     }   // namespace internal

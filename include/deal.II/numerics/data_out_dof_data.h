@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,7 @@
 
 #include <deal.II/base/data_out_base.h>
 #include <deal.II/base/mg_level_object.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/dofs/dof_handler.h>
 
@@ -100,7 +100,7 @@ namespace Exceptions
     DeclException2(
       ExcInvalidCharacter,
       std::string,
-      size_t,
+      std::size_t,
       << "Please use only the characters [a-zA-Z0-9_<>()] for" << std::endl
       << "description strings since some graphics formats will only accept these."
       << std::endl
@@ -342,7 +342,7 @@ namespace internal
       /**
        * Pointer to the DoFHandler object that the vector is based on.
        */
-      SmartPointer<const DoFHandler<dim, spacedim>> dof_handler;
+      ObserverPointer<const DoFHandler<dim, spacedim>> dof_handler;
 
       /**
        * Names of the components of this data vector.
@@ -362,7 +362,7 @@ namespace internal
        * Pointer to a DataPostprocessing object which shall be applied to this
        * data vector.
        */
-      SmartPointer<const dealii::DataPostprocessor<spacedim>> postprocessor;
+      ObserverPointer<const dealii::DataPostprocessor<spacedim>> postprocessor;
 
       /**
        * Number of output variables this dataset provides (either number of
@@ -522,7 +522,7 @@ namespace internal
  * independent scalar field, or whether some of them together form logically a
  * vector-field (see the
  * DataComponentInterpretation::DataComponentInterpretation enum, and the
- * @ref step_22 "step-22"
+ * step-22
  * tutorial program).
  *
  * After adding all data vectors, you need to call a function which generates
@@ -952,12 +952,12 @@ protected:
   /**
    * Pointer to the triangulation object.
    */
-  SmartPointer<const Triangulation<dim, spacedim>> triangulation;
+  ObserverPointer<const Triangulation<dim, spacedim>> triangulation;
 
   /**
    * Pointer to the optional handler object.
    */
-  SmartPointer<const DoFHandler<dim, spacedim>> dofs;
+  ObserverPointer<const DoFHandler<dim, spacedim>> dofs;
 
   /**
    * List of data elements with vectors of values for each degree of freedom.

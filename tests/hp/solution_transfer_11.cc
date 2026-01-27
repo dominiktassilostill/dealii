@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2021 by the deal.II authors
+// Copyright (C) 2011 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -74,11 +74,11 @@ transfer(std::ostream &out)
 
   Vector<double> old_solution = solution;
   tria.prepare_coarsening_and_refinement();
-  soltrans.prepare_for_pure_refinement();
+  soltrans.prepare_for_coarsening_and_refinement(solution);
   tria.execute_coarsening_and_refinement();
   dof_handler.distribute_dofs(fe);
   solution.reinit(dof_handler.n_dofs());
-  soltrans.refine_interpolate(old_solution, solution);
+  soltrans.interpolate(solution);
 }
 
 

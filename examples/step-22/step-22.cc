@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2008 - 2024 by the deal.II authors
+ * Copyright (C) 2008 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -279,7 +279,7 @@ namespace Step22
   // <code>InverseMatrix</code> object is created. The member function
   // <code>vmult</code> is obtained by solving a linear system:
   template <class MatrixType, class PreconditionerType>
-  class InverseMatrix : public Subscriptor
+  class InverseMatrix : public EnableObserverPointer
   {
   public:
     InverseMatrix(const MatrixType         &m,
@@ -288,8 +288,8 @@ namespace Step22
     void vmult(Vector<double> &dst, const Vector<double> &src) const;
 
   private:
-    const SmartPointer<const MatrixType>         matrix;
-    const SmartPointer<const PreconditionerType> preconditioner;
+    const ObserverPointer<const MatrixType>         matrix;
+    const ObserverPointer<const PreconditionerType> preconditioner;
   };
 
 
@@ -335,9 +335,9 @@ namespace Step22
   // consequence of the definition above, the declaration
   // <code>InverseMatrix</code> now contains the second template parameter for
   // a preconditioner class as above, which affects the
-  // <code>SmartPointer</code> object <code>m_inverse</code> as well.
+  // <code>ObserverPointer</code> object <code>m_inverse</code> as well.
   template <class PreconditionerType>
-  class SchurComplement : public Subscriptor
+  class SchurComplement : public EnableObserverPointer
   {
   public:
     SchurComplement(
@@ -347,8 +347,8 @@ namespace Step22
     void vmult(Vector<double> &dst, const Vector<double> &src) const;
 
   private:
-    const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
-    const SmartPointer<
+    const ObserverPointer<const BlockSparseMatrix<double>> system_matrix;
+    const ObserverPointer<
       const InverseMatrix<SparseMatrix<double>, PreconditionerType>>
       A_inverse;
 
@@ -390,7 +390,7 @@ namespace Step22
   // the vector-valued velocity components and of order <code>degree</code>
   // for the pressure.  This gives the LBB-stable element pair
   // $Q_{degree+1}^d\times Q_{degree}$, often referred to as the Taylor-Hood
-  // element.
+  // element for degree$\geq 1$.
   //
   // Note that we initialize the triangulation with a MeshSmoothing argument,
   // which ensures that the refinement of cells is done in a way that the
@@ -434,8 +434,9 @@ namespace Step22
   // comparison of the results we obtain with several of these algorithms
   // based on the testcase discussed here in this tutorial program. Here, we
   // will use the traditional Cuthill-McKee algorithm already used in some of
-  // the previous tutorial programs.  In the <a href="#improved-ilu">section
-  // on improved ILU</a> we're going to discuss this issue in more detail.
+  // the previous tutorial programs.  In the
+  // @ref step_22-ImprovedILU "section on improved ILU" we're going to discuss
+  // this issue in more detail.
 
   // There is one more change compared to previous tutorial programs: There is
   // no reason in sorting the <code>dim</code> velocity components

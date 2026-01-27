@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -694,7 +694,7 @@ MGTransferSelect<number>::build(
 
 
 // explicit instantiations
-#include "mg_transfer_component.inst"
+#include "multigrid/mg_transfer_component.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

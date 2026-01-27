@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,13 +22,15 @@
 #include <deal.II/base/array_view.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/geometry_info.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/signaling_nan.h>
-#include <deal.II/base/smartpointer.h>
 #include <deal.II/base/std_cxx20/iota_view.h>
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/template_constraints.h>
 #include <deal.II/base/tensor.h>
 #include <deal.II/base/vectorization.h>
+
+#include <deal.II/grid/reference_cell.h>
 
 #include <deal.II/matrix_free/dof_info.h>
 #include <deal.II/matrix_free/mapping_info_storage.h>
@@ -100,7 +102,7 @@ namespace internal
  * quadrature dimension the same as the space dimension) or for a face
  * integrator (with quadrature dimension one less)
  *
- * @tparam VectorizedArrayType Type of array to be woked on in a vectorized
+ * @tparam VectorizedArrayType Type of array to be worked on in a vectorized
  *                             fashion, defaults to VectorizedArray<Number>
  *
  * @note Currently only VectorizedArray<Number, width> is supported as
@@ -234,7 +236,7 @@ public:
    *
    * @deprecated Use normal_vector() instead.
    */
-  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT("Use normal_vector() instead.")
+  DEAL_II_DEPRECATED_WITH_COMMENT("Use normal_vector() instead.")
   Tensor<1, dim, Number>
   get_normal_vector(const unsigned int q_point) const;
 
@@ -495,10 +497,11 @@ public:
   const std::array<unsigned int, n_lanes> &
   get_cell_ids() const
   {
-// implemented inline to avoid compilation problems on Windows
-#ifdef DEBUG
-    Assert(is_reinitialized, ExcNotInitialized());
-#endif
+    // implemented inline to avoid compilation problems on Windows
+    if constexpr (running_in_debug_mode())
+      {
+        Assert(is_reinitialized, ExcNotInitialized());
+      }
     return cell_ids;
   }
 
@@ -509,10 +512,11 @@ public:
   const std::array<unsigned int, n_lanes> &
   get_face_ids() const
   {
-// implemented inline to avoid compilation problems on Windows
-#ifdef DEBUG
-    Assert(is_reinitialized && is_face, ExcNotInitialized());
-#endif
+    // implemented inline to avoid compilation problems on Windows
+    if constexpr (running_in_debug_mode())
+      {
+        Assert(is_reinitialized && is_face, ExcNotInitialized());
+      }
     return face_ids;
   }
 
@@ -523,10 +527,11 @@ public:
   unsigned int
   get_cell_or_face_batch_id() const
   {
-// implemented inline to avoid compilation problems on Windows
-#ifdef DEBUG
-    Assert(is_reinitialized, ExcNotInitialized());
-#endif
+    // implemented inline to avoid compilation problems on Windows
+    if constexpr (running_in_debug_mode())
+      {
+        Assert(is_reinitialized, ExcNotInitialized());
+      }
 
     return cell;
   }
@@ -538,10 +543,11 @@ public:
   const std::array<unsigned int, n_lanes> &
   get_cell_or_face_ids() const
   {
-// implemented inline to avoid compilation problems on Windows
-#ifdef DEBUG
-    Assert(is_reinitialized, ExcNotInitialized());
-#endif
+    // implemented inline to avoid compilation problems on Windows
+    if constexpr (running_in_debug_mode())
+      {
+        Assert(is_reinitialized, ExcNotInitialized());
+      }
 
     if (!is_face || dof_access_index ==
                       internal::MatrixFreeFunctions::DoFInfo::dof_access_cell)
@@ -578,6 +584,32 @@ public:
   template <typename T>
   T
   read_cell_data(const AlignedVector<T> &array) const;
+
+  /**
+   * Provides a unified interface to access data in a Table of
+   * VectorizedArray fields for cell data. The source table has dimension D
+   * where the first dimension indexes cell batches. This function extracts
+   * data for the current cells and stores it in a destination table of
+   * dimension D-1, effectively removing the batch dimension. For each lane,
+   * the function copies data from src[batch][...][lane] to dst[...][lane]
+   * based on the cell IDs. It is implemented both for cells and faces
+   * (access data to the associated cell).
+   *
+   * The underlying type T can be both the Number type as given by the class
+   * template (i.e., VectorizedArrayType) as well as std::array with as many
+   * entries as n_lanes.
+   *
+   * dst must already be sized correctly: for each dimension d in [0,D-2]
+   * dst.size(d) must equal src.size(d+1), and the innermost array size must be
+   * equal to the number of lanes (n_lanes) or the corresponding array
+   * length of T. Furthermore, dst must be pre-filled with valid entries:
+   * entries corresponding to inactive lanes (for which the current cell id is
+   * numbers::invalid_unsigned_int) will NOT be written to by this function,
+   * i.e., those lanes remain as initially provided in dst.
+   */
+  template <typename T, int D>
+  void
+  read_cell_data(const Table<D, T> &src, Table<D - 1, T> &dst) const;
 
   /**
    * Provides a unified interface to set data in a vector of
@@ -638,7 +670,7 @@ protected:
    */
   FEEvaluationData(const InitializationData &initialization_data,
                    const bool                is_interior_face,
-                   const unsigned int        quad_no,
+                   const unsigned int        quadrature_index,
                    const unsigned int        first_selected_component);
 
   /**
@@ -680,7 +712,7 @@ protected:
    * quadrature formulas available in the MatrixFree objects pass to derived
    * classes.
    */
-  const unsigned int quad_no;
+  const unsigned int quadrature_index;
 
   /**
    * Stores the number of components in the finite element as detected in the
@@ -765,7 +797,7 @@ protected:
   const Tensor<1, dim, Number> *normal_vectors;
 
   /**
-   * A pointer to the normal vectors times the jacobian at faces.
+   * A pointer to the normal vectors times the Jacobian at faces.
    */
   const Tensor<1, dim, Number> *normal_x_jacobian;
 
@@ -949,7 +981,7 @@ protected:
    * @note Only available for `dof_access_index == dof_access_cell` and
    * `is_interior_face == false`.
    */
-  std::array<std::uint8_t, n_lanes> face_orientations;
+  std::array<types::geometric_orientation, n_lanes> face_orientations;
 
   /**
    * Stores the subface index of the given face. Usually, this variable takes
@@ -1037,12 +1069,12 @@ template <int dim, typename Number, bool is_face>
 inline FEEvaluationData<dim, Number, is_face>::FEEvaluationData(
   const InitializationData &initialization_data,
   const bool                is_interior_face,
-  const unsigned int        quad_no,
+  const unsigned int        quadrature_index,
   const unsigned int        first_selected_component)
   : data(initialization_data.shape_info)
   , dof_info(initialization_data.dof_info)
   , mapping_data(initialization_data.mapping_data)
-  , quad_no(quad_no)
+  , quadrature_index(quadrature_index)
   , n_fe_components(dof_info != nullptr ? dof_info->start_components.back() : 0)
   , first_selected_component(first_selected_component)
   , active_fe_index(initialization_data.active_fe_index)
@@ -1080,7 +1112,9 @@ inline FEEvaluationData<dim, Number, is_face>::FEEvaluationData(
   , subface_index(0)
   , cell_type(internal::MatrixFreeFunctions::general)
   , divergence_is_requested(false)
-{}
+{
+  Assert(!data->data.empty(), ExcInternalError());
+}
 
 
 
@@ -1094,7 +1128,7 @@ inline FEEvaluationData<dim, Number, is_face>::FEEvaluationData(
   : data(nullptr)
   , dof_info(nullptr)
   , mapping_data(nullptr)
-  , quad_no(numbers::invalid_unsigned_int)
+  , quadrature_index(numbers::invalid_unsigned_int)
   , n_fe_components(n_fe_components)
   , first_selected_component(first_selected_component)
   , active_fe_index(numbers::invalid_unsigned_int)
@@ -1136,7 +1170,7 @@ template <int dim, typename Number, bool is_face>
 inline FEEvaluationData<dim, Number, is_face> &
 FEEvaluationData<dim, Number, is_face>::operator=(const FEEvaluationData &other)
 {
-  AssertDimension(quad_no, other.quad_no);
+  AssertDimension(quadrature_index, other.quadrature_index);
   AssertDimension(n_fe_components, other.n_fe_components);
   AssertDimension(first_selected_component, other.first_selected_component);
   AssertDimension(active_fe_index, other.active_fe_index);
@@ -1156,15 +1190,16 @@ FEEvaluationData<dim, Number, is_face>::operator=(const FEEvaluationData &other)
   quadrature_points              = nullptr;
   quadrature_weights             = other.quadrature_weights;
 
-#  ifdef DEBUG
-  is_reinitialized           = false;
-  dof_values_initialized     = false;
-  values_quad_initialized    = false;
-  gradients_quad_initialized = false;
-  hessians_quad_initialized  = false;
-  values_quad_submitted      = false;
-  gradients_quad_submitted   = false;
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      is_reinitialized           = false;
+      dof_values_initialized     = false;
+      values_quad_initialized    = false;
+      gradients_quad_initialized = false;
+      hessians_quad_initialized  = false;
+      values_quad_submitted      = false;
+      gradients_quad_submitted   = false;
+    }
 
   cell          = numbers::invalid_unsigned_int;
   interior_face = other.is_interior_face();
@@ -1175,7 +1210,7 @@ FEEvaluationData<dim, Number, is_face>::operator=(const FEEvaluationData &other)
          internal::MatrixFreeFunctions::DoFInfo::dof_access_face_exterior) :
       internal::MatrixFreeFunctions::DoFInfo::dof_access_cell;
   face_numbers[0]         = 0;
-  face_orientations[0]    = 0;
+  face_orientations[0]    = numbers::default_geometric_orientation;
   subface_index           = 0;
   cell_type               = internal::MatrixFreeFunctions::general;
   divergence_is_requested = false;
@@ -1192,6 +1227,9 @@ FEEvaluationData<dim, Number, is_face>::set_data_pointers(
   const unsigned int     n_components)
 {
   Assert(scratch_data_array != nullptr, ExcInternalError());
+  Assert(data != nullptr, ExcInternalError());
+  Assert(!data->data.empty(), ExcInternalError());
+
 
   const unsigned int tensor_dofs_per_component =
     Utilities::fixed_power<dim>(data->data.front().fe_degree + 1);
@@ -1199,7 +1237,7 @@ FEEvaluationData<dim, Number, is_face>::set_data_pointers(
 
   const unsigned int size_scratch_data =
     std::max(tensor_dofs_per_component + 1, dofs_per_component) * n_components *
-      3 +
+      4 +
     2 * n_quadrature_points;
   const unsigned int size_data_arrays =
     n_components * dofs_per_component +
@@ -1209,13 +1247,16 @@ FEEvaluationData<dim, Number, is_face>::set_data_pointers(
   // include 12 extra fields to insert some padding between values, gradients
   // and hessians, which helps to reduce the probability of cache conflicts
   const unsigned int allocated_size = size_scratch_data + size_data_arrays + 12;
-#  ifdef DEBUG
-  scratch_data_array->clear();
-  scratch_data_array->resize(allocated_size,
-                             Number(numbers::signaling_nan<ScalarNumber>()));
-#  else
-  scratch_data_array->resize_fast(allocated_size);
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      scratch_data_array->clear();
+      scratch_data_array->resize(
+        allocated_size, Number(numbers::signaling_nan<ScalarNumber>()));
+    }
+  else
+    {
+      scratch_data_array->resize_fast(allocated_size);
+    }
   scratch_data.reinit(scratch_data_array->begin() + size_data_arrays + 12,
                       size_scratch_data);
 
@@ -1260,7 +1301,7 @@ FEEvaluationData<dim, Number, is_face>::reinit_face(
   // internal::MatrixFreeFunctions::FaceToCellTopology::face_orientation.
   face_orientations[0] = (is_interior_face() == (face.face_orientation >= 8)) ?
                            (face.face_orientation % 8) :
-                           0;
+                           numbers::default_geometric_orientation;
 
   if (is_interior_face())
     cell_ids = face.cells_interior;
@@ -1384,9 +1425,10 @@ template <int dim, typename Number, bool is_face>
 inline Number *
 FEEvaluationData<dim, Number, is_face>::begin_dof_values()
 {
-#  ifdef DEBUG
-  dof_values_initialized = true;
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      dof_values_initialized = true;
+    }
   return values_dofs;
 }
 
@@ -1396,9 +1438,11 @@ template <int dim, typename Number, bool is_face>
 inline const Number *
 FEEvaluationData<dim, Number, is_face>::begin_values() const
 {
-#  ifdef DEBUG
-  Assert(values_quad_initialized || values_quad_submitted, ExcNotInitialized());
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      Assert(values_quad_initialized || values_quad_submitted,
+             ExcNotInitialized());
+    }
   return values_quad;
 }
 
@@ -1408,10 +1452,11 @@ template <int dim, typename Number, bool is_face>
 inline Number *
 FEEvaluationData<dim, Number, is_face>::begin_values()
 {
-#  ifdef DEBUG
-  values_quad_initialized = true;
-  values_quad_submitted   = true;
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      values_quad_initialized = true;
+      values_quad_submitted   = true;
+    }
   return values_quad;
 }
 
@@ -1421,10 +1466,11 @@ template <int dim, typename Number, bool is_face>
 inline const Number *
 FEEvaluationData<dim, Number, is_face>::begin_gradients() const
 {
-#  ifdef DEBUG
-  Assert(gradients_quad_initialized || gradients_quad_submitted,
-         ExcNotInitialized());
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      Assert(gradients_quad_initialized || gradients_quad_submitted,
+             ExcNotInitialized());
+    }
   return gradients_quad;
 }
 
@@ -1434,10 +1480,11 @@ template <int dim, typename Number, bool is_face>
 inline Number *
 FEEvaluationData<dim, Number, is_face>::begin_gradients()
 {
-#  ifdef DEBUG
-  gradients_quad_submitted   = true;
-  gradients_quad_initialized = true;
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      gradients_quad_submitted   = true;
+      gradients_quad_initialized = true;
+    }
   return gradients_quad;
 }
 
@@ -1447,9 +1494,10 @@ template <int dim, typename Number, bool is_face>
 inline const Number *
 FEEvaluationData<dim, Number, is_face>::begin_hessians() const
 {
-#  ifdef DEBUG
-  Assert(hessians_quad_initialized, ExcNotInitialized());
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      Assert(hessians_quad_initialized, ExcNotInitialized());
+    }
   return hessians_quad;
 }
 
@@ -1459,9 +1507,10 @@ template <int dim, typename Number, bool is_face>
 inline Number *
 FEEvaluationData<dim, Number, is_face>::begin_hessians()
 {
-#  ifdef DEBUG
-  hessians_quad_initialized = true;
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      hessians_quad_initialized = true;
+    }
   return hessians_quad;
 }
 
@@ -1488,9 +1537,10 @@ template <int dim, typename Number, bool is_face>
 inline internal::MatrixFreeFunctions::GeometryType
 FEEvaluationData<dim, Number, is_face>::get_cell_type() const
 {
-#  ifdef DEBUG
-  Assert(is_reinitialized, ExcNotInitialized());
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      Assert(is_reinitialized, ExcNotInitialized());
+    }
   return cell_type;
 }
 
@@ -1531,7 +1581,7 @@ template <int dim, typename Number, bool is_face>
 inline unsigned int
 FEEvaluationData<dim, Number, is_face>::get_quadrature_index() const
 {
-  return quad_no;
+  return quadrature_index;
 }
 
 
@@ -1542,7 +1592,7 @@ FEEvaluationData<dim, Number, is_face>::get_current_cell_index() const
 {
   if (is_face && dof_access_index ==
                    internal::MatrixFreeFunctions::DoFInfo::dof_access_cell)
-    return cell * GeometryInfo<dim>::faces_per_cell + face_numbers[0];
+    return cell * ReferenceCells::max_n_faces<dim>() + face_numbers[0];
   else
     return cell;
 }
@@ -1651,7 +1701,8 @@ template <int dim, typename Number, bool is_face>
 inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FEEvaluationData<dim, Number, is_face>::quadrature_point_indices() const
 {
-  return {0U, n_quadrature_points};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, n_quadrature_points);
 }
 
 
@@ -1685,7 +1736,7 @@ namespace internal
     AssertDimension(indices.size(), out.size());
     AssertDimension(indices.size(), array[0].size());
     // set all entries in array to a valid element
-    int index = 0;
+    std::size_t index = 0;
     for (; index < N; ++index)
       if (indices[index] != numbers::invalid_unsigned_int)
         break;
@@ -1711,6 +1762,55 @@ FEEvaluationData<dim, Number, is_face>::read_cell_data(
                                         local = global;
                                       });
   return out;
+}
+
+
+template <int dim, typename Number, bool is_face>
+template <typename T, int D>
+void
+FEEvaluationData<dim, Number, is_face>::read_cell_data(
+  const Table<D, T> &src,
+  Table<D - 1, T>   &dst) const
+{
+  static_assert(D >= 2, "Table dimension must be at least 2");
+
+
+  for (unsigned int d = 0; d < D - 1; ++d)
+    Assert(dst.size(d) == src.size(d + 1),
+           ExcMessage("Dimension mismatch between src and dst tables."));
+
+  for (unsigned int lane = 0; lane < n_lanes; ++lane)
+    if (this->get_cell_ids()[lane] != numbers::invalid_unsigned_int)
+      {
+        const unsigned int src_index  = this->get_cell_ids()[lane] / n_lanes;
+        const unsigned int array_lane = this->get_cell_ids()[lane] % n_lanes;
+
+        AssertIndexRange(src_index, src.size(0));
+
+        // Copy data following the pattern:
+        // dst[i][j][lane] = src[batch][i][j][lane]
+        auto copy_recursively = [&](auto         self,
+                                    auto       &&dst_slice,
+                                    const auto  &src_slice,
+                                    unsigned int depth) -> void {
+          if constexpr (std::is_same_v<std::decay_t<decltype(dst_slice)>, T>)
+            {
+              // Base case: we've reached the innermost level (the array)
+              dst_slice[lane] = src_slice[array_lane];
+            }
+          else
+            {
+              // Recursive case: iterate through this dimension. 'depth'
+              // corresponds to the dimension index in the original 'src'
+              // table.
+              AssertIndexRange(depth, D);
+              for (unsigned int i = 0; i < src.size(depth); ++i)
+                self(self, dst_slice[i], src_slice[i], depth + 1);
+            }
+        };
+
+        copy_recursively(copy_recursively, dst, src[src_index], 1);
+      }
 }
 
 

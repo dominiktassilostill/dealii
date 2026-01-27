@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2000 - 2024 by the deal.II authors
+ * Copyright (C) 2000 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -545,10 +545,9 @@ namespace Step8
     // solution vector, we can add the solution vector to the list of
     // data vectors scheduled for output. Note that the following
     // function takes a vector of strings as second argument, whereas
-    // the one which we have used in all previous examples accepted a
-    // string there. (In fact, the function we had used before would
-    // convert the single string into a vector with only one element
-    // and forwards that to the other function.)
+    // the one which we have used in all previous examples took a
+    // single string there (which was the right choice because
+    // we had only a single solution variable in all previous examples).
     data_out.add_data_vector(solution, solution_names);
     data_out.build_patches();
 

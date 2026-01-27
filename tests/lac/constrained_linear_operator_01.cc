@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2020 by the deal.II authors
+// Copyright (C) 2015 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,7 @@
 // of applying the constraints directly to the solution obtained by solving
 // the system:
 //   (C^T * A * C + Id_c) * x = C^t * (b - A * k)
-// with the help of constrainted_linear_operator and
+// with the help of constrained_linear_operator and
 // constrained_right_hand_side
 
 #include <deal.II/base/quadrature_lib.h>

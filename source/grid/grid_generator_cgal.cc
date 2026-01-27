@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,10 +15,15 @@
 #include <deal.II/base/ndarray.h>
 
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/tria_description.h>
 
 #ifdef DEAL_II_WITH_CGAL
 // Functions needed by the CGAL mesh generation utilities are inside
 #  include <deal.II/cgal/triangulation.h>
+
+#  include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#  include <CGAL/Labeled_mesh_domain_3.h>
+#  include <CGAL/Mesh_triangulation_3.h>
 #endif
 
 
@@ -213,7 +218,7 @@ namespace GridGenerator
 } // namespace GridGenerator
 
 // explicit instantiations
-#  include "grid_generator_cgal.inst"
+#  include "grid/grid_generator_cgal.inst"
 
 #endif // DOXYGEN
 

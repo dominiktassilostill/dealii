@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2023 by the deal.II authors
+## Copyright (C) 2012 - 2024 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -54,12 +54,7 @@ macro(feature_mpi_configure_external)
   # TODO: We might consider refactoring this option into an automatic check
   # (in Modules/FindMPI.cmake) at some point. For the time being this is an
   # advanced configuration option.
-  #
-  if(DEAL_II_MPI_WITH_CUDA_SUPPORT)
-    option(DEAL_II_MPI_WITH_DEVICE_SUPPORT "Enable MPI Device support" ON)
-  else()
-    option(DEAL_II_MPI_WITH_DEVICE_SUPPORT "Enable MPI Device support" OFF)
-  endif()
+  option(DEAL_II_MPI_WITH_DEVICE_SUPPORT "Enable MPI Device support" OFF)
   mark_as_advanced(DEAL_II_MPI_WITH_DEVICE_SUPPORT)
 endmacro()
 

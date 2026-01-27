@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,11 +19,13 @@
 
 #ifdef DEAL_II_WITH_PETSC
 #  include <deal.II/base/exceptions.h>
+#  include <deal.II/base/mpi_stub.h>
 
 #  include <deal.II/lac/petsc_precondition.h>
 #  include <deal.II/lac/petsc_snes.h>
 
 #  include <petscdm.h>
+#  include <petscerror.h>
 #  include <petscsnes.h>
 
 DEAL_II_NAMESPACE_OPEN
@@ -705,6 +707,14 @@ namespace PETScWrappers
 #    undef undefPetscCall
 #  endif
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

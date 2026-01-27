@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2024 by the deal.II authors
+// Copyright (C) 2024 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,31 +26,39 @@ namespace LinearAlgebra
 {
   namespace TpetraWrappers
   {
-    template class BlockSparseMatrix<double>;
+    template class BlockSparseMatrix<double, MemorySpace::Host>;
 
     template void
-    BlockSparseMatrix<double>::reinit(
+    BlockSparseMatrix<double, MemorySpace::Host>::reinit(
       const ::dealii::BlockDynamicSparsityPattern &);
 
     template void
-    BlockSparseMatrix<double>::vmult(
-      TpetraWrappers::Vector<double> &,
-      const TpetraWrappers::Vector<double> &) const;
+    BlockSparseMatrix<double, MemorySpace::Host>::reinit<
+      ::dealii::BlockDynamicSparsityPattern>(
+      const std::vector<dealii::IndexSet> &,
+      const ::dealii::BlockDynamicSparsityPattern &,
+      MPI_Comm,
+      bool);
 
     template void
-    BlockSparseMatrix<double>::Tvmult(
-      TpetraWrappers::Vector<double> &,
-      const TpetraWrappers::Vector<double> &) const;
+    BlockSparseMatrix<double, MemorySpace::Host>::vmult(
+      TpetraWrappers::Vector<double, MemorySpace::Host> &,
+      const TpetraWrappers::Vector<double, MemorySpace::Host> &) const;
 
     template void
-    BlockSparseMatrix<double>::vmult(
-      TpetraWrappers::BlockVector<double> &,
-      const TpetraWrappers::BlockVector<double> &) const;
+    BlockSparseMatrix<double, MemorySpace::Host>::Tvmult(
+      TpetraWrappers::Vector<double, MemorySpace::Host> &,
+      const TpetraWrappers::Vector<double, MemorySpace::Host> &) const;
 
     template void
-    BlockSparseMatrix<double>::Tvmult(
-      TpetraWrappers::BlockVector<double> &,
-      const TpetraWrappers::BlockVector<double> &) const;
+    BlockSparseMatrix<double, MemorySpace::Host>::vmult(
+      TpetraWrappers::BlockVector<double, MemorySpace::Host> &,
+      const TpetraWrappers::BlockVector<double, MemorySpace::Host> &) const;
+
+    template void
+    BlockSparseMatrix<double, MemorySpace::Host>::Tvmult(
+      TpetraWrappers::BlockVector<double, MemorySpace::Host> &,
+      const TpetraWrappers::BlockVector<double, MemorySpace::Host> &) const;
   } // namespace TpetraWrappers
 } // namespace LinearAlgebra
 #  endif // DOXYGEN

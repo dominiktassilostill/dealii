@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2020 - 2023 by the deal.II authors
+ * Copyright (C) 2020 - 2024 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -44,7 +44,7 @@
 #include <deal.II/base/timer.h>
 #include <deal.II/base/work_stream.h>
 
-#include <deal.II/distributed/solution_transfer.h>
+#include <deal.II/numerics/solution_transfer.h>
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/dofs/dof_handler.h>
@@ -239,7 +239,7 @@ namespace Step69
     const MPI_Comm mpi_communicator;
     TimerOutput   &computing_timer;
 
-    SmartPointer<const Discretization<dim>> discretization;
+    ObserverPointer<const Discretization<dim>> discretization;
   };
 
   // @sect4{The <code>ProblemDescription</code> class}
@@ -338,7 +338,7 @@ namespace Step69
   // "implementation" for the class member
   // <code>parse_parameters_call_back()</code> which is automatically
   // called when invoking ParameterAcceptor::initialize() for every class
-  // that inherits from ParameterAceptor.
+  // that inherits from ParameterAcceptor.
   template <int dim>
   class InitialValues : public ParameterAcceptor
   {
@@ -401,8 +401,8 @@ namespace Step69
     const MPI_Comm mpi_communicator;
     TimerOutput   &computing_timer;
 
-    SmartPointer<const OfflineData<dim>>   offline_data;
-    SmartPointer<const InitialValues<dim>> initial_values;
+    ObserverPointer<const OfflineData<dim>>   offline_data;
+    ObserverPointer<const InitialValues<dim>> initial_values;
 
     SparseMatrix<double> dij_matrix;
 
@@ -454,7 +454,7 @@ namespace Step69
     const MPI_Comm mpi_communicator;
     TimerOutput   &computing_timer;
 
-    SmartPointer<const OfflineData<dim>> offline_data;
+    ObserverPointer<const OfflineData<dim>> offline_data;
 
     Vector<double> r;
 
@@ -1627,7 +1627,7 @@ namespace Step69
   // <code>parse_parameters_call_back</code> slot to the respective signal.
   //
   // The <code>parse_parameters_call_back</code> slot will be invoked from
-  // ParameterAceptor after the call to ParameterAcceptor::initialize(). In
+  // ParameterAcceptor after the call to ParameterAcceptor::initialize(). In
   // that regard, its use is appropriate for situations where the
   // parameters have to be postprocessed (in some sense) or some
   // consistency condition between the parameters has to be checked.
@@ -2460,7 +2460,7 @@ namespace Step69
     // string argument). ParameterAcceptor handles a global
     // ParameterHandler that is initialized with subsections and parameter
     // declarations for all class instances that are derived from
-    // ParameterAceptor. The call to initialize enters the subsection for
+    // ParameterAcceptor. The call to initialize enters the subsection for
     // each each derived class, and sets all variables that were added
     // using ParameterAcceptor::add_parameter()
 
@@ -2510,6 +2510,7 @@ namespace Step69
     for (auto &it : U)
       it.reinit(offline_data.partitioner);
 
+    // @anchor step_69-ResumeSection
     // @sect5{Resume}
     //
     // By default the boolean <code>resume</code> is set to false, i.e. the
@@ -2535,9 +2536,8 @@ namespace Step69
       {
         print_head(pcout, "resume interrupted computation");
 
-        parallel::distributed::
-          SolutionTransfer<dim, LinearAlgebra::distributed::Vector<double>>
-            solution_transfer(offline_data.dof_handler);
+        SolutionTransfer<dim, LinearAlgebra::distributed::Vector<double>>
+          solution_transfer(offline_data.dof_handler);
 
         std::vector<LinearAlgebra::distributed::Vector<double> *> vectors;
         std::transform(U.begin(),
@@ -2662,8 +2662,8 @@ namespace Step69
   // @sect5{Output and checkpointing}
 
   // We checkpoint the current state by doing the precise inverse
-  // operation to what we discussed for the <a href="Resume">resume
-  // logic</a>:
+  // operation to what we discussed for the
+  // @ref step_69-ResumeSection "resume logic":
 
   template <int dim>
   void MainLoop<dim>::checkpoint(const typename MainLoop<dim>::vector_type &U,
@@ -2673,9 +2673,8 @@ namespace Step69
   {
     print_head(pcout, "checkpoint computation");
 
-    parallel::distributed::
-      SolutionTransfer<dim, LinearAlgebra::distributed::Vector<double>>
-        solution_transfer(offline_data.dof_handler);
+    SolutionTransfer<dim, LinearAlgebra::distributed::Vector<double>>
+      solution_transfer(offline_data.dof_handler);
 
     std::vector<const LinearAlgebra::distributed::Vector<double> *> vectors;
     std::transform(U.begin(),

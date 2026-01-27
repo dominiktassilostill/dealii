@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,15 +14,21 @@
 
 #include <deal.II/lac/matrix_out.h>
 
+#include <string>
+#include <vector>
+
+
 DEAL_II_NAMESPACE_OPEN
 
 
 MatrixOut::Options::Options(const bool         show_absolute_values,
                             const unsigned int block_size,
-                            const bool         discontinuous)
+                            const bool         discontinuous,
+                            const bool         create_sparse_plot)
   : show_absolute_values(show_absolute_values)
   , block_size(block_size)
   , discontinuous(discontinuous)
+  , create_sparse_plot(create_sparse_plot)
 {}
 
 

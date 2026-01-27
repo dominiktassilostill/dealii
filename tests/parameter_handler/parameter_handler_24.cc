@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2022 by the deal.II authors
+// Copyright (C) 2002 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,7 +33,7 @@ check()
   std::ifstream in(SOURCE_DIR "/parameter_handler_24_in.prm");
   prm.parse_input(in, "input file", "", true);
 
-  prm.print_parameters(deallog.get_file_stream(), ParameterHandler::Text);
+  prm.print_parameters(deallog.get_file_stream(), ParameterHandler::PRM);
 }
 
 

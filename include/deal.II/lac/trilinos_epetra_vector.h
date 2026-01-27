@@ -22,14 +22,15 @@
 
 #  include <deal.II/base/index_set.h>
 #  include <deal.II/base/mpi_stub.h>
-#  include <deal.II/base/subscriptor.h>
 
 #  include <deal.II/lac/read_vector.h>
 #  include <deal.II/lac/trilinos_epetra_communication_pattern.h>
 #  include <deal.II/lac/vector_operation.h>
 #  include <deal.II/lac/vector_type_traits.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_FEVector.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #  include <memory>
 
@@ -222,8 +223,7 @@ namespace LinearAlgebra
      * @ingroup TrilinosWrappers
      * @ingroup Vectors
      */
-    class Vector : public ReadVector<VectorTraits::value_type>,
-                   public Subscriptor
+    class Vector : public ReadVector<VectorTraits::value_type>
     {
     public:
       using value_type      = VectorTraits::value_type;
@@ -281,7 +281,7 @@ namespace LinearAlgebra
       virtual void
       extract_subvector_to(
         const ArrayView<const types::global_dof_index> &indices,
-        ArrayView<double> &elements) const override;
+        const ArrayView<double> &elements) const override;
 
       /**
        * Copy function. This function takes a Vector and copies all the
@@ -336,20 +336,6 @@ namespace LinearAlgebra
         VectorOperation::values        operation,
         const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
           &communication_pattern = {});
-
-      /**
-       * @deprecated Use import_elements() instead.
-       */
-      DEAL_II_DEPRECATED
-      void
-      import(
-        const ReadWriteVector<double> &V,
-        const VectorOperation::values  operation,
-        const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
-          &communication_pattern = {})
-      {
-        import_elements(V, operation, communication_pattern);
-      }
 
       /** @} */
 
@@ -735,6 +721,8 @@ namespace LinearAlgebra
       inline const VectorReference &
       VectorReference::operator=(const value_type &value) const
       {
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
         (*vector.vector)[0][index] = value;
 
         return *this;
@@ -745,7 +733,9 @@ namespace LinearAlgebra
       inline const VectorReference &
       VectorReference::operator+=(const value_type &value) const
       {
-        value_type new_value       = static_cast<value_type>(*this) + value;
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+        const value_type new_value = static_cast<value_type>(*this) + value;
         (*vector.vector)[0][index] = new_value;
 
         return *this;
@@ -756,7 +746,9 @@ namespace LinearAlgebra
       inline const VectorReference &
       VectorReference::operator-=(const value_type &value) const
       {
-        value_type new_value       = static_cast<value_type>(*this) - value;
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+        const value_type new_value = static_cast<value_type>(*this) - value;
         (*vector.vector)[0][index] = new_value;
 
         return *this;
@@ -767,7 +759,9 @@ namespace LinearAlgebra
       inline const VectorReference &
       VectorReference::operator*=(const value_type &value) const
       {
-        value_type new_value       = static_cast<value_type>(*this) * value;
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+        const value_type new_value = static_cast<value_type>(*this) * value;
         (*vector.vector)[0][index] = new_value;
 
         return *this;
@@ -778,7 +772,9 @@ namespace LinearAlgebra
       inline const VectorReference &
       VectorReference::operator/=(const value_type &value) const
       {
-        value_type new_value       = static_cast<value_type>(*this) / value;
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+        const value_type new_value = static_cast<value_type>(*this) / value;
         (*vector.vector)[0][index] = new_value;
 
         return *this;
@@ -823,6 +819,14 @@ template <>
 struct is_serial_vector<LinearAlgebra::EpetraWrappers::Vector> : std::false_type
 {};
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

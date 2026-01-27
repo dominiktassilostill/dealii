@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -67,22 +67,22 @@ template <int dim, int spacedim>
 DataOut<dim, spacedim>::DataOut()
 {
   set_cell_selection(
-    [this](const Triangulation<dim, spacedim> &) {
+    [](const Triangulation<dim, spacedim> &tria) {
       typename Triangulation<dim, spacedim>::active_cell_iterator cell =
-        this->triangulation->begin_active();
+        tria.begin_active();
 
       // skip cells if the current one has no children (is active) and is a
       // ghost or artificial cell
-      while ((cell != this->triangulation->end()) && !cell->is_locally_owned())
+      while ((cell != tria.end()) && !cell->is_locally_owned())
         ++cell;
       return cell;
     },
-    [this](const Triangulation<dim, spacedim> &,
-           const cell_iterator &old_cell) {
+    [](const Triangulation<dim, spacedim> &tria,
+       const cell_iterator                &old_cell) {
       typename Triangulation<dim, spacedim>::active_cell_iterator cell =
         old_cell;
       ++cell;
-      while ((cell != this->triangulation->end()) && !cell->is_locally_owned())
+      while ((cell != tria.end()) && !cell->is_locally_owned())
         ++cell;
       return cell;
     });
@@ -1334,6 +1334,6 @@ DataOut<dim, spacedim>::get_cell_selection() const
 
 
 // explicit instantiations
-#include "data_out.inst"
+#include "numerics/data_out.inst"
 
 DEAL_II_NAMESPACE_CLOSE

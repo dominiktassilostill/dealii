@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -1941,7 +1941,6 @@ namespace Functions
   FourierCosineFunction<dim>::value(const Point<dim>  &p,
                                     const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
     return std::cos(fourier_coefficients * p);
   }
@@ -1953,7 +1952,6 @@ namespace Functions
   FourierCosineFunction<dim>::gradient(const Point<dim>  &p,
                                        const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
     return -fourier_coefficients * std::sin(fourier_coefficients * p);
   }
@@ -1965,7 +1963,6 @@ namespace Functions
   FourierCosineFunction<dim>::laplacian(const Point<dim>  &p,
                                         const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
     return (fourier_coefficients * fourier_coefficients) *
            (-std::cos(fourier_coefficients * p));
@@ -1991,7 +1988,6 @@ namespace Functions
   FourierSineFunction<dim>::value(const Point<dim>  &p,
                                   const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
     return std::sin(fourier_coefficients * p);
   }
@@ -2003,7 +1999,6 @@ namespace Functions
   FourierSineFunction<dim>::gradient(const Point<dim>  &p,
                                      const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
     return fourier_coefficients * std::cos(fourier_coefficients * p);
   }
@@ -2015,7 +2010,6 @@ namespace Functions
   FourierSineFunction<dim>::laplacian(const Point<dim>  &p,
                                       const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
     return (fourier_coefficients * fourier_coefficients) *
            (-std::sin(fourier_coefficients * p));
@@ -2047,7 +2041,6 @@ namespace Functions
   FourierSineSum<dim>::value(const Point<dim>  &p,
                              const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     const unsigned int n   = weights.size();
@@ -2065,7 +2058,6 @@ namespace Functions
   FourierSineSum<dim>::gradient(const Point<dim>  &p,
                                 const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     const unsigned int n = weights.size();
@@ -2083,7 +2075,6 @@ namespace Functions
   FourierSineSum<dim>::laplacian(const Point<dim>  &p,
                                  const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     const unsigned int n   = weights.size();
@@ -2121,7 +2112,6 @@ namespace Functions
   FourierCosineSum<dim>::value(const Point<dim>  &p,
                                const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     const unsigned int n   = weights.size();
@@ -2139,7 +2129,6 @@ namespace Functions
   FourierCosineSum<dim>::gradient(const Point<dim>  &p,
                                   const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     const unsigned int n = weights.size();
@@ -2157,7 +2146,6 @@ namespace Functions
   FourierCosineSum<dim>::laplacian(const Point<dim>  &p,
                                    const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     const unsigned int n   = weights.size();
@@ -2189,7 +2177,6 @@ namespace Functions
   Monomial<dim, Number>::value(const Point<dim>  &p,
                                const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, this->n_components);
 
     Number prod = 1;
@@ -2225,7 +2212,6 @@ namespace Functions
   Monomial<dim, Number>::gradient(const Point<dim>  &p,
                                   const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     Tensor<1, dim> r;
@@ -2416,10 +2402,9 @@ namespace Functions
     Tensor<1, 1>
     gradient_interpolate(const Table<1, double> &data_values,
                          const TableIndices<1>  &ix,
-                         const Point<1>         &p_unit,
-                         const Point<1>         &dx)
+                         const Point<1> & /*p_unit*/,
+                         const Point<1> &dx)
     {
-      (void)p_unit;
       Tensor<1, 1> grad;
       grad[0] = (data_values[ix[0] + 1] - data_values[ix[0]]) / dx[0];
       return grad;
@@ -2606,7 +2591,6 @@ namespace Functions
     const Point<dim>  &p,
     const unsigned int component) const
   {
-    (void)component;
     Assert(
       component == 0,
       ExcMessage(
@@ -2620,11 +2604,11 @@ namespace Functions
     // above to accommodate points that may lie outside the range
     Point<dim> p_unit;
     for (unsigned int d = 0; d < dim; ++d)
-      p_unit[d] = std::max(std::min((p[d] - coordinate_values[d][ix[d]]) /
-                                      (coordinate_values[d][ix[d] + 1] -
-                                       coordinate_values[d][ix[d]]),
-                                    1.),
-                           0.);
+      p_unit[d] = std::clamp((p[d] - coordinate_values[d][ix[d]]) /
+                               (coordinate_values[d][ix[d] + 1] -
+                                coordinate_values[d][ix[d]]),
+                             0.,
+                             1.);
 
     return interpolate(data_values, ix, p_unit);
   }
@@ -2637,7 +2621,6 @@ namespace Functions
     const Point<dim>  &p,
     const unsigned int component) const
   {
-    (void)component;
     Assert(
       component == 0,
       ExcMessage(
@@ -2653,8 +2636,7 @@ namespace Functions
     Point<dim> p_unit;
     for (unsigned int d = 0; d < dim; ++d)
       p_unit[d] =
-        std::max(std::min((p[d] - coordinate_values[d][ix[d]]) / dx[d], 1.),
-                 0.0);
+        std::clamp((p[d] - coordinate_values[d][ix[d]]) / dx[d], 0., 1.);
 
     return gradient_interpolate(data_values, ix, p_unit, dx);
   }
@@ -2715,7 +2697,6 @@ namespace Functions
   InterpolatedUniformGridData<dim>::value(const Point<dim>  &p,
                                           const unsigned int component) const
   {
-    (void)component;
     Assert(
       component == 0,
       ExcMessage(
@@ -2747,11 +2728,12 @@ namespace Functions
         const double delta_x =
           ((interval_endpoints[d].second - interval_endpoints[d].first) /
            n_subintervals[d]);
-        p_unit[d] = std::max(std::min((p[d] - interval_endpoints[d].first -
-                                       ix[d] * delta_x) /
-                                        delta_x,
-                                      1.),
-                             0.);
+
+        p_unit[d] =
+          std::clamp((p[d] - interval_endpoints[d].first - ix[d] * delta_x) /
+                       delta_x,
+                     0.,
+                     1.);
       }
 
     return interpolate(data_values, ix, p_unit);
@@ -2764,7 +2746,6 @@ namespace Functions
   InterpolatedUniformGridData<dim>::gradient(const Point<dim>  &p,
                                              const unsigned int component) const
   {
-    (void)component;
     Assert(
       component == 0,
       ExcMessage(
@@ -2797,12 +2778,11 @@ namespace Functions
         delta_x[d] = ((this->interval_endpoints[d].second -
                        this->interval_endpoints[d].first) /
                       this->n_subintervals[d]);
-        p_unit[d] =
-          std::max(std::min((p[d] - this->interval_endpoints[d].first -
-                             ix[d] * delta_x[d]) /
-                              delta_x[d],
-                            1.),
-                   0.);
+        p_unit[d]  = std::clamp((p[d] - this->interval_endpoints[d].first -
+                                ix[d] * delta_x[d]) /
+                                 delta_x[d],
+                               0.,
+                               1.);
       }
 
     return gradient_interpolate(this->data_values, ix, p_unit, delta_x);
@@ -2853,7 +2833,6 @@ namespace Functions
   Polynomial<dim>::value(const Point<dim>  &p,
                          const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     double sum = 0;
@@ -2895,7 +2874,6 @@ namespace Functions
   Polynomial<dim>::gradient(const Point<dim>  &p,
                             const unsigned int component) const
   {
-    (void)component;
     AssertIndexRange(component, 1);
 
     Tensor<1, dim> r;

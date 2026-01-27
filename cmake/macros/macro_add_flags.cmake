@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2022 by the deal.II authors
+## Copyright (C) 2012 - 2024 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -27,4 +27,3 @@ macro(add_flags _variable _flags)
     string(STRIP "${${_variable}}" ${_variable})
   endif()
 endmacro()
-

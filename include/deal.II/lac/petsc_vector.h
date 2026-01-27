@@ -20,9 +20,9 @@
 
 #ifdef DEAL_II_WITH_PETSC
 
+#  include <deal.II/base/enable_observer_pointer.h>
 #  include <deal.II/base/index_set.h>
 #  include <deal.II/base/partitioner.h>
-#  include <deal.II/base/subscriptor.h>
 
 #  include <deal.II/lac/exceptions.h>
 #  include <deal.II/lac/petsc_vector_base.h>
@@ -176,11 +176,14 @@ namespace PETScWrappers
        * Constructor. Set dimension to @p n and initialize all elements with
        * zero.
        *
-       * @arg locally_owned_size denotes the size of the chunk that shall be
-       * stored on the present process.
-       *
-       * @arg communicator denotes the MPI communicator over which the
+       * @param[in] communicator The MPI communicator over which the
        * different parts of the vector shall communicate
+       *
+       * @param[in] n The total size of the vector to be created, i.e.,
+       *   the sum of all locally owned sizes over all processes.
+       *
+       * @param[in] locally_owned_size The size of the chunk that shall be
+       * stored on the present process.
        *
        * The constructor is made explicit to avoid accidents like this:
        * <tt>v=0;</tt>. Presumably, the user wants to set every element of the
@@ -196,11 +199,13 @@ namespace PETScWrappers
        * Copy-constructor from deal.II vectors. Sets the dimension to that of
        * the given vector, and copies all elements.
        *
-       * @arg locally_owned_size denotes the size of the chunk that shall be
-       * stored on the present process.
-       *
-       * @arg communicator denotes the MPI communicator over which the
+       * @param[in] communicator The MPI communicator over which the
        * different parts of the vector shall communicate
+       *
+       * @param[in] v The vector to be copied.
+       *
+       * @param[in] locally_owned_size The size of the chunk that shall be
+       * stored on the present process.
        */
       template <typename Number>
       explicit Vector(const MPI_Comm                communicator,
@@ -399,15 +404,6 @@ namespace PETScWrappers
             const bool         scientific = true,
             const bool         across     = true) const;
 
-      /**
-       * @copydoc PETScWrappers::VectorBase::all_zero()
-       *
-       * @note This function overloads the one in the base class to make this
-       * a @ref GlossCollectiveOperation "collective operation".
-       */
-      bool
-      all_zero() const;
-
     protected:
       /**
        * Create a vector of length @p n. For this class, we create a parallel
@@ -446,7 +442,7 @@ namespace PETScWrappers
      * @relatesalso PETScWrappers::MPI::Vector
      */
     inline void
-    swap(Vector &u, Vector &v)
+    swap(Vector &u, Vector &v) noexcept
     {
       u.swap(v);
     }
@@ -572,6 +568,14 @@ struct is_serial_vector<PETScWrappers::MPI::Vector> : std::false_type
 {};
 
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

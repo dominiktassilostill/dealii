@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2014 by the deal.II authors
+// Copyright (C) 2006 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,7 +16,7 @@
 /**
  * @defgroup utilities Utility functions and classes
  *
- * This module simply collects a number of functions and classes that provide
+ * This page simply collects a number of functions and classes that provide
  * general tools for tasks that do not usually have much to do with finite
  * element programs in particular, but happen to be required there just as
  * well.

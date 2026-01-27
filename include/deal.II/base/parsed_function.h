@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2007 - 2023 by the deal.II authors
+// Copyright (C) 2007 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,8 +31,8 @@ namespace Functions
 {
   /**
    * Friendly interface to the FunctionParser class. This class is meant as a
-   * wrapper for the FunctionParser class. It is used in the step-34 tutorial
-   * program.
+   * wrapper for the FunctionParser class. It is used in the step-34 and step-86
+   * tutorial programs.
    *
    * It provides two methods to declare and parse a ParameterHandler object
    * and creates the Function object declared in the parameter file. This
@@ -91,13 +91,14 @@ namespace Functions
     ParsedFunction(const unsigned int n_components = 1, const double h = 1e-8);
 
     /**
-     * Declare parameters needed by this class. The additional parameter @p
+     * Declare parameters needed by this class. The parameter @p
      * n_components is used to generate the right code according to the number
      * of components of the function that will parse this ParameterHandler. If
      * the number of components which is parsed does not match the number of
      * components of this object, an assertion is thrown and the program is
-     * aborted.  The default behavior for this class is to declare the
-     * following entries:
+     * aborted. The additional parameter @p expr is used to declare the default
+     * expression used by the function. The default behavior for this class is
+     * to declare the following entries:
      *
      *  @code
      *
@@ -109,7 +110,8 @@ namespace Functions
      */
     static void
     declare_parameters(ParameterHandler  &prm,
-                       const unsigned int n_components = 1);
+                       const unsigned int n_components = 1,
+                       const std::string &input_expr   = "");
 
     /**
      * Parse parameters needed by this class.  If the number of components
@@ -140,9 +142,11 @@ namespace Functions
      *  @endcode
      *
      * These constants can be used in the declaration of the function
-     * expression, which follows the convention of the FunctionParser class.
-     * In order to specify vector functions, semicolons have to be used to
-     * separate the different components, e.g.:
+     * expression, which follows the convention of the FunctionParser class. The
+     * constants `pi`, `PI`, `Pi`, (for the value of π) and `E` (for the Nepero
+     * number) are predefined. If want to override these constants, you can do
+     * so in the Function constants entry. In order to specify vector functions,
+     * semicolons have to be used to separate the different components, e.g.:
      *
      *  @code
      *

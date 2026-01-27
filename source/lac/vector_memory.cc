@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2007 - 2023 by the deal.II authors
+// Copyright (C) 2007 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,6 +19,7 @@
 #include <deal.II/lac/petsc_vector.h>
 #include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_block_vector.h>
 #include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
@@ -27,7 +28,7 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-#include "vector_memory.inst"
+#include "lac/vector_memory.inst"
 template class VectorMemory<
   LinearAlgebra::distributed::Vector<float, MemorySpace::Default>>;
 template class VectorMemory<
@@ -41,24 +42,16 @@ namespace internal
 {
   namespace GrowingVectorMemoryImplementation
   {
-#ifdef DEAL_II_WITH_CUDA
-    void
-    release_all_unused_cuda_memory();
-#endif
-
     void
     release_all_unused_memory()
     {
-#include "vector_memory_release.inst"
+#include "lac/vector_memory_release.inst"
       dealii::GrowingVectorMemory<dealii::LinearAlgebra::distributed::Vector<
         float,
         MemorySpace::Default>>::release_unused_memory();
       dealii::GrowingVectorMemory<dealii::LinearAlgebra::distributed::Vector<
         double,
         MemorySpace::Default>>::release_unused_memory();
-#ifdef DEAL_II_WITH_CUDA
-      release_all_unused_cuda_memory();
-#endif
     }
   } // namespace GrowingVectorMemoryImplementation
 } // namespace internal

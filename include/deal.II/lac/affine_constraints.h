@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,9 +17,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/index_set.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/table.h>
 #include <deal.II/base/template_constraints.h>
 #include <deal.II/base/thread_local_storage.h>
@@ -261,9 +261,11 @@ namespace internal
       insert_constraint(const size_type constrained_local_dof);
 
       /**
-       * Return the number of constrained dofs in the structure. Constrained
-       * dofs do not contribute directly to the matrix, but are needed in order
-       * to set matrix diagonals and resolve inhomogeneities.
+       * Return the number of degrees of freedom for which this object
+       * stores constraints. Note that this is the number of degrees
+       * of freedom for which the *current* MPI process stores
+       * constraints, not the total number of constrained degrees of
+       * freedom across all processes.
        */
       size_type
       n_constraints() const;
@@ -435,7 +437,7 @@ namespace internal
  * constraints on degrees of freedom. The concept and origin of such
  * constraints is extensively described in the
  * @ref constraints
- * module. The class is meant to deal with a limited number of constraints
+ * topic. The class is meant to deal with a limited number of constraints
  * relative to the total number of degrees of freedom, for example a few per
  * cent up to maybe 30 per cent; and with a linear combination of <i>M</i>
  * other degrees of freedom where <i>M</i> is also relatively small (no larger
@@ -448,7 +450,7 @@ namespace internal
  * There is also a significant amount of documentation on how to use this
  * class in the
  * @ref constraints
- * module.
+ * topic.
  *
  *
  * <h3>Description of constraints</h3>
@@ -491,6 +493,44 @@ namespace internal
  * been added, you need to call close(), which compresses the storage format
  * and sorts the entries.
  *
+ *
+ * <h3>Interpretation of constraints</h3>
+ *
+ * Whereas this class *stores* constraints in the form
+ * @f[
+ *  x_i = \sum_j a_{ij} x_j + b_i,
+ * @f]
+ * this does not mean that one should consider the $x_j$ to be unconstrained
+ * variables that can be computed on their own, and the $x_i$ then to be
+ * constrained variables whose values are determined by the unconstrained
+ * degrees of freedom. Rather, at a conceptual level, one *should* think
+ * of these constraints as of the form
+ * @f[
+ *  x_i - \sum_j a_{ij} x_j = b_i,
+ * @f]
+ * where it is clear that *all* of the variables that appear on the left
+ * are degrees of freedom, and that there just happens to be a constraint that
+ * couples all of them via an equation, without designating any of the variables
+ * as conceptually different from the other.
+ *
+ * To give an example that is also used in the @ref constraints
+ * documentation module, a typical hanging node constraint has the form
+ * $x_2=\frac 12 x_0 + \frac 12 x_1$ in a situation like the following:
+ *       @image html hp-refinement-simple.png
+ * We often talk about this situation as saying that we need the hanging
+ * node $x_2$ to have the specific value $\frac 12 x_0 + \frac 12 x_1$ to
+ * ensure that the solution is continuous at this node. This suggests that
+ * $x_0$ and $x_1$ are unconstrained degrees of freedom that can be computed
+ * on their own (or, to be more precise: from a linear system that is formed
+ * by only the equations for all unconstrained degrees of freedom), and that
+ * we can compute the constrained DoFs like $x_2$ from them in a follow-up
+ * step. Alas, this is not the correct view: If we wanted to remove $x_2$
+ * from the linear system, for example by removing row and column 2, then
+ * we will only get the same solution for $x_0$ and $x_1$ if we *also*
+ * modify the remaining equations. It is precisely these modifications that
+ * this class efficiently implements.
+ *
+ *
  * @note Many of the algorithms this class implements are discussed in the
  * @ref hp_paper.
  * The algorithms are also related to those shown in @cite Shephard1984 ,
@@ -503,7 +543,7 @@ namespace internal
  * @ingroup constraints
  */
 template <typename number = double>
-class AffineConstraints : public Subscriptor
+class AffineConstraints : public EnableObserverPointer
 {
 public:
   /**
@@ -580,7 +620,7 @@ public:
    *   both of its arguments equal to the index set provided here. This
    *   is not wrong, but inefficient. Use the following constructor instead.
    */
-  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT(
+  DEAL_II_DEPRECATED_WITH_COMMENT(
     "Use the constructor with two index set arguments.")
   explicit AffineConstraints(const IndexSet &locally_stored_constraints);
 
@@ -677,7 +717,7 @@ public:
    *
    * @deprecated Use the reinit() function with two index set arguments instead.
    */
-  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT(
+  DEAL_II_DEPRECATED_WITH_COMMENT(
     "Use the reinit() function with two index set arguments.")
   void
   reinit(const IndexSet &locally_stored_constraints);
@@ -753,7 +793,7 @@ public:
    *   that should probably be considered a bug. Use get_view() and merge()
    *   instead.
    */
-  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT("Use get_view() and merge() instead.")
+  DEAL_II_DEPRECATED_WITH_COMMENT("Use get_view() and merge() instead.")
   void
   add_selected_constraints(const AffineConstraints &constraints_in,
                            const IndexSet          &filter);
@@ -1681,7 +1721,7 @@ public:
    * This function can correctly handle inhomogeneous constraints as well. For
    * the parameter use_inhomogeneities_for_rhs see the documentation in
    * @ref constraints
-   * module.
+   * topic.
    *
    * @note This function in itself is thread-safe, i.e., it works properly
    * also when several threads call it simultaneously. However, the function
@@ -1994,17 +2034,44 @@ public:
    * consistent on all MPI processes in a distributed computation.
    *
    * The IndexSet @p locally_owned_dofs conforms to all DoFs that are locally
-   * owned on the current process, i.e., DoFHandler::locally_owned_dofs().
+   * owned on the current process, that is typically what you get from
+   * DoFHandler::locally_owned_dofs().
    *
    * The IndexSet @p constraints_to_make_consistent shall contain all DoF
    * indices for which we want to store the complete constraints for. Which DoFs
-   * these might be depends on your actual use case: For most applications in
+   * these might be depends on your actual use case; in general, these are
+   * the degrees of freedoms for which you compute contributions to the matrix
+   * and right hand side of a linear system. For most applications in
    * which you are using continuous Galerkin methods, you would want to use
    * locally active DoFs here, obtained via
-   * DoFTools::extract_locally_active_dofs(). However in discontinuous Galerkin
-   * methods, you might need consistent information on all locally relevant
-   * DoFs due to the need to compute face integrals against ghosted cells,
-   * for which you need DoFTools::extract_locally_relevant_dofs().
+   * DoFTools::extract_locally_active_dofs(). This is because you compute
+   * contributions for the linear system only on the locally owned cells,
+   * and the degrees of freedom located there -- i.e., exactly the locally
+   * active degrees of freedom (see
+   * @ref GlossLocallyActiveDof "this glossary entry"). On the other hand,
+   * for discontinuous Galerkin methods, you might need consistent information
+   * on all locally relevant DoFs due to the need to compute face integrals
+   * between locally owned and ghost cells, with contributions computed also
+   * for matrix and right hand side entries that correspond to degrees of
+   * freedom on ghost cells, i.e., DoFs that are owned by other processes.
+   * In that case, you need to know about constraints also for degrees of
+   * freedom on locally relevant DoFs, and in that case you want to pass
+   * as second argument to this function what you get from
+   * DoFTools::extract_locally_relevant_dofs(). It is worth noting that the
+   * same happens if you use a continuous Galerkin method but if your
+   * bilinear form contains terms computed on faces -- for example to
+   * penalize certain terms when solving the biharmonic equation (see,
+   * for example, step-47).
+   *
+   * At the end of this function, the current object only stores constraints
+   * for degrees of freedom whose indices are listed in the
+   * second argument, @p constraints_to_make_consistent. In other words, while
+   * DoFTools::make_hanging_node_constraints() may compute constraints
+   * also for degrees of freedom at the interface between two ghost cells
+   * (these DoFs are locally *relevant*), if you pass as second argument only
+   * the set of locally *active* DoFs, this function will at the end have
+   * forgotten constraints about all DoFs that are locally relevant but
+   * not locally active.
    *
    * This function updates the locally stored constraints (or local_lines) of
    * this object, whenever a DoF is constrained against another that we have not
@@ -2017,7 +2084,9 @@ public:
    *   locally_owned_dofs, constraints.get_local_lines(), mpi_communicator);
    * @endcode
    *
-   * @note One should call this function before calling close().
+   * @note This function internally calls close(). As a consequence, whether
+   *   or not you have called close() before, the current object will be
+   *   closed after this function.
    */
   void
   make_consistent_in_parallel(const IndexSet &locally_owned_dofs,
@@ -2341,7 +2410,7 @@ inline AffineConstraints<number>::AffineConstraints(
 template <typename number>
 inline AffineConstraints<number>::AffineConstraints(
   const AffineConstraints &affine_constraints)
-  : Subscriptor()
+  : EnableObserverPointer()
   , lines(affine_constraints.lines)
   , lines_cache(affine_constraints.lines_cache)
   , locally_owned_dofs(affine_constraints.locally_owned_dofs)
@@ -2804,7 +2873,6 @@ AffineConstraints<number>::merge(
   const MergeConflictBehavior            merge_conflict_behavior,
   const bool                             allow_different_local_lines)
 {
-  (void)allow_different_local_lines;
   Assert(allow_different_local_lines ||
            local_lines == other_constraints.local_lines,
          ExcMessage(

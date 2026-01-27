@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2023 by the deal.II authors
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -59,7 +59,7 @@ main()
   if (false)
     {
       std::ofstream ofile(SOURCE_DIR "/arkode_04_in.prm");
-      prm.print_parameters(ofile, ParameterHandler::ShortText);
+      prm.print_parameters(ofile, ParameterHandler::ShortPRM);
       ofile.close();
     }
 

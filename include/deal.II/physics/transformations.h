@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -89,15 +89,6 @@ namespace Physics
       template <typename Number>
       Tensor<2, 3, Number>
       rotation_matrix_3d(const Tensor<1, 3, Number> &axis, const Number &angle);
-
-      /**
-       * @copydoc Physics::Transformations::Rotations::rotation_matrix_3d()
-       *
-       * @deprecated Use the variant with a Tensor as an axis.
-       */
-      template <typename Number>
-      DEAL_II_DEPRECATED Tensor<2, 3, Number>
-      rotation_matrix_3d(const Point<3, Number> &axis, const Number &angle);
 
       /** @} */
 
@@ -948,17 +939,6 @@ Physics::Transformations::Rotations::rotation_matrix_3d(
                                   t * axis[1] * axis[2] + s * axis[0],
                                   t * axis[2] * axis[2] + c}};
   return Tensor<2, 3, Number>(rotation);
-}
-
-
-
-template <typename Number>
-Tensor<2, 3, Number>
-Physics::Transformations::Rotations::rotation_matrix_3d(
-  const Point<3, Number> &axis,
-  const Number           &angle)
-{
-  return rotation_matrix_3d(static_cast<Tensor<1, 3, Number>>(axis), angle);
 }
 
 

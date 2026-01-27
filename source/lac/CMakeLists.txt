@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2024 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -22,16 +22,17 @@ set(_unity_include_src
   chunk_sparsity_pattern.cc
   dynamic_sparsity_pattern.cc
   exceptions.cc
-  scalapack.cc
   la_parallel_vector.cc
   la_parallel_block_vector.cc
   matrix_out.cc
+  matrix_scaling.cc
   precondition_block.cc
   precondition_block_ez.cc
   relaxation_block.cc
   read_write_vector.cc
   solver.cc
   solver_control.cc
+  solver_gmres.cc
   sparse_decomposition.cc
   sparse_direct.cc
   sparse_ilu.cc
@@ -51,19 +52,11 @@ set(_separate_src
   full_matrix.cc
   lapack_full_matrix.cc
   qr.cc
-  sparse_matrix.cc
+  sparse_matrix_inst1.cc
   sparse_matrix_inst2.cc
   tridiagonal_matrix.cc
   utilities.cc
   )
-
-# Add CUDA wrapper files
-if(DEAL_II_WITH_CUDA)
-  set(_separate_src
-    ${_separate_src}
-    vector_memory_cuda.cc
-    )
-endif()
 
 set(_inst
   affine_constraints.inst.in
@@ -74,12 +67,13 @@ set(_inst
   lapack_full_matrix.inst.in
   la_parallel_vector.inst.in
   la_parallel_block_vector.inst.in
+  matrix_scaling.inst.in
   precondition_block.inst.in
   petsc_communication_pattern.inst.in
   relaxation_block.inst.in
   read_write_vector.inst.in
-  scalapack.inst.in
   solver.inst.in
+  solver_gmres.inst.in
   sparse_matrix_ez.inst.in
   sparse_matrix.inst.in
   tensor_product_matrix.inst.in
@@ -142,20 +136,36 @@ if(DEAL_II_WITH_TRILINOS)
     trilinos_solver.cc
     trilinos_sparse_matrix.cc
     trilinos_sparsity_pattern.cc
-    trilinos_tpetra_block_vector.cc
-    trilinos_tpetra_block_sparse_matrix.cc
-    trilinos_tpetra_communication_pattern.cc
-    trilinos_tpetra_solver_direct.cc
-    trilinos_tpetra_sparse_matrix.cc
-    trilinos_tpetra_sparsity_pattern.cc
-    trilinos_tpetra_vector.cc
     trilinos_vector.cc
   )
 
-  set(_separate_src
-    ${_separate_src}
-    trilinos_precondition_muelu.cc
+  if(DEAL_II_TRILINOS_WITH_MUELU)
+    set(_separate_src
+      ${_separate_src}
+      trilinos_precondition_muelu.cc
     )
+  endif()
+
+  if(DEAL_II_TRILINOS_WITH_TPETRA)
+    set(_unity_include_src
+      ${_unity_include_src}
+      trilinos_tpetra_block_vector.cc
+      trilinos_tpetra_block_sparse_matrix.cc
+      trilinos_tpetra_communication_pattern.cc
+      trilinos_tpetra_precondition.cc
+      trilinos_tpetra_solver_direct.cc
+      trilinos_tpetra_sparse_matrix.cc
+      trilinos_tpetra_sparsity_pattern.cc
+      trilinos_tpetra_vector.cc
+    )
+
+    if(DEAL_II_TRILINOS_WITH_TPETRA_MUELU)
+      set(_separate_src
+        ${_separate_src}
+        trilinos_tpetra_precondition_muelu.cc
+      )
+    endif()
+  endif()
 
   set(_inst
     ${_inst}
@@ -164,16 +174,21 @@ if(DEAL_II_WITH_TRILINOS)
   )
 endif()
 
-# Add CUDA wrapper files
-if(DEAL_II_WITH_CUDA)
-  set(_separate_src
-    ${_separate_src}
-    cuda_kernels.cc
-    cuda_precondition.cc
-    cuda_solver_direct.cc
-    cuda_sparse_matrix.cc
-    cuda_vector.cc
-    read_write_vector_cuda.cc
+if(DEAL_II_WITH_SCALAPACK)
+  set(_unity_include_src
+    ${_unity_include_src}
+    scalapack.cc
+  )
+  set(_inst
+    ${_inst}
+    scalapack.inst.in
+  )
+endif()
+
+if(DEAL_II_WITH_PSBLAS)
+  set(_unity_include_src
+    ${_unity_include_src}
+    psblas_vector.cc
   )
 endif()
 
@@ -191,9 +206,11 @@ setup_source_list("${_unity_include_src}"
   _src
   )
 
-file(GLOB _header
+file(GLOB _header CONFIGURE_DEPENDS
   ${CMAKE_SOURCE_DIR}/include/deal.II/lac/*.h
   )
 
 define_object_library(object_lac OBJECT ${_src} ${_header} ${_inst})
 expand_instantiations(object_lac "${_inst}")
+
+collect_source_and_header_files("${_unity_include_src};${_separate_src}" "${_header}")

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,7 +43,7 @@ namespace LinearAlgebra
  * VectorType::scale, so the template vector class needs to provide a
  * @p scale() method.
  *
- * When using this class with ConstraintsMatrix::distribute_local_to_global(),
+ * When using this class with AffineConstraints::distribute_local_to_global(),
  * the underlying vector needs to provide write access to all entries referenced
  * by cells in an assembly process. This means that this class also needs access
  * to ghost entries that are owned by other processors than the calling one.
@@ -58,7 +58,7 @@ namespace LinearAlgebra
  * @endcode
  */
 template <typename VectorType = Vector<double>>
-class DiagonalMatrix : public Subscriptor
+class DiagonalMatrix : public EnableObserverPointer
 {
 public:
   using value_type = typename VectorType::value_type;
@@ -353,7 +353,6 @@ DiagonalMatrix<VectorType>::operator()(const size_type i,
                                        const size_type j) const
 {
   Assert(i == j, ExcIndexRange(j, i, i + 1));
-  (void)j;
   return diagonal(i);
 }
 
@@ -364,7 +363,6 @@ typename VectorType::value_type &
 DiagonalMatrix<VectorType>::operator()(const size_type i, const size_type j)
 {
   Assert(i == j, ExcIndexRange(j, i, i + 1));
-  (void)j;
   return diagonal(i);
 }
 

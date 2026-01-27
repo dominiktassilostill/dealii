@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2024 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,10 +14,12 @@
 
 
 #include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/utilities.h>
 
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_nothing.h>
 #include <deal.II/fe/fe_q_iso_q1.h>
+#include <deal.II/fe/fe_tools.h>
 
 #include <deal.II/lac/vector.h>
 
@@ -26,6 +28,49 @@
 #include <vector>
 
 DEAL_II_NAMESPACE_OPEN
+
+
+namespace internal
+{
+  template <int dim>
+  Table<2, bool>
+  make_local_sparsity_pattern(unsigned int n_points_1d)
+  {
+    const unsigned int n_per_cell = Utilities::pow(n_points_1d, dim);
+
+    const std::vector<unsigned int> R =
+      FETools::lexicographic_to_hierarchic_numbering<dim>(n_points_1d - 1);
+
+    Table<2, bool> table;
+    table.reinit(n_per_cell, n_per_cell);
+    table.fill(false);
+
+    const int N1d = n_points_1d;
+    for (unsigned int i = 0; i < n_per_cell; ++i)
+      for (unsigned int j = 0; j < n_per_cell; ++j)
+        {
+          // compute l1 distance:
+          int distance = 0;
+
+          int xi = i;
+          int xj = j;
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              int current_distance = std::abs((xi % N1d) - (xj % N1d));
+              xi /= N1d;
+              xj /= N1d;
+              distance = std::max(distance, current_distance);
+              if (distance > 1)
+                break;
+            }
+
+          if (distance <= 1)
+            table(R[i], R[j]) = true;
+        }
+
+    return table;
+  }
+} // namespace internal
 
 
 
@@ -50,6 +95,8 @@ FE_Q_iso_Q1<dim, spacedim>::FE_Q_iso_Q1(const unsigned int subdivisions)
   const QIterated<1>  points(trapez, subdivisions);
 
   this->initialize(points.get_points());
+  this->local_dof_sparsity_pattern =
+    internal::make_local_sparsity_pattern<dim>(subdivisions + 1);
 }
 
 
@@ -72,6 +119,8 @@ FE_Q_iso_Q1<dim, spacedim>::FE_Q_iso_Q1(
                     "subelements"));
 
   this->initialize(support_points);
+  this->local_dof_sparsity_pattern =
+    internal::make_local_sparsity_pattern<dim>(support_points.size());
 }
 
 
@@ -178,7 +227,8 @@ FE_Q_iso_Q1<dim, spacedim>::compare_for_domination(
 }
 
 
+
 // explicit instantiations
-#include "fe_q_iso_q1.inst"
+#include "fe/fe_q_iso_q1.inst"
 
 DEAL_II_NAMESPACE_CLOSE

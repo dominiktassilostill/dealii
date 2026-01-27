@@ -2,7 +2,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2018 - 2023 by the deal.II authors
+## Copyright (C) 2018 - 2024 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -128,4 +128,3 @@ for commit in $commits ; do
 done
 
 git checkout -q ${current_branch}
-

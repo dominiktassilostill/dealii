@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2022 by the deal.II authors
+// Copyright (C) 2008 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,7 +29,7 @@ ChunkSparsityPattern::ChunkSparsityPattern()
 
 
 ChunkSparsityPattern::ChunkSparsityPattern(const ChunkSparsityPattern &s)
-  : Subscriptor()
+  : EnableObserverPointer()
   , chunk_size(s.chunk_size)
   , sparsity_pattern(s.sparsity_pattern)
 {

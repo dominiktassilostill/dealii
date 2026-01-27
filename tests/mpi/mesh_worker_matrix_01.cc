@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2023 by the deal.II authors
+// Copyright (C) 2009 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -46,7 +46,7 @@
 // Define a class that fills all available entries in the info objects
 // with recognizable numbers.
 template <int dim>
-class Local : public Subscriptor
+class Local : public EnableObserverPointer
 {
 public:
   using CellInfo = MeshWorker::IntegrationInfo<dim>;

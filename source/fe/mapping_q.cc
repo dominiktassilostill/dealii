@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2024 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -239,13 +239,6 @@ MappingQ<dim, spacedim>::MappingQ(const unsigned int p)
          ExcMessage("It only makes sense to create polynomial mappings "
                     "with a polynomial degree greater or equal to one."));
 }
-
-
-
-template <int dim, int spacedim>
-MappingQ<dim, spacedim>::MappingQ(const unsigned int p, const bool)
-  : MappingQ<dim, spacedim>(p)
-{}
 
 
 
@@ -582,7 +575,8 @@ MappingQ<dim, spacedim>::transform_real_to_unit_cell(
 
               default:
                 {
-                  // we should get here, based on the if-condition at the top
+                  // we should not get here, based on the if-condition at the
+                  // top
                   DEAL_II_ASSERT_UNREACHABLE();
                 }
             }
@@ -621,7 +615,7 @@ MappingQ<dim, spacedim>::transform_real_to_unit_cell(
   // statement may throw an exception, which we simply pass up to the caller
   const Point<dim> p_unit =
     this->transform_real_to_unit_cell_internal(cell, p, initial_p_unit);
-  AssertThrow(numbers::is_finite(p_unit[0]),
+  AssertThrow(p_unit[0] != std::numeric_limits<double>::lowest(),
               (typename Mapping<dim, spacedim>::ExcTransformationFailed()));
   return p_unit;
 }
@@ -648,7 +642,12 @@ MappingQ<dim, spacedim>::transform_points_real_to_unit_cell(
   AssertDimension(real_points.size(), unit_points.size());
   std::vector<Point<spacedim>> support_points_higher_order;
   boost::container::small_vector<Point<spacedim>,
-                                 GeometryInfo<dim>::vertices_per_cell>
+#ifndef _MSC_VER
+                                 ReferenceCells::max_n_vertices<dim>()
+#else
+                                 GeometryInfo<dim>::vertices_per_cell
+#endif
+                                 >
     vertices;
   if (polynomial_degree == 1)
     vertices = this->get_vertices(cell);
@@ -696,7 +695,7 @@ MappingQ<dim, spacedim>::transform_points_real_to_unit_cell(
         // determinants) from other SIMD lanes. Repeat the computation in this
         // unlikely case with scalar arguments.
         for (unsigned int j = 0; j < n_lanes && i + j < n_points; ++j)
-          if (numbers::is_finite(unit_point[0][j]))
+          if (unit_point[0][j] != std::numeric_limits<double>::lowest())
             for (unsigned int d = 0; d < dim; ++d)
               unit_points[i + j][d] = unit_point[d][j];
           else
@@ -1107,9 +1106,7 @@ MappingQ<dim, spacedim>::fill_fe_face_values(
     QProjector<dim>::DataSetDescriptor::face(
       ReferenceCells::get_hypercube<dim>(),
       face_no,
-      cell->face_orientation(face_no),
-      cell->face_flip(face_no),
-      cell->face_rotation(face_no),
+      cell->combined_face_orientation(face_no),
       quadrature[0].size()),
     quadrature[0],
     data,
@@ -1500,25 +1497,12 @@ MappingQ<dim, spacedim>::transform(
                    "update_covariant_transformation"));
 
           for (unsigned int q = 0; q < output.size(); ++q)
-            for (unsigned int i = 0; i < spacedim; ++i)
-              for (unsigned int j = 0; j < spacedim; ++j)
-                {
-                  double                                 tmp[dim];
-                  const DerivativeForm<1, dim, spacedim> covariant =
-                    data.inverse_jacobians[q].transpose();
-                  for (unsigned int K = 0; K < dim; ++K)
-                    {
-                      tmp[K] = covariant[j][0] * input[q][i][0][K];
-                      for (unsigned int J = 1; J < dim; ++J)
-                        tmp[K] += covariant[j][J] * input[q][i][J][K];
-                    }
-                  for (unsigned int k = 0; k < spacedim; ++k)
-                    {
-                      output[q][i][j][k] = covariant[k][0] * tmp[0];
-                      for (unsigned int K = 1; K < dim; ++K)
-                        output[q][i][j][k] += covariant[k][K] * tmp[K];
-                    }
-                }
+            {
+              const DerivativeForm<1, dim, spacedim> covariant =
+                data.inverse_jacobians[q].transpose();
+              output[q] =
+                internal::apply_covariant_gradient(covariant, input[q]);
+            }
           return;
         }
 
@@ -1637,28 +1621,30 @@ MappingQ<3, 3>::add_quad_support_points(
     {
       const Triangulation<3>::face_iterator face = cell->face(face_no);
 
-#ifdef DEBUG
-      const bool face_orientation          = cell->face_orientation(face_no),
-                 face_flip                 = cell->face_flip(face_no),
-                 face_rotation             = cell->face_rotation(face_no);
-      const unsigned int vertices_per_face = GeometryInfo<3>::vertices_per_face,
-                         lines_per_face    = GeometryInfo<3>::lines_per_face;
+      if constexpr (running_in_debug_mode())
+        {
+          const bool face_orientation = cell->face_orientation(face_no),
+                     face_flip        = cell->face_flip(face_no),
+                     face_rotation    = cell->face_rotation(face_no);
+          const unsigned int vertices_per_face =
+                               GeometryInfo<3>::vertices_per_face,
+                             lines_per_face = GeometryInfo<3>::lines_per_face;
 
-      // some sanity checks up front
-      for (unsigned int i = 0; i < vertices_per_face; ++i)
-        Assert(face->vertex_index(i) ==
-                 cell->vertex_index(GeometryInfo<3>::face_to_cell_vertices(
-                   face_no, i, face_orientation, face_flip, face_rotation)),
-               ExcInternalError());
+          // some sanity checks up front
+          for (unsigned int i = 0; i < vertices_per_face; ++i)
+            Assert(face->vertex_index(i) ==
+                     cell->vertex_index(GeometryInfo<3>::face_to_cell_vertices(
+                       face_no, i, face_orientation, face_flip, face_rotation)),
+                   ExcInternalError());
 
-      // indices of the lines that bound a face are given by GeometryInfo<3>::
-      // face_to_cell_lines
-      for (unsigned int i = 0; i < lines_per_face; ++i)
-        Assert(face->line(i) ==
-                 cell->line(GeometryInfo<3>::face_to_cell_lines(
-                   face_no, i, face_orientation, face_flip, face_rotation)),
-               ExcInternalError());
-#endif
+          // indices of the lines that bound a face are given by
+          // GeometryInfo<3>:: face_to_cell_lines
+          for (unsigned int i = 0; i < lines_per_face; ++i)
+            Assert(face->line(i) ==
+                     cell->line(GeometryInfo<3>::face_to_cell_lines(
+                       face_no, i, face_orientation, face_flip, face_rotation)),
+                   ExcInternalError());
+        }
       // extract the points surrounding a quad from the points
       // already computed. First get the 4 vertices and then the points on
       // the four lines
@@ -1705,8 +1691,8 @@ MappingQ<2, 3>::add_quad_support_points(
   for (unsigned int q = 0, q2 = 0; q2 < polynomial_degree - 1; ++q2)
     for (unsigned int q1 = 0; q1 < polynomial_degree - 1; ++q1, ++q)
       {
-        Point<2> point(line_support_points[q1 + 1][0],
-                       line_support_points[q2 + 1][0]);
+        const Point<2> point(line_support_points[q1 + 1][0],
+                             line_support_points[q2 + 1][0]);
         for (const unsigned int i : GeometryInfo<2>::vertex_indices())
           weights(q, i) = GeometryInfo<2>::d_linear_shape_function(point, i);
       }
@@ -1858,7 +1844,7 @@ MappingQ<dim, spacedim>::is_compatible_with(
 
 
 //--------------------------- Explicit instantiations -----------------------
-#include "mapping_q.inst"
+#include "fe/mapping_q.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

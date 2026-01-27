@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2024 by the deal.II authors
+// Copyright (C) 2010 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -313,9 +313,10 @@ namespace
                      vertex_touch_count.end(),
                      &connectivity->ctt_offset[1]);
 
-    const typename internal::p4est::types<dim>::locidx num_vtt =
-      std::accumulate(vertex_touch_count.begin(), vertex_touch_count.end(), 0u);
-    (void)num_vtt;
+    [[maybe_unused]] const typename internal::p4est::types<dim>::locidx
+      num_vtt = std::accumulate(vertex_touch_count.begin(),
+                                vertex_touch_count.end(),
+                                0u);
     Assert(connectivity->ctt_offset[triangulation.n_vertices()] == num_vtt,
            ExcInternalError());
 
@@ -462,17 +463,7 @@ namespace
           p4est_child[GeometryInfo<dim>::max_children_per_cell];
         for (unsigned int c = 0; c < GeometryInfo<dim>::max_children_per_cell;
              ++c)
-          switch (dim)
-            {
-              case 2:
-                P4EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              case 3:
-                P8EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              default:
-                DEAL_II_NOT_IMPLEMENTED();
-            }
+          internal::p4est::functions<dim>::quadrant_init(p4est_child[c]);
 
 
         internal::p4est::functions<dim>::quadrant_childrenv(&p4est_cell,
@@ -530,18 +521,7 @@ namespace
             for (unsigned int c = 0;
                  c < GeometryInfo<dim>::max_children_per_cell;
                  ++c)
-              switch (dim)
-                {
-                  case 2:
-                    P4EST_QUADRANT_INIT(&p4est_child[c]);
-                    break;
-                  case 3:
-                    P8EST_QUADRANT_INIT(&p4est_child[c]);
-                    break;
-                  default:
-                    DEAL_II_NOT_IMPLEMENTED();
-                }
-
+              internal::p4est::functions<dim>::quadrant_init(p4est_child[c]);
 
             internal::p4est::functions<dim>::quadrant_childrenv(&p4est_cell,
                                                                 p4est_child);
@@ -617,7 +597,6 @@ namespace
       }
   }
 
-#  ifdef P4EST_SEARCH_LOCAL
   template <int dim>
   class PartitionSearch
   {
@@ -730,7 +709,6 @@ namespace
     void * /* this is always nullptr */ point)
   {
     // point must be nullptr here
-    (void)point;
     Assert(point == nullptr, dealii::ExcInternalError());
 
     // we need the user pointer
@@ -1193,7 +1171,7 @@ namespace
 
     are_vertices_initialized = true;
   }
-#  endif //  P4EST_SEARCH_LOCAL defined
+
 
 
   /**
@@ -1354,17 +1332,7 @@ namespace
           p4est_child[GeometryInfo<dim>::max_children_per_cell];
         for (unsigned int c = 0; c < GeometryInfo<dim>::max_children_per_cell;
              ++c)
-          switch (dim)
-            {
-              case 2:
-                P4EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              case 3:
-                P8EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              default:
-                DEAL_II_NOT_IMPLEMENTED();
-            }
+          internal::p4est::functions<dim>::quadrant_init(p4est_child[c]);
         internal::p4est::functions<dim>::quadrant_childrenv(&p4est_cell,
                                                             p4est_child);
         for (unsigned int c = 0; c < GeometryInfo<dim>::max_children_per_cell;
@@ -1644,17 +1612,7 @@ namespace
 
         for (unsigned int c = 0; c < GeometryInfo<dim>::max_children_per_cell;
              ++c)
-          switch (dim)
-            {
-              case 2:
-                P4EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              case 3:
-                P8EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              default:
-                DEAL_II_NOT_IMPLEMENTED();
-            }
+          internal::p4est::functions<dim>::quadrant_init(p4est_child[c]);
 
         dealii::internal::p4est::functions<dim>::quadrant_childrenv(
           &p4est_cell, p4est_child);
@@ -1685,17 +1643,7 @@ namespace
           p4est_child[GeometryInfo<dim>::max_children_per_cell];
         for (unsigned int c = 0; c < GeometryInfo<dim>::max_children_per_cell;
              ++c)
-          switch (dim)
-            {
-              case 2:
-                P4EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              case 3:
-                P8EST_QUADRANT_INIT(&p4est_child[c]);
-                break;
-              default:
-                DEAL_II_NOT_IMPLEMENTED();
-            }
+          internal::p4est::functions<dim>::quadrant_init(p4est_child[c]);
 
         dealii::internal::p4est::functions<dim>::quadrant_childrenv(
           &p4est_cell, p4est_child);
@@ -1776,12 +1724,13 @@ namespace parallel
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
     Triangulation<dim, spacedim>::~Triangulation()
     {
-      // virtual functions called in constructors and destructors never use the
-      // override in a derived class
-      // for clarity be explicit on which function is called
       try
         {
-          Triangulation<dim, spacedim>::clear();
+          // Calling virtual functions in constructors and destructors
+          // is not entirely intuitive and may not result in what one
+          // expects. For clarity be explicit on which function is
+          // called:
+          parallel::distributed::Triangulation<dim, spacedim>::clear();
         }
       catch (...)
         {}
@@ -1850,10 +1799,8 @@ namespace parallel
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
     void Triangulation<dim, spacedim>::create_triangulation(
       const TriangulationDescription::Description<dim, spacedim>
-        &construction_data)
+        & /*construction_data*/)
     {
-      (void)construction_data;
-
       DEAL_II_ASSERT_UNREACHABLE();
     }
 
@@ -1978,19 +1925,6 @@ namespace parallel
                             this->data_serializer.dest_sizes_variable.end(),
                             std::vector<int>::size_type(0)));
 
-#  if DEAL_II_P4EST_VERSION_GTE(2, 0, 65, 0)
-#  else
-          // ----- WORKAROUND -----
-          // An assertion in p4est prevents us from sending/receiving no data
-          // at all, which is mandatory if one of our processes does not own
-          // any quadrant. This bypasses the assertion from being triggered.
-          //   - see: https://github.com/cburstedde/p4est/issues/48
-          if (this->data_serializer.src_sizes_variable.empty())
-            this->data_serializer.src_sizes_variable.resize(1);
-          if (this->data_serializer.dest_sizes_variable.empty())
-            this->data_serializer.dest_sizes_variable.resize(1);
-#  endif
-
           // Execute variable size transfer.
           dealii::internal::p4est::functions<dim>::transfer_custom(
             parallel_forest->global_first_quadrant,
@@ -2051,7 +1985,8 @@ namespace parallel
 
     template <int dim, int spacedim>
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
-    void Triangulation<dim, spacedim>::save(const std::string &filename) const
+    void Triangulation<dim, spacedim>::save(
+      const std::string &file_basename) const
     {
       Assert(
         this->cell_attached_data.n_attached_deserialize == 0,
@@ -2068,7 +2003,7 @@ namespace parallel
 
       if (this->my_subdomain == 0)
         {
-          std::string   fname = std::string(filename) + ".info";
+          std::string   fname = file_basename + ".info";
           std::ofstream f(fname);
           f << "version nproc n_attached_fixed_size_objs n_attached_variable_size_objs n_coarse_cells"
             << std::endl
@@ -2080,9 +2015,8 @@ namespace parallel
         }
 
       // each cell should have been flagged `CellStatus::cell_will_persist`
-      for (const auto &cell_rel : this->local_cell_relations)
+      for ([[maybe_unused]] const auto &cell_rel : this->local_cell_relations)
         {
-          (void)cell_rel;
           Assert((cell_rel.second == // cell_status
                   CellStatus::cell_will_persist),
                  ExcInternalError());
@@ -2091,9 +2025,9 @@ namespace parallel
       // Save cell attached data.
       this->save_attached_data(parallel_forest->global_first_quadrant[myrank],
                                parallel_forest->global_num_quadrants,
-                               filename);
+                               file_basename);
 
-      dealii::internal::p4est::functions<dim>::save(filename.c_str(),
+      dealii::internal::p4est::functions<dim>::save(file_basename.c_str(),
                                                     parallel_forest,
                                                     false);
 
@@ -2105,7 +2039,7 @@ namespace parallel
 
     template <int dim, int spacedim>
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
-    void Triangulation<dim, spacedim>::load(const std::string &filename)
+    void Triangulation<dim, spacedim>::load(const std::string &file_basename)
     {
       Assert(
         this->n_cells() > 0,
@@ -2137,7 +2071,7 @@ namespace parallel
       unsigned int version, numcpus, attached_count_fixed,
         attached_count_variable, n_coarse_cells;
       {
-        std::string   fname = std::string(filename) + ".info";
+        std::string   fname = std::string(file_basename) + ".info";
         std::ifstream f(fname);
         AssertThrow(f.fail() == false, ExcIO());
         std::string firstline;
@@ -2158,7 +2092,7 @@ namespace parallel
         attached_count_fixed + attached_count_variable;
 
       parallel_forest = dealii::internal::p4est::functions<dim>::load_ext(
-        filename.c_str(),
+        file_basename.c_str(),
         this->mpi_communicator,
         0,
         0,
@@ -2190,7 +2124,7 @@ namespace parallel
       this->load_attached_data(parallel_forest->global_first_quadrant[myrank],
                                parallel_forest->global_num_quadrants,
                                parallel_forest->local_num_quadrants,
-                               filename,
+                               file_basename,
                                attached_count_fixed,
                                attached_count_variable);
 
@@ -2199,17 +2133,6 @@ namespace parallel
 
       this->update_periodic_face_map();
       this->update_number_cache();
-    }
-
-
-
-    template <int dim, int spacedim>
-    DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
-    void Triangulation<dim, spacedim>::load(const std::string &filename,
-                                            const bool         autopartition)
-    {
-      (void)autopartition;
-      load(filename);
     }
 
 
@@ -2622,41 +2545,33 @@ namespace parallel
         // {0,0,0,0,0,0,0,0}.
         using cell_iterator =
           typename Triangulation<dim, spacedim>::cell_iterator;
-        typename std::map<std::pair<cell_iterator, unsigned int>,
-                          std::pair<std::pair<cell_iterator, unsigned int>,
-                                    unsigned char>>::const_iterator it;
-        for (it = tria.get_periodic_face_map().begin();
-             it != tria.get_periodic_face_map().end();
-             ++it)
+        for (const auto &it : tria.get_periodic_face_map())
           {
-            const cell_iterator &cell_1               = it->first.first;
-            const unsigned int   face_no_1            = it->first.second;
-            const cell_iterator &cell_2               = it->second.first.first;
-            const unsigned int   face_no_2            = it->second.first.second;
-            const unsigned char  combined_orientation = it->second.second;
-            const auto [orientation, rotation, flip] =
-              ::dealii::internal::split_face_orientation(combined_orientation);
+            const cell_iterator &cell_1               = it.first.first;
+            const unsigned int   face_no_1            = it.first.second;
+            const cell_iterator &cell_2               = it.second.first.first;
+            const unsigned int   face_no_2            = it.second.first.second;
+            const auto           combined_orientation = it.second.second;
 
             if (cell_1->level() == cell_2->level())
               {
-                for (unsigned int v = 0;
-                     v < GeometryInfo<dim - 1>::vertices_per_cell;
-                     ++v)
+                for (const unsigned int v :
+                     cell_1->face(face_no_1)->vertex_indices())
                   {
                     // take possible non-standard orientation of face on
                     // cell[0] into account
-                    const unsigned int vface0 =
-                      GeometryInfo<dim>::standard_to_real_face_vertex(
-                        v, orientation, flip, rotation);
-                    const unsigned int vi0 =
-                      topological_vertex_numbering[cell_1->face(face_no_1)
-                                                     ->vertex_index(vface0)];
+                    const unsigned int vface1 =
+                      cell_1->reference_cell().standard_to_real_face_vertex(
+                        v, face_no_1, combined_orientation);
                     const unsigned int vi1 =
+                      topological_vertex_numbering[cell_1->face(face_no_1)
+                                                     ->vertex_index(vface1)];
+                    const unsigned int vi2 =
                       topological_vertex_numbering[cell_2->face(face_no_2)
                                                      ->vertex_index(v)];
-                    const unsigned int min_index = std::min(vi0, vi1);
+                    const unsigned int min_index = std::min(vi1, vi2);
                     topological_vertex_numbering[cell_1->face(face_no_1)
-                                                   ->vertex_index(vface0)] =
+                                                   ->vertex_index(vface1)] =
                       topological_vertex_numbering[cell_2->face(face_no_2)
                                                      ->vertex_index(v)] =
                         min_index;
@@ -2664,12 +2579,20 @@ namespace parallel
               }
           }
 
-        // There must not be any chains!
-        for (unsigned int i = 0; i < topological_vertex_numbering.size(); ++i)
+        if constexpr (running_in_debug_mode())
           {
-            const unsigned int j = topological_vertex_numbering[i];
-            if (j != i)
-              Assert(topological_vertex_numbering[j] == j, ExcInternalError());
+            // There must not be any chains!
+            for (unsigned int i = 0; i < topological_vertex_numbering.size();
+                 ++i)
+              {
+                const unsigned int j = topological_vertex_numbering[i];
+                Assert(j == i || topological_vertex_numbering[j] == j,
+                       ExcMessage(
+                         "Got inconclusive constraints with chain: " +
+                         std::to_string(i) + " vs " + std::to_string(j) +
+                         " which should be equal to " +
+                         std::to_string(topological_vertex_numbering[j])));
+              }
           }
 
 
@@ -3041,20 +2964,21 @@ namespace parallel
         }
       while (mesh_changed);
 
-#  ifdef DEBUG
-      // check if correct number of ghosts is created
-      unsigned int num_ghosts = 0;
-
-      for (const auto &cell : this->active_cell_iterators())
+      if constexpr (running_in_debug_mode())
         {
-          if (cell->subdomain_id() != this->my_subdomain &&
-              cell->subdomain_id() != numbers::artificial_subdomain_id)
-            ++num_ghosts;
-        }
+          // check if correct number of ghosts is created
+          unsigned int num_ghosts = 0;
 
-      Assert(num_ghosts == parallel_ghost->ghosts.elem_count,
-             ExcInternalError());
-#  endif
+          for (const auto &cell : this->active_cell_iterators())
+            {
+              if (cell->subdomain_id() != this->my_subdomain &&
+                  cell->subdomain_id() != numbers::artificial_subdomain_id)
+                ++num_ghosts;
+            }
+
+          Assert(num_ghosts == parallel_ghost->ghosts.elem_count,
+                 ExcInternalError());
+        }
 
 
 
@@ -3150,42 +3074,46 @@ namespace parallel
 
 
 
-      // check that our local copy has exactly as many cells as the p4est
-      // original (at least if we are on only one processor); for parallel
-      // computations, we want to check that we have at least as many as p4est
-      // stores locally (in the future we should check that we have exactly as
-      // many non-artificial cells as parallel_forest->local_num_quadrants)
-      {
-        const unsigned int total_local_cells = this->n_active_cells();
-        (void)total_local_cells;
-
-        if (Utilities::MPI::n_mpi_processes(this->mpi_communicator) == 1)
+      if constexpr (running_in_debug_mode())
+        {
+          // check that our local copy has exactly as many cells as the p4est
+          // original (at least if we are on only one processor); for parallel
+          // computations, we want to check that we have at least as many as
+          // p4est stores locally (in the future we should check that we have
+          // exactly as many non-artificial cells as
+          // parallel_forest->local_num_quadrants)
           {
+            const unsigned int total_local_cells = this->n_active_cells();
+
+
+            if (Utilities::MPI::n_mpi_processes(this->mpi_communicator) == 1)
+              {
+                Assert(static_cast<unsigned int>(
+                         parallel_forest->local_num_quadrants) ==
+                         total_local_cells,
+                       ExcInternalError());
+              }
+            else
+              {
+                Assert(static_cast<unsigned int>(
+                         parallel_forest->local_num_quadrants) <=
+                         total_local_cells,
+                       ExcInternalError());
+              }
+
+            // count the number of owned, active cells and compare with p4est.
+            unsigned int n_owned = 0;
+            for (const auto &cell : this->active_cell_iterators())
+              {
+                if (cell->subdomain_id() == this->my_subdomain)
+                  ++n_owned;
+              }
+
             Assert(static_cast<unsigned int>(
-                     parallel_forest->local_num_quadrants) == total_local_cells,
+                     parallel_forest->local_num_quadrants) == n_owned,
                    ExcInternalError());
           }
-        else
-          {
-            Assert(static_cast<unsigned int>(
-                     parallel_forest->local_num_quadrants) <= total_local_cells,
-                   ExcInternalError());
-          }
-
-#  ifdef DEBUG
-        // count the number of owned, active cells and compare with p4est.
-        unsigned int n_owned = 0;
-        for (const auto &cell : this->active_cell_iterators())
-          {
-            if (cell->subdomain_id() == this->my_subdomain)
-              ++n_owned;
-          }
-
-        Assert(static_cast<unsigned int>(
-                 parallel_forest->local_num_quadrants) == n_owned,
-               ExcInternalError());
-#  endif
-      }
+        }
 
       this->smooth_grid = save_smooth;
 
@@ -3217,16 +3145,6 @@ namespace parallel
     std::vector<types::subdomain_id> Triangulation<dim, spacedim>::
       find_point_owner_rank(const std::vector<Point<dim>> &points)
     {
-#  ifndef P4EST_SEARCH_LOCAL
-      (void)points;
-      AssertThrow(
-        false,
-        ExcMessage(
-          "This function is only available if p4est is version 2.2 and higher."));
-      // Just return to satisfy compiler
-      return std::vector<unsigned int>(1,
-                                       dealii::numbers::invalid_subdomain_id);
-#  else
       // We can only use this function if vertices are communicated to p4est
       AssertThrow(this->are_vertices_communicated_to_p4est(),
                   ExcMessage(
@@ -3313,7 +3231,6 @@ namespace parallel
       sc_array_destroy_null(&point_sc_array);
 
       return owner_rank;
-#  endif // P4EST_SEARCH_LOCAL defined
     }
 
 
@@ -3323,14 +3240,15 @@ namespace parallel
     void Triangulation<dim, spacedim>::execute_coarsening_and_refinement()
     {
       // do not allow anisotropic refinement
-#  ifdef DEBUG
-      for (const auto &cell : this->active_cell_iterators())
-        if (cell->is_locally_owned() && cell->refine_flag_set())
-          Assert(cell->refine_flag_set() ==
-                   RefinementPossibilities<dim>::isotropic_refinement,
-                 ExcMessage(
-                   "This class does not support anisotropic refinement"));
-#  endif
+      if constexpr (running_in_debug_mode())
+        {
+          for (const auto &cell : this->active_cell_iterators())
+            if (cell->is_locally_owned() && cell->refine_flag_set())
+              Assert(cell->refine_flag_set() ==
+                       RefinementPossibilities<dim>::isotropic_refinement,
+                     ExcMessage(
+                       "This class does not support anisotropic refinement"));
+        }
 
 
       // safety check: p4est has an upper limit on the level of a cell
@@ -3487,7 +3405,7 @@ namespace parallel
             this->local_cell_relations,
             this->cell_attached_data.pack_callbacks_fixed,
             this->cell_attached_data.pack_callbacks_variable,
-            this->get_communicator());
+            this->get_mpi_communicator());
         }
 
       // finally copy back from local part of tree to deal.II
@@ -3520,59 +3438,63 @@ namespace parallel
           this->data_serializer.unpack_cell_status(this->local_cell_relations);
         }
 
-#  ifdef DEBUG
-      // Check that we know the level subdomain ids of all our neighbors. This
-      // also involves coarser cells that share a vertex if they are active.
-      //
-      // Example (M= my, O=other):
-      //         *------*
-      //         |      |
-      //         |  O   |
-      //         |      |
-      // *---*---*------*
-      // | M | M |
-      // *---*---*
-      // |   | M |
-      // *---*---*
-      //  ^- the parent can be owned by somebody else, so O is not a neighbor
-      // one level coarser
-      if (settings & construct_multigrid_hierarchy)
+      if constexpr (running_in_debug_mode())
         {
-          for (unsigned int lvl = 0; lvl < this->n_global_levels(); ++lvl)
+          // Check that we know the level subdomain ids of all our neighbors.
+          // This also involves coarser cells that share a vertex if they are
+          // active.
+          //
+          // Example (M= my, O=other):
+          //         *------*
+          //         |      |
+          //         |  O   |
+          //         |      |
+          // *---*---*------*
+          // | M | M |
+          // *---*---*
+          // |   | M |
+          // *---*---*
+          //  ^- the parent can be owned by somebody else, so O is not a
+          //  neighbor
+          // one level coarser
+          if (settings & construct_multigrid_hierarchy)
             {
-              std::vector<bool> active_verts =
-                this->mark_locally_active_vertices_on_level(lvl);
+              for (unsigned int lvl = 0; lvl < this->n_global_levels(); ++lvl)
+                {
+                  std::vector<bool> active_verts =
+                    this->mark_locally_active_vertices_on_level(lvl);
 
-              const unsigned int maybe_coarser_lvl =
-                (lvl > 0) ? (lvl - 1) : lvl;
-              typename Triangulation<dim, spacedim>::cell_iterator
-                cell = this->begin(maybe_coarser_lvl),
-                endc = this->end(lvl);
-              for (; cell != endc; ++cell)
-                if (cell->level() == static_cast<int>(lvl) || cell->is_active())
-                  {
-                    const bool is_level_artificial =
-                      (cell->level_subdomain_id() ==
-                       numbers::artificial_subdomain_id);
-                    bool need_to_know = false;
-                    for (const unsigned int vertex :
-                         GeometryInfo<dim>::vertex_indices())
-                      if (active_verts[cell->vertex_index(vertex)])
-                        {
-                          need_to_know = true;
-                          break;
-                        }
+                  const unsigned int maybe_coarser_lvl =
+                    (lvl > 0) ? (lvl - 1) : lvl;
+                  typename Triangulation<dim, spacedim>::cell_iterator
+                    cell = this->begin(maybe_coarser_lvl),
+                    endc = this->end(lvl);
+                  for (; cell != endc; ++cell)
+                    if (cell->level() == static_cast<int>(lvl) ||
+                        cell->is_active())
+                      {
+                        const bool is_level_artificial =
+                          (cell->level_subdomain_id() ==
+                           numbers::artificial_subdomain_id);
+                        bool need_to_know = false;
+                        for (const unsigned int vertex :
+                             GeometryInfo<dim>::vertex_indices())
+                          if (active_verts[cell->vertex_index(vertex)])
+                            {
+                              need_to_know = true;
+                              break;
+                            }
 
-                    Assert(
-                      !need_to_know || !is_level_artificial,
-                      ExcMessage(
-                        "Internal error: the owner of cell" +
-                        cell->id().to_string() +
-                        " is unknown even though it is needed for geometric multigrid."));
-                  }
+                        Assert(
+                          !need_to_know || !is_level_artificial,
+                          ExcMessage(
+                            "Internal error: the owner of cell" +
+                            cell->id().to_string() +
+                            " is unknown even though it is needed for geometric multigrid."));
+                      }
+                }
             }
         }
-#  endif
 
       this->update_periodic_face_map();
       this->update_number_cache();
@@ -3587,14 +3509,15 @@ namespace parallel
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<dim, spacedim>))
     void Triangulation<dim, spacedim>::repartition()
     {
-#  ifdef DEBUG
-      for (const auto &cell : this->active_cell_iterators())
-        if (cell->is_locally_owned())
-          Assert(
-            !cell->refine_flag_set() && !cell->coarsen_flag_set(),
-            ExcMessage(
-              "Error: There shouldn't be any cells flagged for coarsening/refinement when calling repartition()."));
-#  endif
+      if constexpr (running_in_debug_mode())
+        {
+          for (const auto &cell : this->active_cell_iterators())
+            if (cell->is_locally_owned())
+              Assert(
+                !cell->refine_flag_set() && !cell->coarsen_flag_set(),
+                ExcMessage(
+                  "Error: There shouldn't be any cells flagged for coarsening/refinement when calling repartition()."));
+        }
 
       // signal that repartitioning is going to happen
       this->signals.pre_distributed_repartition();
@@ -3661,7 +3584,7 @@ namespace parallel
             this->local_cell_relations,
             this->cell_attached_data.pack_callbacks_fixed,
             this->cell_attached_data.pack_callbacks_variable,
-            this->get_communicator());
+            this->get_mpi_communicator());
         }
 
       try
@@ -3750,7 +3673,7 @@ namespace parallel
             const unsigned int   face_no_1            = it.first.second;
             const cell_iterator &cell_2               = it.second.first.first;
             const unsigned int   face_no_2            = it.second.first.second;
-            const unsigned char  combined_orientation = it.second.second;
+            const auto           combined_orientation = it.second.second;
             const auto [orientation, rotation, flip] =
               ::dealii::internal::split_face_orientation(combined_orientation);
 
@@ -3845,18 +3768,17 @@ namespace parallel
           if (dim == 2)
             {
               AssertIndexRange(face_pair.orientation, 2);
-              p4est_orientation =
-                face_pair.orientation ==
-                    ReferenceCell::default_combined_face_orientation() ?
-                  0u :
-                  1u;
+              p4est_orientation = face_pair.orientation ==
+                                      numbers::default_geometric_orientation ?
+                                    0u :
+                                    1u;
             }
           else
             {
               const unsigned int  face_idx_list[] = {face_left, face_right};
               const cell_iterator cell_list[]     = {first_cell, second_cell};
               unsigned int        lower_idx, higher_idx;
-              unsigned char       orientation;
+              types::geometric_orientation orientation;
               if (face_left <= face_right)
                 {
                   higher_idx = 1;
@@ -4250,15 +4172,6 @@ namespace parallel
 
     template <int spacedim>
     DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<1, spacedim>))
-    void Triangulation<1, spacedim>::load(const std::string &, const bool)
-    {
-      DEAL_II_NOT_IMPLEMENTED();
-    }
-
-
-
-    template <int spacedim>
-    DEAL_II_CXX20_REQUIRES((concepts::is_valid_dim_spacedim<1, spacedim>))
     void Triangulation<1, spacedim>::save(const std::string &) const
     {
       DEAL_II_NOT_IMPLEMENTED();
@@ -4385,7 +4298,7 @@ namespace parallel
 
 
 /*-------------- Explicit Instantiations -------------------------------*/
-#include "tria.inst"
+#include "distributed/tria.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

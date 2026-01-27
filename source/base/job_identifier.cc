@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2023 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,6 +15,8 @@
 #include <deal.II/base/job_identifier.h>
 
 #include <ctime>
+#include <string>
+
 
 #ifdef DEAL_II_HAVE_UNISTD_H
 #  include <unistd.h>
@@ -34,15 +36,15 @@ JobIdentifier::get_dealjobid()
 
 JobIdentifier::JobIdentifier()
 {
-  time_t t = std::time(nullptr);
-  id       = std::string("JobId ");
+  std::time_t t = std::time(nullptr);
+  id            = "JobId ";
 
 #if defined(DEAL_II_HAVE_UNISTD_H) && defined(DEAL_II_HAVE_GETHOSTNAME)
   char name[100];
   gethostname(name, 99);
-  id += std::string(name) + std::string(" ");
+  id += std::string(name) + " ";
 #else
-  id += std::string("unknown ");
+  id += "unknown ";
 #endif
 
   id += std::string(std::ctime(&t));

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -145,7 +145,7 @@ namespace internal
         /**
          * The DoFHandler object on which this policy object works.
          */
-        SmartPointer<DoFHandler<dim, spacedim>> dof_handler;
+        ObserverPointer<DoFHandler<dim, spacedim>> dof_handler;
       };
 
 
@@ -205,7 +205,7 @@ namespace internal
         /**
          * The DoFHandler object on which this policy object works.
          */
-        SmartPointer<DoFHandler<dim, spacedim>> dof_handler;
+        ObserverPointer<DoFHandler<dim, spacedim>> dof_handler;
       };
 
 
@@ -247,7 +247,7 @@ namespace internal
         /**
          * The DoFHandler object on which this policy object works.
          */
-        SmartPointer<DoFHandler<dim, spacedim>> dof_handler;
+        ObserverPointer<DoFHandler<dim, spacedim>> dof_handler;
       };
     } // namespace Policy
   }   // namespace DoFHandlerImplementation

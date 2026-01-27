@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -66,7 +66,7 @@ main()
   if (false)
     {
       std::ofstream ofile(SOURCE_DIR "/arkode_07_in.prm");
-      prm.print_parameters(ofile, ParameterHandler::ShortText);
+      prm.print_parameters(ofile, ParameterHandler::ShortPRM);
       ofile.close();
     }
 
@@ -112,7 +112,7 @@ main()
         VectorType                                   &x,
         const VectorType                             &b,
         double                                        tol) {
-      ReductionControl     control;
+      ReductionControl     control(100, 1e-10, 1e-2, false, true);
       SolverCG<VectorType> solver_cg(control);
       solver_cg.solve(op, x, b, prec);
     };

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2021 by the deal.II authors
+// Copyright (C) 2011 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -91,7 +91,7 @@ transfer(std::ostream &out)
   tria.execute_coarsening_and_refinement();
   dof_handler.distribute_dofs(fe);
   solution.reinit(dof_handler.n_dofs());
-  soltrans.interpolate(old_solution, solution);
+  soltrans.interpolate(solution);
 }
 
 

@@ -16,7 +16,7 @@
 #define dealii_non_matching_fe_values
 
 #include <deal.II/base/bounding_box.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/dofs/dof_handler.h>
 
@@ -166,13 +166,13 @@ namespace NonMatching
      * and @p level_set are stored internally, so these need to have a longer life
      * span than the instance of this class.
      */
-    template <typename VectorType>
+    template <typename Number>
     FEValues(const hp::FECollection<dim> &fe_collection,
              const Quadrature<1>         &quadrature,
              const RegionUpdateFlags      region_update_flags,
              const MeshClassifier<dim>   &mesh_classifier,
              const DoFHandler<dim>       &dof_handler,
-             const VectorType            &level_set,
+             const ReadVector<Number>    &level_set,
              const AdditionalData        &additional_data = AdditionalData());
 
     /**
@@ -201,7 +201,7 @@ namespace NonMatching
      * internally, so these need to have a longer life span than the instance of
      * this class.
      */
-    template <typename VectorType>
+    template <typename Number>
     FEValues(const hp::MappingCollection<dim> &mapping_collection,
              const hp::FECollection<dim>      &fe_collection,
              const hp::QCollection<dim>       &q_collection,
@@ -209,7 +209,7 @@ namespace NonMatching
              const RegionUpdateFlags           region_update_flags,
              const MeshClassifier<dim>        &mesh_classifier,
              const DoFHandler<dim>            &dof_handler,
-             const VectorType                 &level_set,
+             const ReadVector<Number>         &level_set,
              const AdditionalData &additional_data = AdditionalData());
 
     /**
@@ -322,12 +322,12 @@ namespace NonMatching
     /**
      * A pointer to the collection of mappings to be used.
      */
-    const SmartPointer<const hp::MappingCollection<dim>> mapping_collection;
+    const ObserverPointer<const hp::MappingCollection<dim>> mapping_collection;
 
     /**
      * A pointer to the collection of finite elements to be used.
      */
-    const SmartPointer<const hp::FECollection<dim>> fe_collection;
+    const ObserverPointer<const hp::FECollection<dim>> fe_collection;
 
     /**
      * Collection of 1-dimensional quadrature rules that are used by
@@ -353,7 +353,7 @@ namespace NonMatching
     /**
      * Pointer to the MeshClassifier passed to the constructor.
      */
-    const SmartPointer<const MeshClassifier<dim>> mesh_classifier;
+    const ObserverPointer<const MeshClassifier<dim>> mesh_classifier;
 
     /**
      * For each element in the FECollection passed to the constructor,
@@ -512,13 +512,13 @@ namespace NonMatching
      * and @p level_set are stored internally, so these need to have a longer life
      * span than the instance of this class.
      */
-    template <typename VectorType>
+    template <typename Number>
     FEInterfaceValues(const hp::FECollection<dim> &fe_collection,
                       const Quadrature<1>         &quadrature,
                       const RegionUpdateFlags      region_update_flags,
                       const MeshClassifier<dim>   &mesh_classifier,
                       const DoFHandler<dim>       &dof_handler,
-                      const VectorType            &level_set,
+                      const ReadVector<Number>    &level_set,
                       const AdditionalData &additional_data = AdditionalData());
 
     /**
@@ -547,7 +547,7 @@ namespace NonMatching
      * internally, so these need to have a longer life span than the instance of
      * this class.
      */
-    template <typename VectorType>
+    template <typename Number>
     FEInterfaceValues(const hp::MappingCollection<dim> &mapping_collection,
                       const hp::FECollection<dim>      &fe_collection,
                       const hp::QCollection<dim - 1>   &q_collection,
@@ -555,7 +555,7 @@ namespace NonMatching
                       const RegionUpdateFlags           region_update_flags,
                       const MeshClassifier<dim>        &mesh_classifier,
                       const DoFHandler<dim>            &dof_handler,
-                      const VectorType                 &level_set,
+                      const ReadVector<Number>         &level_set,
                       const AdditionalData &additional_data = AdditionalData());
 
     /**
@@ -650,12 +650,12 @@ namespace NonMatching
     /**
      * A pointer to the collection of mappings to be used.
      */
-    const SmartPointer<const hp::MappingCollection<dim>> mapping_collection;
+    const ObserverPointer<const hp::MappingCollection<dim>> mapping_collection;
 
     /**
      * A pointer to the collection of finite elements to be used.
      */
-    const SmartPointer<const hp::FECollection<dim>> fe_collection;
+    const ObserverPointer<const hp::FECollection<dim>> fe_collection;
 
     /**
      * Collection of 1-dimensional quadrature rules that are used by
@@ -676,7 +676,7 @@ namespace NonMatching
     /**
      * Pointer to the MeshClassifier passed to the constructor.
      */
-    const SmartPointer<const MeshClassifier<dim>> mesh_classifier;
+    const ObserverPointer<const MeshClassifier<dim>> mesh_classifier;
 
     /**
      * FEInterfaceValues corresponding to cells with LocationToLevelSet

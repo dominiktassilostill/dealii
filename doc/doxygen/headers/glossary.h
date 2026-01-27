@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2005 - 2024 by the deal.II authors
+// Copyright (C) 2005 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -96,8 +96,8 @@
  *
  * Splitting matrices and vectors into blocks is supported by the
  * BlockSparseMatrix, BlockVector, and related classes. See the
- * overview of the various linear algebra classes in the @ref LAC
- * module. The objects present two interfaces: one that makes the
+ * overview of the various linear algebra classes in the
+ * @ref LAC topic. The objects present two interfaces: one that makes the
  * object look like a matrix or vector with global indexing
  * operations, and one that makes the object look like a collection of
  * sub-blocks that can be individually addressed. Depending on
@@ -150,7 +150,7 @@
  * <i>Implementation:</i>
  * deal.II has a number of different finite element classes, all of which are
  * derived from the FiniteElement base class
- * (see the @ref feall "module on finite element classes").
+ * (see the @ref feall "topic on finite element classes").
  * With one exception, whether they are scalar or
  * vector valued, they all define a single block: all vector components the
  * finite element defines through its FiniteElement::n_components() function
@@ -202,7 +202,7 @@
  * of creating the Stokes element with two blocks right away.
  *
  * More information on this topic can be found in the documentation of
- * FESystem, the @ref vector_valued module and the tutorial programs
+ * FESystem, the @ref vector_valued topic and the tutorial programs
  * referenced therein.
  *
  * <i>Selecting blocks:</i>
@@ -576,12 +576,12 @@
  * call the elements of the vector-valued solution <i>components</i> in
  * deal.II. To be well-posed, for the solution to have $n$ components, there
  * need to be $n$ partial differential equations to describe them. This
- * concept is discussed in great detail in the @ref vector_valued module.
+ * concept is discussed in great detail in the @ref vector_valued topic.
  *
  * In finite element programs, one frequently wants to address individual
  * elements (components) of this vector-valued solution, or sets of
  * components. For example, we do this extensively in step-8, and a lot
- * of documentation is also provided in the module on
+ * of documentation is also provided in the topic on
  * @ref vector_valued "Handling vector valued problems". If you are thinking
  * only in terms of the partial differential equation (not in terms of
  * its discretization), then the concept of <i>components</i> is the natural
@@ -777,7 +777,7 @@
  * <dt class="glossary">@anchor GlossDevice <b>Device</b></dt>
  *
  * <dd> We commonly refer to GPUs as "devices" in deal.II. The context is
- * always related to Kokkos or CUDA that motivated using this term.
+ * always related to Kokkos that motivated using this term.
  * Occasionally, we also call data corresponding to MemorySpace::Default "device data"
  * (even though it is allocated in CPU memory if Kokkos was configured without
  * a GPU backend) to distinguish between MemorySpace::Default and MemorySpace::Host.
@@ -1013,49 +1013,46 @@
  * p4est paper listed at their website.
  * </dd>
  *
+ * <dt class="glossary">@anchor GlossCombinedOrientation <b>Combined
+ * orientation</b></dt>
+ * <dd>
+ * A Triangulation contains cells as well as lower dimensional objects such as
+ * faces (which are either lines in 2d or quadrilaterals or triangles in 3d). In
+ * general, the vertices of each cell are numbered in a way which results in a
+ * mapping with a positive Jacobian. A consequence of this choice is that the
+ * vertices which define a face may be, from the perspective of an arbitrary
+ * cell, in a different order than the order given to that face by the
+ * neighboring cell. To resolve this inconsistency deal.II stores, for each face
+ * and (in 3d) line, a value which may be used to permute the vertices on both
+ * faces into a matching configuration. This encoding contains both the number
+ * of times a face should be rotated (relative to its neighbor) as well as
+ * whether or not the face should be viewed in an opposite orientation (e.g.,
+ * for a Quadrilateral, whether or not vertices $1$ and $2$ should be swapped).
  *
- * <dt class="glossary">@anchor GlossFaceOrientation <b>Face orientation</b></dt>
- * <dd>In a triangulation, the normal vector to a face
- * can be deduced from the face orientation by
- * applying the right hand side rule (x,y -> normal).  We note, that
- * in the standard orientation of faces in 2d, faces 0 and 2 have
- * normals that point into the cell, and faces 1 and 3 have normals
- * pointing outward. In 3d, faces 0, 2, and 4
- * have normals that point into the cell, while the normals of faces
- * 1, 3, and 5 point outward. This information, again, can be queried from
- * GeometryInfo<dim>::unit_normal_orientation.
+ * This value is called the <em>combined_orientation</em> since it combines both
+ * the orientation (as defined above) as well as rotations. In some
+ * circumstances, to disambiguate between faces and lines, it may alternatively
+ * be called either the `combined_face_orientation` or the
+ * `combined_line_orientation`. These orientations are represented by
+ * types::geometric_orientation, which encodes how the vertices of the canonical
+ * definition of a face should be permuted so that they equal the current cell's
+ * definition of that face. The binary encoding (which is usually represented as
+ * a decomposition of three booleans called orientation, rotation, and flip) of
+ * that permutation is an internal library detail and is documented in
+ * @ref reordering "the cell reordering page".
+ * The default value (which corresponds to the identity permutation) is
+ * numbers::default_geometric_orientation. As lines only have two possible
+ * orientations (i.e., the vertices are either in the same order as the
+ * canonical line or are swapped), the other orientation is encoded as
+ * numbers::reverse_line_orientation.
  *
- * However, it turns out that a significant number of 3d meshes cannot
- * satisfy this convention. This is due to the fact that the face
- * convention for one cell already implies something for the
- * neighbor, since they share a common face and fixing it for the
- * first cell also fixes the normal vectors of the opposite faces of
- * both cells. It is easy to construct cases of loops of cells for
- * which this leads to cases where we cannot find orientations for
- * all faces that are consistent with this convention.
- *
- * For this reason, above convention is only what we call the
- * <em>standard orientation</em>. deal.II actually allows faces in 3d
- * to have either the standard direction, or its opposite, in which
- * case the lines that make up a cell would have reverted orders, and
- * the normal vector would have the opposite direction. You can ask a
- * cell whether a given face has standard orientation by calling
- * <tt>cell->face_orientation(face_no)</tt>: if the result is @p true,
- * then the face has standard orientation, otherwise its normal vector
- * is pointing the other direction. There are not very many places in
- * application programs where you need this information actually, but
- * a few places in the library make use of this. Note that in 2d, the
- * result is always @p true. However, while every face in 2d is always
- * in standard orientation, you can sometimes specify something to
- * assume that this is not so; an example is the function
- * DoFTools::make_periodicity_constraints().
- *
- * There are two other flags that describe the orientation of a face:
- * face_flip and face_rotation. Some documentation for these
- * exists in the GeometryInfo class. An example of their use in user
- * code is given in the DoFTools::make_periodicity_constraints function.
+ * These values are taken into consideration by deal.II classes (such as
+ * QProjector) to ensure that quantities computed on two adjacent cells use the
+ * same quadrature points and shape function orderings. Unless you are working
+ * on deal.II internals or new FiniteElement classes, it is not necessary to
+ * consider these values. In practice, essentially no applications dependent on
+ * deal.II ever need to handle orientation problems.
  * </dd>
- *
  *
  * <dt class="glossary">@anchor GlossGeneralizedSupport <b>Generalized support points</b></dt>
  * <dd>"Generalized support points" are, as the name suggests, a
@@ -1247,7 +1244,7 @@
  *   not possible to ensure that each entry of the vector is counted exactly
  *   once.
  *
- * @note The @ref distributed documentation module provides a brief
+ * @note The @ref distributed documentation topic provides a brief
  * overview of where the different kinds of vectors are typically
  * used.
  * </dd>
@@ -1274,7 +1271,7 @@
   pages =        {4/1--4/31}
 }
  * @endcode
- * It is available from <a href="https://www.math.colostate.edu/~bangerth/publications.html">https://www.math.colostate.edu/~bangerth/publications.html</a>, also see <a href="https://www.dealii.org/publications.html#details">deal.II publications</a> for details.
+ * It is available from <a href="https://www.math.colostate.edu/~bangerth/publications.html">https://www.math.colostate.edu/~bangerth/publications.html</a>, also see <a href="https://dealii.org/publications.html#details">deal.II publications</a> for details.
  *
  * The numerical examples shown in that paper are generated with a slightly
  * modified version of step-27. The main difference to that
@@ -1474,7 +1471,7 @@
  *
  * <dt class="glossary">@anchor GlossLocallyOwnedCell <b>Locally owned cell</b></dt>
  * <dd>This concept identifies a subset of all cells when using
- * distributed meshes, see the @ref distributed module. In such meshes, each
+ * distributed meshes, see the @ref distributed topic. In such meshes, each
  * cell is owned by exactly one processor. The locally owned ones are those
  * owned by the current processor.
  *
@@ -1487,7 +1484,7 @@
  *
  * <dt class="glossary">@anchor GlossLocallyOwnedDof <b>Locally owned degrees of freedom</b></dt>
  * <dd>This concept identifies a subset of all degrees of freedom when using
- * distributed meshes, see the @ref distributed module.  Locally owned degrees
+ * distributed meshes, see the @ref distributed topic.  Locally owned degrees
  * of freedom live on locally owned cells. Since degrees of freedom are owned
  * by only one processor, degrees of freedom on interfaces between cells owned
  * by different processors may be owned by one or the other, so not all
@@ -1501,7 +1498,7 @@
  *
  * <dt class="glossary">@anchor GlossLocallyActiveDof <b>Locally active degrees of freedom</b></dt>
  * <dd>This concept identifies a subset of all degrees of freedom when using
- * distributed meshes, see the @ref distributed module.  Locally active degrees
+ * distributed meshes, see the @ref distributed topic.  Locally active degrees
  * of freedom are those that live on locally owned cells. Degrees of freedom
  * on interfaces between cells owned by different processors therefore belong
  * to the set of locally active degrees of freedom for more than one processor.
@@ -1514,7 +1511,7 @@
  *
  * <dt class="glossary">@anchor GlossLocallyRelevantDof <b>Locally relevant degrees of freedom</b></dt>
  * <dd>This concept identifies a subset of all degrees of freedom when using
- * distributed meshes, see the @ref distributed module.  Locally relevant
+ * distributed meshes, see the @ref distributed topic.  Locally relevant
  * degrees of freedom are those that live on locally owned or ghost cells.
  * Consequently, they may be owned by different processors.
  *
@@ -1595,8 +1592,12 @@
  *
  * <dd> Every object that makes up a Triangulation (cells, faces,
  * edges, etc.), is associated with a unique number (of type
- * types::manifold_id) that is used to identify which manifold object
- * is responsible to generate new points when the mesh is refined.
+ * types::manifold_id) which is used to identify which Manifold object
+ * describes the coordinate system on that cell, e.g., a PolarManifold will
+ * perform calculations in polar coordinates. For example, Manifold objects
+ * are responsible for generating new points when a Triangulation is refined,
+ * defining the locations of @ref GlossSupport "support points", and defining
+ * the locations of quadrature points.
  *
  * By default, all manifold indicators of a mesh are set to
  * numbers::flat_manifold_id. A typical piece of code that sets the
@@ -1607,34 +1608,27 @@
  * @code
  * for (auto &cell : triangulation.active_cell_iterators())
  *   if (cell->center()[0] < 0)
- *     cell->set_manifold_id (42);
+ *     cell->set_manifold_id(42);
  * @endcode
  *
  * Here we call the function TriaAccessor::set_manifold_id(). It may
- * also be appropriate to call TriaAccessor::set_all_manifold_ids
+ * also be appropriate to call TriaAccessor::set_all_manifold_ids()
  * instead, to set recursively the manifold id on each face (and edge,
  * if in 3d). To query the manifold indicator of a particular object
  * edge, use TriaAccessor::manifold_id().
  *
- * The code above only sets the manifold indicators of a particular
- * part of the Triangulation, but it does not by itself change the way
- * the Triangulation class treats this object for the purposes of mesh
- * refinement. For this, you need to call Triangulation::set_manifold()
- * to associate a manifold object with a particular manifold
- * indicator. This allows the Triangulation objects to use a different
- * method of finding new points on cells, faces or edges to be
- * refined; the default is to use a FlatManifold object for all faces
- * and edges.
+ * Every manifold id set on a Triangulation must have an associated Manifold
+ * object. This is assigned via Triangulation::set_manifold().
  *
  * @note Manifold indicators are inherited from parents to their
  * children upon mesh refinement. Some more information about manifold
  * indicators is also presented in a section of the documentation of
  * the Triangulation class as well as in the
- * @ref manifold "Manifold documentation module". Manifold indicators
+ * @ref manifold "Manifold documentation topic". Manifold indicators
  * are used in step-53 and step-54.
  * </dd>
  *
- * @see @ref manifold "The module on Manifolds"
+ * @see @ref manifold "The topic on Manifolds"
  *
  *
  * <dt class="glossary">@anchor GlossMassMatrix <b>Mass matrix</b></dt>
@@ -1825,7 +1819,7 @@
  * @endcode
  * See
  * <a href="https://dx.doi.org/10.1137/090778523">DOI:10.1137/090778523</a>
- * for the paper and <a href="https://www.dealii.org/publications.html#details">deal.II publications</a> for more details.
+ * for the paper and <a href="https://dealii.org/publications.html#details">deal.II publications</a> for more details.
  * </dd>
  *
  *
@@ -2454,7 +2448,8 @@
  *     [line search algorithms](https://en.wikipedia.org/wiki/Line_search)
  *     where using a shorter step length might actually succeed.) In such
  *     cases, a user-provided callback function should throw an exception
- *     of type RecoverableUserCallbackError, which will then internally be
+ *     of type StandardExceptions::RecoverableUserCallbackError,
+ *     which will then internally be
  *     translated into an appropriate code understandable by the underlying
  *     library. It is worthwhile pointing out that a user callback throwing
  *     a "recoverable" exception does not actually guarantee that the
@@ -2484,13 +2479,17 @@
  * The full reference for this paper is as follows:
  * @code{.bib}
 @Article{TKB16,
-  author =       {Bruno Turcksin and Martin Kronbichler and Wolfgang Bangerth},
-  title =        {\textit{WorkStream} -- a design pattern for multicore-enabled finite element computations},
-  journal =      {accepted for publication in the ACM Trans. Math. Softw.},
-  year =         2016
+  author    = {Bruno Turcksin and Martin Kronbichler and Wolfgang Bangerth},
+  title     = {{WorkStream} -- a design pattern for multicore-enabled finite element computations},
+  journal   = {ACM Transactions on Mathematical Software},
+  year      = {2016},
+  month     = aug,
+  volume    = {43}
+  number    = {1},
+  pages     = {1–29}
 }
  * @endcode
- * It is available from <a href="https://www.math.colostate.edu/~bangerth/publications.html">https://www.math.colostate.edu/~bangerth/publications.html</a>, also see <a href="https://www.dealii.org/publications.html#details">deal.II publications</a> for details.
+ * It is available from <a href="https://www.math.colostate.edu/~bangerth/publications.html">https://www.math.colostate.edu/~bangerth/publications.html</a>, also see <a href="https://dealii.org/publications.html#details">deal.II publications</a> for details.
  * </dd>
  *
  *

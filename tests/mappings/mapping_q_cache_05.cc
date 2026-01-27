@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -37,10 +37,10 @@ public:
   {}
 
   double
-  value(const Point<dim> &point, const unsigned int compontent) const
+  value(const Point<dim> &point, const unsigned int component) const
   {
-    return std::sin(point[compontent] * 0.5 * numbers::PI) -
-           (is_displacement_function ? point[compontent] : 0.0);
+    return std::sin(point[component] * 0.5 * numbers::PI) -
+           (is_displacement_function ? point[component] : 0.0);
   }
 
 private:
@@ -93,9 +93,9 @@ main()
        const Point<2> &p) -> Point<2> {
       Point<2> result;
 
-      for (unsigned int compontent = 0; compontent < 2; ++compontent)
-        result[compontent] =
-          std::sin(p[compontent] * 0.5 * numbers::PI) - p[compontent];
+      for (unsigned int component = 0; component < 2; ++component)
+        result[component] =
+          std::sin(p[component] * 0.5 * numbers::PI) - p[component];
 
       return result;
     },
@@ -106,8 +106,8 @@ main()
        const Point<2> &p) -> Point<2> {
       Point<2> result;
 
-      for (unsigned int compontent = 0; compontent < 2; ++compontent)
-        result[compontent] = std::sin(p[compontent] * 0.5 * numbers::PI);
+      for (unsigned int component = 0; component < 2; ++component)
+        result[component] = std::sin(p[component] * 0.5 * numbers::PI);
 
       return result;
     },

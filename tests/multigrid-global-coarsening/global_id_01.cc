@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,7 +28,7 @@
 
 #include <deal.II/lac/la_parallel_vector.h>
 
-#include <deal.II/multigrid/mg_transfer_global_coarsening.templates.h>
+#include <deal.II/multigrid/mg_transfer_matrix_free.templates.h>
 
 #include <set>
 
@@ -42,7 +42,7 @@ test(const MPI_Comm comm)
   GridGenerator::subdivided_hyper_cube(basetria, 4);
   basetria.refine_global(4);
 
-  const auto deterimine_n_coarse_cells = [&comm](auto &tria) {
+  const auto determine_n_coarse_cells = [&comm](auto &tria) {
     types::coarse_cell_id n_coarse_cells = 0;
 
     for (auto cell : tria.active_cell_iterators())
@@ -55,7 +55,7 @@ test(const MPI_Comm comm)
 
   // create translator: CellID <-> unique ID
   internal::CellIDTranslator<dim> cell_id_translator(
-    deterimine_n_coarse_cells(basetria), basetria.n_global_levels());
+    determine_n_coarse_cells(basetria), basetria.n_global_levels());
 
 
   for (auto cell : basetria.cell_iterators())

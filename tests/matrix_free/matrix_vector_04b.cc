@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2020 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,11 +26,8 @@ template <int dim, int fe_degree>
 void
 test()
 {
-  const SphericalManifold<dim> manifold;
-  Triangulation<dim>           tria;
+  Triangulation<dim> tria;
   GridGenerator::hyper_shell(tria, Point<dim>(), 0.5, 1., 96, true);
-  tria.set_all_manifold_ids(0);
-  tria.set_manifold(0, manifold);
   if (dim == 2)
     tria.refine_global(2);
 

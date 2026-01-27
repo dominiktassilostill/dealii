@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2022 by the deal.II authors
+// Copyright (C) 2011 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -87,7 +87,7 @@ main()
   // get the interpolated solution
   // back
   Vector<double> tmp(dh.n_dofs());
-  soltrans.interpolate(solution, tmp);
+  soltrans.interpolate(tmp);
 
   deallog << "New values:" << std::endl;
   for (unsigned int i = 0; i < tmp.size(); ++i)

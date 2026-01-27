@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2023 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,12 +18,12 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/function.h>
 #include <deal.II/base/function_time.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/point.h>
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <vector>
 
@@ -54,7 +54,7 @@ DEAL_II_NAMESPACE_OPEN
 template <int rank, int dim, typename Number = double>
 class TensorFunction
   : public FunctionTime<typename numbers::NumberTraits<Number>::real_type>,
-    public Subscriptor
+    public EnableObserverPointer
 {
 public:
   /**
@@ -121,7 +121,7 @@ public:
 
 /**
  * Provide a tensor valued function which always returns a constant tensor
- * value. Obviously, all derivates of this function are zero.
+ * value. Obviously, all derivatives of this function are zero.
  *
  * @ingroup functions
  */
@@ -173,7 +173,7 @@ private:
 
 /**
  * Provide a tensor valued function which always returns zero. Obviously, all
- * derivates of this function are zero.
+ * derivatives of this function are zero.
  *
  * @ingroup functions
  */

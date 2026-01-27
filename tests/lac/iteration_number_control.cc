@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2018 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -39,7 +39,7 @@ check()
   in = 1.;
 
   {
-    IterationNumberControl control(5);
+    IterationNumberControl control(5, 1e-12, false, true);
     SolverCG<>             solver(control);
     solver.solve(A, out, in, PreconditionIdentity());
     AssertThrow(control.last_step() == 1, ExcInternalError());
@@ -53,7 +53,7 @@ check()
 
   out = 0;
   {
-    IterationNumberControl control(5);
+    IterationNumberControl control(5, 1e-12, false, true);
     SolverCG<>             solver(control);
     solver.solve(A, out, in, PreconditionIdentity());
     AssertThrow(control.last_step() == 5, ExcInternalError());

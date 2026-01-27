@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2023 by the deal.II authors
+// Copyright (C) 2014 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,6 +21,8 @@
 #  include <deal.II/base/exceptions.h>
 #  include <deal.II/base/point.h>
 #  include <deal.II/base/utilities.h>
+
+#  include <deal.II/grid/tria_description.h>
 
 #  include <IGESControl_Controller.hxx>
 #  include <IGESControl_Reader.hxx>
@@ -712,8 +714,8 @@ namespace OpenCASCADE
     double minDistance = 1e7;
     gp_Pnt tmp_proj(0.0, 0.0, 0.0);
 
-    [[maybe_unused]] unsigned int counter      = 0;
-    unsigned int                  face_counter = 0;
+    unsigned int counter      = 0;
+    unsigned int face_counter = 0;
 
     TopoDS_Shape out_shape;
     double       u = 0;
@@ -915,7 +917,13 @@ namespace OpenCASCADE
     tria.create_triangulation(vertices, cells, t);
   }
 
-#  include "utilities.inst"
+// We don't build the .inst file if deal.II isn't configured
+// with GMSH, but doxygen doesn't know that and tries to find that
+// file anyway for parsing -- which then of course it fails on. So
+// exclude the following from doxygen consideration.
+#  ifndef DOXYGEN
+#    include "opencascade/utilities.inst"
+#  endif
 
 } // namespace OpenCASCADE
 

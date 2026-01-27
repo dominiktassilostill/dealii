@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2012 - 2024 by the deal.II authors
+ * Copyright (C) 2012 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -50,7 +50,6 @@
 
 #include <deal.II/distributed/tria.h>
 #include <deal.II/distributed/grid_refinement.h>
-#include <deal.II/distributed/solution_transfer.h>
 
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_renumbering.h>
@@ -59,11 +58,13 @@
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
+#include <deal.II/fe/mapping_q_eulerian.h>
 
 #include <deal.II/numerics/vector_tools.h>
 #include <deal.II/numerics/data_out.h>
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/numerics/fe_field_function.h>
+#include <deal.II/numerics/solution_transfer.h>
 
 #include <fstream>
 #include <iostream>
@@ -260,7 +261,7 @@ namespace Step42
     stress_strain_tensor_linearized += stress_strain_tensor_kappa;
   }
 
-  // <h3>Equation data: boundary forces, boundary values, obstacles</h3>
+  // @sect3{Equation data: boundary forces, boundary values, obstacles}
   //
   // The following should be relatively standard. We need classes for
   // the boundary forcing term (which we here choose to be zero)
@@ -447,9 +448,7 @@ namespace Step42
       , ny(0)
     {
       std::ifstream f(name);
-      AssertThrow(f,
-                  ExcMessage(std::string("Can't read from file <") + name +
-                             ">!"));
+      AssertThrow(f, ExcMessage("Can't read from file <" + name + ">!"));
 
       std::string temp;
       f >> temp >> nx >> ny;
@@ -494,11 +493,11 @@ namespace Step42
     template <int dim>
     double BitmapFile<dim>::get_value(const double x, const double y) const
     {
-      const int ix = std::min(std::max(static_cast<int>(x / hx), 0), nx - 2);
-      const int iy = std::min(std::max(static_cast<int>(y / hy), 0), ny - 2);
+      const int ix = std::clamp(static_cast<int>(x / hx), 0, nx - 2);
+      const int iy = std::clamp(static_cast<int>(y / hy), 0, ny - 2);
 
-      const double xi  = std::min(std::max((x - ix * hx) / hx, 1.), 0.);
-      const double eta = std::min(std::max((y - iy * hy) / hy, 1.), 0.);
+      const double xi  = std::clamp((x - ix * hx) / hx, 0., 1.);
+      const double eta = std::clamp((y - iy * hy) / hy, 0., 1.);
 
       return ((1 - xi) * (1 - eta) * get_pixel_value(ix, iy) +
               xi * (1 - eta) * get_pixel_value(ix + 1, iy) +
@@ -618,7 +617,6 @@ namespace Step42
     void solve_newton_system();
     void solve_newton();
     void refine_grid();
-    void move_mesh(const TrilinosWrappers::MPI::Vector &displacement) const;
     void output_results(const unsigned int current_refinement_cycle);
 
     void output_contact_force() const;
@@ -635,7 +633,7 @@ namespace Step42
     // In particular, for this parallel program, the finite element
     // space has associated with it variables that indicate which degrees
     // of freedom live on the current processor (the index sets, see
-    // also step-40 and the @ref distributed documentation module) as
+    // also step-40 and the @ref distributed documentation topic) as
     // well as a variety of constraints: those imposed by hanging nodes,
     // by Dirichlet boundary conditions, and by the active set of
     // contact nodes. Of the three AffineConstraints variables defined
@@ -1239,7 +1237,7 @@ namespace Step42
                 {
                   // At each quadrature point (i.e., at each support point of a
                   // degree of freedom located on the contact boundary), we then
-                  // ask whether it is part of the z-displacement degrees of
+                  // ask whether it is part of the $z$-displacement degrees of
                   // freedom and if we haven't encountered this degree of
                   // freedom yet (which can happen for those on the edges
                   // between faces), we need to evaluate the gap between the
@@ -1250,12 +1248,12 @@ namespace Step42
                   // to the correct value, and add the index to the IndexSet
                   // object that stores which degree of freedom is part of the
                   // contact:
-                  const unsigned int component =
-                    fe.face_system_to_component_index(q_point).first;
+                  const FEValuesExtractors::Scalar z_displacement(2);
 
                   const unsigned int index_z = dof_indices[q_point];
 
-                  if ((component == 2) && (dof_touched[index_z] == false))
+                  if (fe.shape_function_belongs_to(q_point, z_displacement) &&
+                      (dof_touched[index_z] == false))
                     {
                       dof_touched[index_z] = true;
 
@@ -1622,10 +1620,8 @@ namespace Step42
     {
       TimerOutput::Scope t(computing_timer, "Solve: setup preconditioner");
 
-      std::vector<std::vector<bool>> constant_modes;
-      DoFTools::extract_constant_modes(dof_handler,
-                                       ComponentMask(),
-                                       constant_modes);
+      const std::vector<std::vector<bool>> constant_modes =
+        DoFTools::extract_constant_modes(dof_handler);
 
       TrilinosWrappers::PreconditionAMG::AdditionalData additional_data;
       additional_data.constant_modes        = constant_modes;
@@ -1700,7 +1696,7 @@ namespace Step42
                                                        mpi_communicator);
 
     double residual_norm;
-    double previous_residual_norm = -std::numeric_limits<double>::max();
+    double previous_residual_norm = std::numeric_limits<double>::lowest();
 
     const double correct_sigma = sigma_0;
 
@@ -1878,8 +1874,8 @@ namespace Step42
 
     triangulation.prepare_coarsening_and_refinement();
 
-    parallel::distributed::SolutionTransfer<dim, TrilinosWrappers::MPI::Vector>
-      solution_transfer(dof_handler);
+    SolutionTransfer<dim, TrilinosWrappers::MPI::Vector> solution_transfer(
+      dof_handler);
     if (transfer_solution)
       solution_transfer.prepare_for_coarsening_and_refinement(solution);
 
@@ -1903,51 +1899,11 @@ namespace Step42
   }
 
 
-  // @sect4{PlasticityContactProblem::move_mesh}
-
-  // The remaining three functions before we get to <code>run()</code>
-  // have to do with generating output. The following one is an attempt
-  // at showing the deformed body in its deformed configuration. To this
-  // end, this function takes a displacement vector field and moves every
-  // vertex of the (local part) of the mesh by the previously computed
-  // displacement. We will call this function with the current
-  // displacement field before we generate graphical output, and we will
-  // call it again after generating graphical output with the negative
-  // displacement field to undo the changes to the mesh so made.
-  //
-  // The function itself is pretty straightforward. All we have to do
-  // is keep track which vertices we have already touched, as we
-  // encounter the same vertices multiple times as we loop over cells.
-  template <int dim>
-  void PlasticityContactProblem<dim>::move_mesh(
-    const TrilinosWrappers::MPI::Vector &displacement) const
-  {
-    std::vector<bool> vertex_touched(triangulation.n_vertices(), false);
-
-    for (const auto &cell : dof_handler.active_cell_iterators())
-      if (cell->is_locally_owned())
-        for (const auto v : cell->vertex_indices())
-          if (vertex_touched[cell->vertex_index(v)] == false)
-            {
-              vertex_touched[cell->vertex_index(v)] = true;
-
-              Point<dim> vertex_displacement;
-              for (unsigned int d = 0; d < dim; ++d)
-                vertex_displacement[d] =
-                  displacement(cell->vertex_dof_index(v, d));
-
-              cell->vertex(v) += vertex_displacement;
-            }
-  }
-
-
-
   // @sect4{PlasticityContactProblem::output_results}
 
   // Next is the function we use to actually generate graphical output. The
   // function is a bit tedious, but not actually particularly complicated.
-  // It moves the mesh at the top (and moves it back at the end), then
-  // computes the contact forces along the contact surface. We can do
+  // It computes the contact forces along the contact surface. We can do
   // so (as shown in the accompanying paper) by taking the untreated
   // residual vector and identifying which degrees of freedom
   // correspond to those with contact by asking whether they have an
@@ -1956,6 +1912,17 @@ namespace Step42
   // vectors (i.e., vectors without ghost elements) but that when we
   // want to generate output, we need vectors that do indeed have
   // ghost entries for all locally relevant degrees of freedom.
+  //
+  // In order to more easily visualize the deformation of the object due
+  // to the external obstacle, we output the mesh not in the reference
+  // (undeformed) configuration, but in the *deformed* configuration that
+  // is obtained by adding to each vertex location that computed deformation
+  // vector. This is easily done via the MappingQEulerian class that
+  // represents the mapping from the reference cell to a cell that is
+  // described by the cell's vertices' reference coordinates *plus* a
+  // previously computed deformation vector -- here simply the computed
+  // solution of the problem. This mapping is given to the call of
+  // DataOut::build_patches().
   template <int dim>
   void PlasticityContactProblem<dim>::output_results(
     const unsigned int current_refinement_cycle)
@@ -1963,8 +1930,6 @@ namespace Step42
     TimerOutput::Scope t(computing_timer, "Graphical output");
 
     pcout << "      Writing graphical output... " << std::flush;
-
-    move_mesh(solution);
 
     // Calculation of the contact forces
     TrilinosWrappers::MPI::Vector distributed_lambda(locally_owned_dofs,
@@ -1987,7 +1952,7 @@ namespace Step42
     distributed_active_set_vector = 0.;
     for (const auto index : active_set)
       distributed_active_set_vector[index] = 1.;
-    distributed_lambda.compress(VectorOperation::insert);
+    distributed_active_set_vector.compress(VectorOperation::insert);
 
     TrilinosWrappers::MPI::Vector active_set_vector(locally_relevant_dofs,
                                                     mpi_communicator);
@@ -2021,24 +1986,20 @@ namespace Step42
     data_out.add_data_vector(fraction_of_plastic_q_points_per_cell,
                              "fraction_of_plastic_q_points");
 
-    data_out.build_patches();
+    data_out.build_patches(MappingQEulerian<dim, TrilinosWrappers::MPI::Vector>(
+      fe.degree, dof_handler, solution));
 
     // In the remainder of the function, we generate one VTU file on
     // every processor, indexed by the subdomain id of this processor.
-    // On the first processor, we then also create a <code>.pvtu</code>
+    // On the first processor, the call below also creates a <code>.pvtu</code>
     // file that indexes <i>all</i> of the VTU files so that the entire
     // set of output files can be read at once. These <code>.pvtu</code>
     // are used by Paraview to describe an entire parallel computation's
-    // output files. We then do the same again for the competitor of
-    // Paraview, the VisIt visualization program, by creating a matching
-    // <code>.visit</code> file.
+    // output files. The principal competitor of Paraview, the VisIt
+    // visualization program, can also read these files.
     const std::string pvtu_filename = data_out.write_vtu_with_pvtu_record(
       output_dir, "solution", current_refinement_cycle, mpi_communicator, 2);
-    pcout << pvtu_filename << std::endl;
-
-    TrilinosWrappers::MPI::Vector tmp(solution);
-    tmp *= -1;
-    move_mesh(tmp);
+    pcout << output_dir << pvtu_filename << std::endl;
   }
 
 

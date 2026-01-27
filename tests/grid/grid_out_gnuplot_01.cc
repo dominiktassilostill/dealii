@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2021 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,7 +15,7 @@
 
 
 // Plot some GNUPLOT output to make sure that all of the flags work as
-// intended. This verifies that the new colinear point removal algorithm works
+// intended. This verifies that the new collinear point removal algorithm works
 // and also that we can do output in dim = 2, spacedim = 3.
 
 

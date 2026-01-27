@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2021 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -51,7 +51,7 @@ main()
     internal::BlockVectorIterators::Iterator<BlockVector<double>,
                                              false>>::iterator_category;
 
-  using intervall_iterator_category =
+  using interval_iterator_category =
     std::iterator_traits<IndexSet::IntervalIterator>::iterator_category;
   using element_iterator_category =
     std::iterator_traits<IndexSet::ElementIterator>::iterator_category;

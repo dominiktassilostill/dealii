@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,6 +24,11 @@
 #include <cstdio>
 
 #ifdef DEAL_II_WITH_GMSH
+
+
+#  ifdef DEAL_II_WITH_OPENCASCADE
+#    include <TopoDS_Edge.hxx>
+#  endif
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -141,8 +146,12 @@ namespace Gmsh
 #  endif
 
   // explicit instantiations
-#  ifdef DEAL_II_WITH_OPENCASCADE
-#    include "utilities.inst"
+// We don't build the utilities.inst file if deal.II isn't configured
+// with GMSH, but doxygen doesn't know that and tries to find that
+// file anyway for parsing -- which then of course it fails on. So
+// exclude the following from doxygen consideration.
+#  ifndef DOXYGEN
+#    include "gmsh/utilities.inst"
 #  endif
 } // namespace Gmsh
 

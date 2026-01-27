@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2024 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,9 +26,11 @@
 
 #  include <boost/io/ios_state.hpp>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_Export.h>
 #  include <Epetra_Import.h>
 #  include <Epetra_Vector.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #  include <cmath>
 #  include <memory>
@@ -77,8 +79,7 @@ namespace TrilinosWrappers
   namespace MPI
   {
     Vector::Vector()
-      : Subscriptor()
-      , last_action(Zero)
+      : last_action(Zero)
       , compressed(true)
       , has_ghosts(false)
       , vector(new Epetra_FEVector(
@@ -110,7 +111,8 @@ namespace TrilinosWrappers
       : Vector()
     {
       // initialize a minimal, valid object and swap
-      static_cast<Subscriptor &>(*this) = static_cast<Subscriptor &&>(v);
+      static_cast<EnableObserverPointer &>(*this) =
+        static_cast<EnableObserverPointer &&>(v);
       swap(v);
     }
 
@@ -188,12 +190,13 @@ namespace TrilinosWrappers
       else
         owned_elements = parallel_partitioner;
 
-#  ifdef DEBUG
-      const size_type n_elements_global =
-        Utilities::MPI::sum(owned_elements.n_elements(), communicator);
+      if constexpr (running_in_debug_mode())
+        {
+          const size_type n_elements_global =
+            Utilities::MPI::sum(owned_elements.n_elements(), communicator);
 
-      Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
-#  endif
+          Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
+        }
 
       last_action = Zero;
     }
@@ -235,9 +238,7 @@ namespace TrilinosWrappers
             {
               // old and new vectors have exactly the same map, i.e. size and
               // parallel distribution
-              int ierr;
-              ierr = vector->GlobalAssemble(last_action);
-              (void)ierr;
+              int ierr = vector->GlobalAssemble(last_action);
               Assert(ierr == 0, ExcTrilinosError(ierr));
 
               ierr = vector->PutScalar(0.0);
@@ -269,14 +270,15 @@ namespace TrilinosWrappers
 
           last_action = Insert;
         }
-#  ifdef DEBUG
-      const Epetra_MpiComm *comm_ptr =
-        dynamic_cast<const Epetra_MpiComm *>(&(v.vector->Comm()));
-      Assert(comm_ptr != nullptr, ExcInternalError());
-      const size_type n_elements_global =
-        Utilities::MPI::sum(owned_elements.n_elements(), comm_ptr->Comm());
-      Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
-#  endif
+      if constexpr (running_in_debug_mode())
+        {
+          const Epetra_MpiComm *comm_ptr =
+            dynamic_cast<const Epetra_MpiComm *>(&(v.vector->Comm()));
+          Assert(comm_ptr != nullptr, ExcInternalError());
+          const size_type n_elements_global =
+            Utilities::MPI::sum(owned_elements.n_elements(), comm_ptr->Comm());
+          Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
+        }
     }
 
 
@@ -346,15 +348,16 @@ namespace TrilinosWrappers
         }
       else
         vector = std::move(actual_vec);
-#  ifdef DEBUG
-      const Epetra_MpiComm *comm_ptr =
-        dynamic_cast<const Epetra_MpiComm *>(&(vector->Comm()));
-      Assert(comm_ptr != nullptr, ExcInternalError());
-      const size_type n_elements_global =
-        Utilities::MPI::sum(owned_elements.n_elements(), comm_ptr->Comm());
+      if constexpr (running_in_debug_mode())
+        {
+          const Epetra_MpiComm *comm_ptr =
+            dynamic_cast<const Epetra_MpiComm *>(&(vector->Comm()));
+          Assert(comm_ptr != nullptr, ExcInternalError());
+          const size_type n_elements_global =
+            Utilities::MPI::sum(owned_elements.n_elements(), comm_ptr->Comm());
 
-      Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
-#  endif
+          Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
+        }
     }
 
 
@@ -388,7 +391,6 @@ namespace TrilinosWrappers
           else
             {
               const int ierr = vector->PutScalar(0.);
-              (void)ierr;
               Assert(ierr == 0, ExcTrilinosError(ierr));
             }
 
@@ -407,12 +409,13 @@ namespace TrilinosWrappers
 
       last_action = Zero;
 
-#  ifdef DEBUG
-      const size_type n_elements_global =
-        Utilities::MPI::sum(owned_elements.n_elements(), communicator);
+      if constexpr (running_in_debug_mode())
+        {
+          const size_type n_elements_global =
+            Utilities::MPI::sum(owned_elements.n_elements(), communicator);
 
-      Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
-#  endif
+          Assert(has_ghosts || n_elements_global == size(), ExcInternalError());
+        }
     }
 
 
@@ -522,7 +525,8 @@ namespace TrilinosWrappers
     Vector &
     Vector::operator=(Vector &&v) noexcept
     {
-      static_cast<Subscriptor &>(*this) = static_cast<Subscriptor &&>(v);
+      static_cast<EnableObserverPointer &>(*this) =
+        static_cast<EnableObserverPointer &&>(v);
       swap(v);
       return *this;
     }
@@ -645,24 +649,24 @@ namespace TrilinosWrappers
         }
 
 
-#  ifdef DEBUG
-      // check that every process has decided to use the same mode. This will
-      // otherwise result in undefined behavior in the call to
-      // GlobalAssemble().
-      const double          double_mode = mode;
-      const Epetra_MpiComm *comm_ptr =
-        dynamic_cast<const Epetra_MpiComm *>(&(trilinos_partitioner().Comm()));
-      Assert(comm_ptr != nullptr, ExcInternalError());
+      if constexpr (running_in_debug_mode())
+        {
+          // check that every process has decided to use the same mode. This
+          // will otherwise result in undefined behavior in the call to
+          // GlobalAssemble().
+          const double          double_mode = mode;
+          const Epetra_MpiComm *comm_ptr = dynamic_cast<const Epetra_MpiComm *>(
+            &(trilinos_partitioner().Comm()));
+          Assert(comm_ptr != nullptr, ExcInternalError());
 
-      const Utilities::MPI::MinMaxAvg result =
-        Utilities::MPI::min_max_avg(double_mode, comm_ptr->GetMpiComm());
-      Assert(result.max == result.min,
-             ExcMessage(
-               "Not all processors agree whether the last operation on "
-               "this vector was an addition or a set operation. This will "
-               "prevent the compress() operation from succeeding."));
-
-#  endif
+          const Utilities::MPI::MinMaxAvg result =
+            Utilities::MPI::min_max_avg(double_mode, comm_ptr->GetMpiComm());
+          Assert(result.max == result.min,
+                 ExcMessage(
+                   "Not all processors agree whether the last operation on "
+                   "this vector was an addition or a set operation. This will "
+                   "prevent the compress() operation from succeeding."));
+        }
 
       // Now pass over the information about what we did last to the vector.
       if (nonlocal_vector.get() == nullptr || mode != Add)
@@ -732,25 +736,11 @@ namespace TrilinosWrappers
           AssertThrow(size() == v.size(),
                       ExcDimensionMismatch(size(), v.size()));
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(11, 11, 0)
           Epetra_Import data_exchange(vector->Map(), v.vector->Map());
-          int           ierr =
+          const int     ierr =
             vector->Import(*v.vector, data_exchange, Epetra_AddLocalAlso);
           AssertThrow(ierr == 0, ExcTrilinosError(ierr));
           last_action = Add;
-#  else
-          // In versions older than 11.11 the Import function is broken for
-          // adding Hence, we provide a workaround in this case
-
-          Epetra_MultiVector dummy(vector->Map(), 1, false);
-          Epetra_Import      data_exchange(dummy.Map(), v.vector->Map());
-
-          int ierr = dummy.Import(*v.vector, data_exchange, Insert);
-          AssertThrow(ierr == 0, ExcTrilinosError(ierr));
-
-          ierr = vector->Update(1.0, dummy, 1.0);
-          AssertThrow(ierr == 0, ExcTrilinosError(ierr));
-#  endif
         }
     }
 
@@ -786,29 +776,15 @@ namespace TrilinosWrappers
     bool
     Vector::all_zero() const
     {
-      // get a representation of the vector and
-      // loop over all the elements
-      TrilinosScalar       *start_ptr = (*vector)[0];
-      const TrilinosScalar *ptr       = start_ptr,
-                           *eptr = start_ptr + vector->Map().NumMyElements();
-      unsigned int flag          = 0;
-      while (ptr != eptr)
-        {
-          if (*ptr != 0)
-            {
-              flag = 1;
-              break;
-            }
-          ++ptr;
-        }
+      const TrilinosScalar *start_ptr = (*vector)[0];
 
-      // in parallel, check that the vector
-      // is zero on _all_ processors.
-      const Epetra_MpiComm *mpi_comm =
-        dynamic_cast<const Epetra_MpiComm *>(&vector->Map().Comm());
-      Assert(mpi_comm != nullptr, ExcInternalError());
-      unsigned int num_nonzero = Utilities::MPI::sum(flag, mpi_comm->Comm());
-      return num_nonzero == 0;
+      const bool local_all_zero =
+        std::all_of(start_ptr,
+                    start_ptr + locally_owned_size(),
+                    numbers::value_is_zero<TrilinosScalar>);
+
+      return Utilities::MPI::logical_and(local_all_zero,
+                                         get_mpi_communicator());
     }
 
 
@@ -816,27 +792,13 @@ namespace TrilinosWrappers
     bool
     Vector::is_non_negative() const
     {
-      // get a representation of the vector and
-      // loop over all the elements
-      TrilinosScalar       *start_ptr = (*vector)[0];
-      const TrilinosScalar *ptr       = start_ptr,
-                           *eptr = start_ptr + vector->Map().NumMyElements();
-      unsigned int flag          = 0;
-      while (ptr != eptr)
-        {
-          if (*ptr < 0.0)
-            {
-              flag = 1;
-              break;
-            }
-          ++ptr;
-        }
+      const bool has_negative = std::any_of((*vector)[0],
+                                            (*vector)[0] + locally_owned_size(),
+                                            [](const TrilinosScalar &v) {
+                                              return v < TrilinosScalar();
+                                            });
 
-      // in parallel, check that the vector
-      // is zero on _all_ processors.
-      const auto max_n_negative =
-        Utilities::MPI::max(flag, get_mpi_communicator());
-      return max_n_negative == 0;
+      return !Utilities::MPI::logical_or(has_negative, get_mpi_communicator());
     }
 
 
@@ -919,7 +881,7 @@ namespace TrilinosWrappers
 
     // explicit instantiations
 #  ifndef DOXYGEN
-#    include "trilinos_vector.inst"
+#    include "lac/trilinos_vector.inst"
 #  endif
   } // namespace MPI
 } // namespace TrilinosWrappers

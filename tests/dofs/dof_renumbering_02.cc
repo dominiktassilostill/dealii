@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2007 - 2023 by the deal.II authors
+// Copyright (C) 2007 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -123,7 +123,7 @@ check_renumbering(DoFHandler<dim> &mgdof)
 
   Tensor<1, dim> direction;
   for (unsigned int i = 0; i < dim; ++i)
-    direction[i] = -5.0001 + 1.13 * i;
+    direction[i] = -std::pow(1e-5, i);
 
   deallog << std::endl << "Downstream numbering cell-wise" << std::endl;
   DoFRenumbering::downstream(dof, direction);
@@ -189,7 +189,7 @@ int
 main()
 {
   initlog();
-  deallog << std::setprecision(2) << std::fixed;
+  deallog << std::setprecision(8) << std::fixed;
 
   deallog.push("1d");
   check<1>();

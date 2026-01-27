@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2024 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,9 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/multithread_info.h>
 #include <deal.II/base/mutex.h>
+#include <deal.II/base/std_cxx20/type_traits.h>
 #include <deal.II/base/synchronous_iterator.h>
 #include <deal.II/base/template_constraints.h>
 
@@ -27,6 +29,12 @@
 #include <functional>
 #include <memory>
 #include <tuple>
+
+#ifdef DEAL_II_WITH_TASKFLOW
+
+#  include <taskflow/algorithm/for_each.hpp>
+#  include <taskflow/taskflow.hpp>
+#endif
 
 #ifdef DEAL_II_WITH_TBB
 #  include <tbb/blocked_range.h>
@@ -73,6 +81,44 @@ namespace parallel
     };
 #endif
 
+#ifdef DEAL_II_WITH_TASKFLOW
+    /**
+     * Internal function to do a parallel_for using taskflow
+     */
+    template <typename Iterator, typename Functor>
+    void
+    taskflow_parallel_for(Iterator           x_begin,
+                          Iterator           x_end,
+                          const Functor     &functor,
+                          const unsigned int grainsize)
+    {
+      tf::Executor &executor = MultithreadInfo::get_taskflow_executor();
+      tf::Taskflow  taskflow;
+
+      // TODO: We have several choices for the Partitioner and we should spend
+      // some time benchmarking them:
+      // 1. StaticPartitioner(grainsize): all work items have grainsize number
+      // of items
+      // 2. GuidedPartitioner(grainsize):
+      // "The size of a partition is proportional to the number of unassigned
+      // iterations divided by the number of workers, and the size will
+      // gradually decrease to the given chunk size."
+      // 3. GuidedPartitioner(0): The default.
+      taskflow.for_each(
+        x_begin,
+        x_end,
+        [&](const auto &item) { functor(item); },
+        tf::StaticPartitioner(grainsize));
+
+      // Schedule the work. If we are within a task, we are required to use
+      // corun() without wait() to avoid a potential deadlock as described in
+      // https://taskflow.github.io/taskflow/ExecuteTaskflow.html#ExecuteATaskflowFromAnInternalWorker:
+      if (executor.this_worker_id() != -1)
+        executor.corun(taskflow);
+      else
+        executor.run(taskflow).wait();
+    }
+#endif
 
 #ifdef DEAL_II_WITH_TBB
     /**
@@ -147,7 +193,7 @@ namespace parallel
    * For a discussion of the kind of problems to which this function is
    * applicable, see the
    * @ref threads "Parallel computing with multiple processors"
-   * module.
+   * topic.
    *
    * @dealiiConceptRequires{(std::invocable<Function,
    *    decltype(*std::declval<InputIterator>())> &&
@@ -162,20 +208,27 @@ namespace parallel
        decltype(*std::declval<OutputIterator>()),
        std::invoke_result_t<Function,
                             decltype(*std::declval<InputIterator>())>>))
-  void transform(const InputIterator &begin_in,
-                 const InputIterator &end_in,
-                 OutputIterator       out,
-                 const Function      &function,
-                 const unsigned int   grainsize)
+  DEAL_II_DEPRECATED void transform(const InputIterator &begin_in,
+                                    const InputIterator &end_in,
+                                    OutputIterator       out,
+                                    const Function      &function,
+                                    const unsigned int   grainsize)
   {
-#ifndef DEAL_II_WITH_TBB
-    // make sure we don't get compiler
-    // warnings about unused arguments
-    (void)grainsize;
+#ifdef DEAL_II_WITH_TASKFLOW
+    using Iterators     = std::tuple<InputIterator, OutputIterator>;
+    using SyncIterators = SynchronousIterators<Iterators>;
+    Iterators x_begin(begin_in, out);
+    Iterators x_end(end_in, OutputIterator());
 
-    for (OutputIterator in = begin_in; in != end_in;)
-      *out++ = function(*in++);
-#else
+    internal::taskflow_parallel_for(
+      SyncIterators(x_begin),
+      SyncIterators(x_end),
+      [function](const auto &it) {
+        *std::get<1>(it) = function(*std::get<0>(it));
+      },
+      grainsize);
+
+#elif defined(DEAL_II_WITH_TBB)
     using Iterators     = std::tuple<InputIterator, OutputIterator>;
     using SyncIterators = SynchronousIterators<Iterators>;
     Iterators x_begin(begin_in, out);
@@ -188,6 +241,13 @@ namespace parallel
           *std::get<1>(p) = function(*std::get<0>(p));
       },
       grainsize);
+#else
+    // make sure we don't get compiler
+    // warnings about unused arguments
+    (void)grainsize;
+
+    for (InputIterator in = begin_in; in != end_in;)
+      *out++ = function(*in++);
 #endif
   }
 
@@ -214,7 +274,7 @@ namespace parallel
    * For a discussion of the kind of problems to which this function is
    * applicable, see the
    * @ref threads "Parallel computing with multiple processors"
-   * module.
+   * topic.
    *
    * @dealiiConceptRequires{(std::invocable<Function,
    *    decltype(*std::declval<InputIterator1>()),
@@ -237,21 +297,29 @@ namespace parallel
        std::invoke_result_t<Function,
                             decltype(*std::declval<InputIterator1>()),
                             decltype(*std::declval<InputIterator2>())>>))
-  void transform(const InputIterator1 &begin_in1,
-                 const InputIterator1 &end_in1,
-                 InputIterator2        in2,
-                 OutputIterator        out,
-                 const Function       &function,
-                 const unsigned int    grainsize)
+  DEAL_II_DEPRECATED void transform(const InputIterator1 &begin_in1,
+                                    const InputIterator1 &end_in1,
+                                    InputIterator2        in2,
+                                    OutputIterator        out,
+                                    const Function       &function,
+                                    const unsigned int    grainsize)
   {
-#ifndef DEAL_II_WITH_TBB
-    // make sure we don't get compiler
-    // warnings about unused arguments
-    (void)grainsize;
+#ifdef DEAL_II_WITH_TASKFLOW
+    using Iterators =
+      std::tuple<InputIterator1, InputIterator2, OutputIterator>;
+    using SyncIterators = SynchronousIterators<Iterators>;
+    Iterators x_begin(begin_in1, in2, out);
+    Iterators x_end(end_in1, InputIterator2(), OutputIterator());
 
-    for (OutputIterator in1 = begin_in1; in1 != end_in1;)
-      *out++ = function(*in1++, *in2++);
-#else
+    internal::taskflow_parallel_for(
+      SyncIterators(x_begin),
+      SyncIterators(x_end),
+      [function](const auto &it) {
+        *std::get<2>(it) = function(*std::get<0>(it), *std::get<1>(it));
+      },
+      grainsize);
+
+#elif defined(DEAL_II_WITH_TBB)
     using Iterators =
       std::tuple<InputIterator1, InputIterator2, OutputIterator>;
     using SyncIterators = SynchronousIterators<Iterators>;
@@ -265,6 +333,14 @@ namespace parallel
           *std::get<2>(p) = function(*std::get<0>(p), *std::get<1>(p));
       },
       grainsize);
+
+#else
+    // make sure we don't get compiler
+    // warnings about unused arguments
+    (void)grainsize;
+
+    for (InputIterator1 in1 = begin_in1; in1 != end_in1;)
+      *out++ = function(*in1++, *in2++);
 #endif
   }
 
@@ -291,7 +367,7 @@ namespace parallel
    * For a discussion of the kind of problems to which this function is
    * applicable, see the
    * @ref threads "Parallel computing with multiple processors"
-   * module.
+   * topic.
    *
    * @dealiiConceptRequires{(std::invocable<Function,
    *    decltype(*std::declval<InputIterator1>()),
@@ -319,22 +395,34 @@ namespace parallel
                             decltype(*std::declval<InputIterator1>()),
                             decltype(*std::declval<InputIterator2>()),
                             decltype(*std::declval<InputIterator3>())>>))
-  void transform(const InputIterator1 &begin_in1,
-                 const InputIterator1 &end_in1,
-                 InputIterator2        in2,
-                 InputIterator3        in3,
-                 OutputIterator        out,
-                 const Function       &function,
-                 const unsigned int    grainsize)
+  DEAL_II_DEPRECATED void transform(const InputIterator1 &begin_in1,
+                                    const InputIterator1 &end_in1,
+                                    InputIterator2        in2,
+                                    InputIterator3        in3,
+                                    OutputIterator        out,
+                                    const Function       &function,
+                                    const unsigned int    grainsize)
   {
-#ifndef DEAL_II_WITH_TBB
-    // make sure we don't get compiler
-    // warnings about unused arguments
-    (void)grainsize;
+#ifdef DEAL_II_WITH_TASKFLOW
+    using Iterators = std::
+      tuple<InputIterator1, InputIterator2, InputIterator3, OutputIterator>;
+    using SyncIterators = SynchronousIterators<Iterators>;
+    Iterators x_begin(begin_in1, in2, in3, out);
+    Iterators x_end(end_in1,
+                    InputIterator2(),
+                    InputIterator3(),
+                    OutputIterator());
 
-    for (OutputIterator in1 = begin_in1; in1 != end_in1;)
-      *out++ = function(*in1++, *in2++, *in3++);
-#else
+    internal::taskflow_parallel_for(
+      SyncIterators(x_begin),
+      SyncIterators(x_end),
+      [function](const auto &it) {
+        *std::get<3>(it) =
+          function(*std::get<0>(it), *std::get<1>(it), *std::get<2>(it));
+      },
+      grainsize);
+
+#elif defined(DEAL_II_WITH_TBB)
     using Iterators = std::
       tuple<InputIterator1, InputIterator2, InputIterator3, OutputIterator>;
     using SyncIterators = SynchronousIterators<Iterators>;
@@ -352,6 +440,13 @@ namespace parallel
             function(*std::get<0>(p), *std::get<1>(p), *std::get<2>(p));
       },
       grainsize);
+#else
+    // make sure we don't get compiler
+    // warnings about unused arguments
+    (void)grainsize;
+
+    for (OutputIterator in1 = begin_in1; in1 != end_in1;)
+      *out++ = function(*in1++, *in2++, *in3++);
 #endif
   }
 
@@ -443,7 +538,7 @@ namespace parallel
    * For a discussion of the kind of problems to which this function is
    * applicable, see also the
    * @ref threads "Parallel computing with multiple processors"
-   * module.
+   * topic.
    *
    * @dealiiConceptRequires{(std::invocable<Function, Iterator, Iterator>)}
    */
@@ -454,21 +549,100 @@ namespace parallel
                           const Function                             &f,
                           const unsigned int                          grainsize)
   {
-#ifndef DEAL_II_WITH_TBB
-    // make sure we don't get compiler
-    // warnings about unused arguments
-    (void)grainsize;
+    Assert(grainsize > 0, ExcMessage("Grainsize must be a positive number."));
 
-    f(begin, end);
+    // Count elements in the range
+    const std::size_t n = [&]() -> auto {
+      if constexpr (std::is_integral_v<Iterator>)
+        return static_cast<std::size_t>(end - begin);
+      else
+        return static_cast<std::size_t>(std::distance(begin, end));
+    }();
+
+    const bool worth_doing_in_parallel =
+      (MultithreadInfo::n_threads() > 1) && (n > grainsize);
+
+#ifdef DEAL_II_WITH_TASKFLOW
+    if (worth_doing_in_parallel)
+      {
+        tf::Executor &executor = MultithreadInfo::get_taskflow_executor();
+        tf::Taskflow  taskflow;
+
+        if constexpr (std::is_integral_v<Iterator>)
+          {
+            // Integral "iterator" types (e.g., int): use plain arithmetic
+            using integral_type = Iterator;
+
+            tf::IndexRange<integral_type> range(0, n, 1);
+
+            taskflow.for_each_by_index(
+              range,
+              [&, begin](const tf::IndexRange<integral_type> &subrange) {
+                integral_type subrange_begin =
+                  begin + static_cast<integral_type>(subrange.begin());
+
+                integral_type subrange_end =
+                  subrange_begin + static_cast<integral_type>(subrange.size());
+
+                f(subrange_begin, subrange_end);
+              },
+              tf::GuidedPartitioner(grainsize));
+          }
+        else
+          {
+            // Non-integral iterator types: advance from 'begin' using
+            // std::distance/std::advance
+            using diff_t =
+              typename std::iterator_traits<Iterator>::difference_type;
+
+            tf::IndexRange<std::size_t> range(0, n, 1);
+
+            taskflow.for_each_by_index(
+              range,
+              [&, begin](const tf::IndexRange<std::size_t> &subrange) {
+                Iterator subrange_begin = begin;
+                std::advance(subrange_begin,
+                             static_cast<diff_t>(subrange.begin()));
+
+                Iterator subrange_end = subrange_begin;
+                std::advance(subrange_end,
+                             static_cast<diff_t>(subrange.size()));
+
+                f(subrange_begin, subrange_end);
+              },
+              tf::GuidedPartitioner(grainsize));
+          }
+
+        // Schedule the work. If we are within a task, we are required to use
+        // corun() without wait() to avoid a potential deadlock as described in
+        // https://taskflow.github.io/taskflow/ExecuteTaskflow.html#ExecuteATaskflowFromAnInternalWorker:
+        if (executor.this_worker_id() != -1)
+          executor.corun(taskflow);
+        else
+          executor.run(taskflow).wait();
+
+        return;
+      }
+#elif defined(DEAL_II_WITH_TBB)
+    if (worth_doing_in_parallel)
+      {
+        internal::parallel_for(
+          begin,
+          end,
+          [&f](const tbb::blocked_range<Iterator> &range) {
+            internal::apply_to_subranges<Iterator, Function>(range, f);
+          },
+          grainsize);
+
+        return;
+      }
 #else
-    internal::parallel_for(
-      begin,
-      end,
-      [&f](const tbb::blocked_range<Iterator> &range) {
-        internal::apply_to_subranges<Iterator, Function>(range, f);
-      },
-      grainsize);
+    (void)worth_doing_in_parallel;
 #endif
+
+    // Without library support (taskflow or TBB) or if not worth running in
+    // parallel, we just call the function directly with the whole range:
+    f(begin, end);
   }
 
 
@@ -593,7 +767,7 @@ namespace parallel
    * For a discussion of the kind of problems to which this function is
    * applicable, see also the
    * @ref threads "Parallel computing with multiple processors"
-   * module.
+   * topic.
    *
    * @dealiiConceptRequires{(std::invocable<Function, Iterator, Iterator> &&
    *    std::convertible_to<std::invoke_result_t<Function, Iterator, Iterator>,

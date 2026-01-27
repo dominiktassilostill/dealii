@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2024 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,6 +43,7 @@
 #include <deal.II/grid/manifold_lib.h>
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/tria_accessor.h>
+#include <deal.II/grid/tria_description.h>
 #include <deal.II/grid/tria_iterator.h>
 
 #include <deal.II/lac/affine_constraints.h>
@@ -111,13 +112,13 @@ do_project(const parallel::distributed::Triangulation<dim> &triangulation,
 
   deallog << "n_dofs=" << dof_handler.n_dofs() << std::endl;
 
-  const MPI_Comm mpi_communicator   = triangulation.get_communicator();
+  const MPI_Comm mpi_communicator   = triangulation.get_mpi_communicator();
   const IndexSet locally_owned_dofs = dof_handler.locally_owned_dofs();
   const IndexSet locally_relevant_dofs =
     DoFTools::extract_locally_relevant_dofs(dof_handler);
 
   AffineConstraints<double> constraints;
-  constraints.reinit(locally_relevant_dofs);
+  constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
   DoFTools::make_hanging_node_constraints(dof_handler, constraints);
   constraints.close();
 

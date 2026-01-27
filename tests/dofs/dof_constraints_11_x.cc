@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2023 by the deal.II authors
+// Copyright (C) 2004 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,8 +14,7 @@
 
 
 
-// simply check what happens when condensing BlockDyanmicSparsityPattern. This
-// test was written when I changed a few things in the algorithm.
+// simply check what happens when condensing BlockDynamicSparsityPattern.
 
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>

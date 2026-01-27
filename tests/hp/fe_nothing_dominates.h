@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,13 +43,14 @@ project(const hp::FECollection<dim> &fe_collection,
         const hp::QCollection<dim>  &q_collection,
         const Function<dim>         &function)
 {
-#ifdef DEBUG
-  Assert(fe_collection.size() == 2, ExcInternalError());
-  Assert(q_collection.size() == 2, ExcInternalError());
-  for (unsigned int f = 0; f < fe_collection.size(); ++f)
-    Assert(fe_collection[f].n_components() == function.n_components,
-           ExcInternalError());
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      Assert(fe_collection.size() == 2, ExcInternalError());
+      Assert(q_collection.size() == 2, ExcInternalError());
+      for (unsigned int f = 0; f < fe_collection.size(); ++f)
+        Assert(fe_collection[f].n_components() == function.n_components,
+               ExcInternalError());
+    }
 
   // setup
   // +---+---+

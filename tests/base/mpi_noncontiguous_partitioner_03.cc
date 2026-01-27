@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2022 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,6 +15,7 @@
 
 // Test Utilities::MPI::NoncontiguousPartitioner for padding.
 
+#include <deal.II/base/aligned_vector.h>
 #include <deal.II/base/mpi.h>
 #include <deal.II/base/mpi_noncontiguous_partitioner.h>
 
@@ -84,6 +85,16 @@ main(int argc, char *argv[])
       test(comm, {0, 1, 2, 3}, {4, 5, numbers::invalid_dof_index, 6, 7});
     else
       test(comm, {4, 5, 6, 7}, {0, 1, 2, 3});
+    deallog.pop();
+  }
+
+  {
+    deallog.push("duplicates");
+
+    if (rank == 0)
+      test(comm, {0, 1, 2, 3}, {4, 4, 5, 6, 7, 6});
+    else
+      test(comm, {4, 5, 6, 7}, {0, 1, 2, 1, 1, 3});
     deallog.pop();
   }
 }

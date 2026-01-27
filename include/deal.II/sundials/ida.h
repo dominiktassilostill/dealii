@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -51,8 +51,6 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-// Shorthand notation for IDA error codes.
-#  define AssertIDA(code) Assert(code >= 0, ExcIDAError(code))
 
 namespace SUNDIALS
 {
@@ -1064,16 +1062,6 @@ namespace SUNDIALS
      */
     std::function<VectorType &()> get_local_tolerances;
 
-    /**
-     * Handle IDA exceptions.
-     */
-    DeclException1(ExcIDAError,
-                   int,
-                   << "One of the SUNDIALS IDA internal functions "
-                   << " returned a negative error code: " << arg1
-                   << ". Please consult SUNDIALS manual.");
-
-
   private:
     /**
      * Throw an exception when a function with the given name is not
@@ -1139,8 +1127,26 @@ namespace SUNDIALS
 #    endif // PETSC_USE_COMPLEX
 #  endif   // DEAL_II_WITH_PETSC
   };
+
+  /**
+   * Handle IDA exceptions.
+   */
+  DeclException1(ExcIDAError,
+                 int,
+                 << "One of SUNDIALS IDA's internal functions "
+                 << "returned an error code: " << arg1
+                 << ". Please consult SUNDIALS manual.");
+
 } // namespace SUNDIALS
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_SUNDIALS

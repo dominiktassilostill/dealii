@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -39,7 +39,7 @@ test(const ReferenceCell &reference_cell)
         Assert(reference_cell.face_vertex_location<dim>(f, v) ==
                  reference_cell.vertex<dim>(
                    reference_cell.face_to_cell_vertices(
-                     f, v, ReferenceCell::default_combined_face_orientation())),
+                     f, v, numbers::default_geometric_orientation)),
                ExcInternalError());
       }
 }

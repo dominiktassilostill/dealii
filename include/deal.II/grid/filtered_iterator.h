@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,6 +20,7 @@
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/iterator_range.h>
+#include <deal.II/base/types.h>
 
 #include <deal.II/grid/tria_iterator_base.h>
 
@@ -187,7 +188,7 @@ namespace IteratorFilters
    *
    * This class is used in step-32, in connection with the methods of the
    * @ref distributed
-   * module.
+   * topic.
    *
    * @ingroup Iterators
    */

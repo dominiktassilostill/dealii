@@ -16,15 +16,6 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-
-
-namespace Portable
-{
-  // Do not instantiate for dim = 1
-  template class MatrixFree<2, float>;
-  template class MatrixFree<2, double>;
-  template class MatrixFree<3, float>;
-  template class MatrixFree<3, double>;
-} // namespace Portable
+#include "matrix_free/portable_matrix_free.inst"
 
 DEAL_II_NAMESPACE_CLOSE

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -49,20 +49,15 @@ main(int argc, char **argv)
       owned_elements.add_range(1, 3);
       relevant_elements.add_range(0, n_indices);
       constraints.reinit(owned_elements, relevant_elements);
-      constraints.add_line(0);
-      constraints.add_entry(0, 1, 0.5);
-      constraints.add_entry(0, 2, 0.5);
-      constraints.add_line(2);
-      constraints.add_entry(2, 3, 1.5);
+      constraints.add_constraint(0, {{1, 0.5}, {2, 0.5}});
+      constraints.add_constraint(2, {{3, 1.5}});
     }
   else if (my_proc == 2)
     {
       owned_elements.add_range(3, n_indices);
       relevant_elements.add_range(0, n_indices);
       constraints.reinit(owned_elements, relevant_elements);
-      constraints.add_line(0);
-      constraints.add_entry(0, 1, 0.5);
-      constraints.add_entry(0, 3, 0.5);
+      constraints.add_constraint(0, {{1, 0.5}, {3, 0.75}});
     }
 
   constraints.make_consistent_in_parallel(owned_elements,

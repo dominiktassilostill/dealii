@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
  * @defgroup constraints Constraints on degrees of freedom
  * @ingroup dofs
  *
- * This module deals with constraints on degrees of
+ * This documentation group deals with constraints on degrees of
  * freedom. The central class to deal with constraints is the
  * AffineConstraints class.
  *
@@ -39,7 +39,7 @@
  *   VectorTools::compute_no_normal_flux_constraints function) or
  *   prescribed tangential components, $\mathbf{n}\times\mathbf{u}=
  *   \mathbf{n}\times\mathbf{f}$ (as happens in electromagnetic problems and
- *   is handled by the VectorTools::project_boundary_values_curl_conforming
+ *   is handled by the VectorTools::project_boundary_values_curl_conforming_l2
  *   function). For the former case, imagine for example that we are at
  *   at vertex where the normal vector has the form $\frac 1{\sqrt{14}}
  *   (1,2,3)^T$ and that the $x$-, $y$- and $z$-components of the flow

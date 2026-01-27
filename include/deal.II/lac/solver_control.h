@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2023 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,8 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/exceptions.h>
 
 #include <vector>
 
@@ -63,7 +64,7 @@ class ParameterHandler;
  * number of iterations.
  * </ul>
  */
-class SolverControl : public Subscriptor
+class SolverControl : public EnableObserverPointer
 {
 public:
   /**
@@ -145,12 +146,12 @@ public:
    * checked and the number of the iteration step) shall be printed to @p
    * deallog stream.  Default is: do not print. Similarly, @p log_result
    * specifies the whether the final result is logged to @p deallog. Default
-   * is yes.
+   * is: do not print.
    */
   explicit SolverControl(const unsigned int n           = 100,
                          const double       tol         = 1.e-10,
                          const bool         log_history = false,
-                         const bool         log_result  = true);
+                         const bool         log_result  = false);
 
   /**
    * Virtual destructor is needed as there are virtual functions in this
@@ -255,13 +256,19 @@ public:
   set_tolerance(const double);
 
   /**
-   * Enables writing residuals of each step into a vector for later analysis.
+   * Enables writing residuals of each step into a vector for later analysis
+   * via the get_history_data() function.
    */
   void
   enable_history_data();
 
   /**
-   * Provide read access to the collected residual data.
+   * Provide read access to the collected residual data. The vector stores the
+   * residual passed to the check() function every time that function is called.
+   * In practice, for most solvers, that means that it contains one entry
+   * for each solver iteration, though solvers may also check the residual
+   * once before they start iterations, and/or after restarts for solvers
+   * that support restarts (e.g., the SolverGMRES class).
    */
   const std::vector<double> &
   get_history_data() const;
@@ -432,7 +439,7 @@ public:
                             const double       tolerance   = 1.e-10,
                             const double       reduce      = 1.e-2,
                             const bool         log_history = false,
-                            const bool         log_result  = true);
+                            const bool         log_result  = false);
 
   /**
    * Initialize with a SolverControl object. The result will emulate
@@ -518,7 +525,7 @@ public:
   explicit IterationNumberControl(const unsigned int maxiter     = 100,
                                   const double       tolerance   = 1e-12,
                                   const bool         log_history = false,
-                                  const bool         log_result  = true);
+                                  const bool         log_result  = false);
 
   /**
    * Initialize with a SolverControl object. The result will emulate

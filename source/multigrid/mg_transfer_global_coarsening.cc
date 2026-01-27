@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -56,6 +56,6 @@ namespace MGTransferGlobalCoarseningTools
   }
 } // namespace MGTransferGlobalCoarseningTools
 
-#include "mg_transfer_global_coarsening.inst"
+#include "multigrid/mg_transfer_global_coarsening.inst"
 
 DEAL_II_NAMESPACE_CLOSE

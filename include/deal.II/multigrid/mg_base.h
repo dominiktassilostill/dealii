@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2023 by the deal.II authors
+// Copyright (C) 1999 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,8 +22,8 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/lac/vector.h>
 
@@ -44,7 +44,7 @@ DEAL_II_NAMESPACE_OPEN
  * of matrices, will be sufficient for applications.
  */
 template <typename VectorType>
-class MGMatrixBase : public Subscriptor
+class MGMatrixBase : public EnableObserverPointer
 {
 public:
   /*
@@ -104,7 +104,7 @@ public:
  * will be done by derived classes.
  */
 template <typename VectorType>
-class MGCoarseGridBase : public Subscriptor
+class MGCoarseGridBase : public EnableObserverPointer
 {
 public:
   /**
@@ -168,7 +168,7 @@ public:
  * needed.
  */
 template <typename VectorType>
-class MGTransferBase : public Subscriptor
+class MGTransferBase : public EnableObserverPointer
 {
 public:
   /**
@@ -180,11 +180,11 @@ public:
    * Prolongate a vector from level <tt>to_level-1</tt> to level
    * <tt>to_level</tt>. The previous content of <tt>dst</tt> is overwritten.
    *
-   * @arg src is a vector with as many elements as there are degrees of
+   * @param[in] to_level The destination level of the operation.
+   * @param[in] src A vector with as many elements as there are degrees of
    * freedom on the coarser level involved.
-   *
-   * @arg dst has as many elements as there are degrees of freedom on the
-   * finer level.
+   * @param[out] dst The output vector. It must have as many elements as
+   *   there are degrees of freedom on the finer level.
    */
   virtual void
   prolongate(const unsigned int to_level,
@@ -195,11 +195,11 @@ public:
    * Prolongate a vector from level <tt>to_level-1</tt> to level
    * <tt>to_level</tt>, summing into the previous content of <tt>dst</tt>.
    *
-   * @arg src is a vector with as many elements as there are degrees of
+   * @param[in] to_level The destination level of the operation.
+   * @param[in] src A vector with as many elements as there are degrees of
    * freedom on the coarser level involved.
-   *
-   * @arg dst has as many elements as there are degrees of freedom on the
-   * finer level.
+   * @param[out] dst The output vector. It must have as many elements as
+   *   there are degrees of freedom on the finer level.
    */
   virtual void
   prolongate_and_add(const unsigned int to_level,
@@ -214,11 +214,11 @@ public:
    * freedom in <tt>dst</tt> are active and will not be altered. For the other
    * degrees of freedom, the result of the restriction is added.
    *
-   * @arg src is a vector with as many elements as there are degrees of
-   * freedom on the finer level
-   *
-   * @arg dst has as many elements as there are degrees of freedom on the
-   * coarser level.
+   * @param[in] from_level The level of the source vector of the operation.
+   * @param[in] src A vector with as many elements as there are degrees of
+   * freedom on the finer level.
+   * @param[out] dst A vector with as many elements as there are degrees of
+   * freedom on the coarser level.
    */
   virtual void
   restrict_and_add(const unsigned int from_level,
@@ -248,7 +248,7 @@ public:
  * in the vector @p u given the right hand side, which is done by smooth().
  */
 template <typename VectorType>
-class MGSmootherBase : public Subscriptor
+class MGSmootherBase : public EnableObserverPointer
 {
 public:
   /**

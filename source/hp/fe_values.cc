@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2005 - 2023 by the deal.II authors
+// Copyright (C) 2005 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,6 +19,8 @@
 #include <deal.II/hp/fe_values.h>
 
 #include <memory>
+#include <numeric>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -36,6 +38,7 @@ namespace hp
     {
       std::vector<QCollection<q_dim>> q_collections;
 
+      q_collections.reserve(q_collection.size());
       for (unsigned int q = 0; q < q_collection.size(); ++q)
         q_collections.emplace_back(q_collection[q]);
 
@@ -134,7 +137,7 @@ namespace hp
   template <int dim, int q_dim, typename FEValuesType>
   FEValuesBase<dim, q_dim, FEValuesType>::FEValuesBase(
     const FEValuesBase<dim, q_dim, FEValuesType> &other)
-    : Subscriptor(other)
+    : EnableObserverPointer(other)
     , fe_collection(other.fe_collection)
     , mapping_collection(other.mapping_collection)
     , q_collection(other.q_collection)
@@ -639,7 +642,7 @@ namespace hp
 
 
 // explicit instantiations
-#include "fe_values.inst"
+#include "hp/fe_values.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

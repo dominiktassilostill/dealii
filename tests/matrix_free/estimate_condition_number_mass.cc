@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -144,8 +144,11 @@ test(const FiniteElement<dim> &fe, const unsigned int n_iterations)
     {
       solver.solve(mf, out, in, PreconditionIdentity());
     }
-  catch (...)
-    {}
+  catch (const SolverControl::NoConvergence &e)
+    {
+      deallog << "Failure step " << e.last_step << " value " << e.last_residual
+              << std::endl;
+    }
   deallog << std::endl;
 }
 

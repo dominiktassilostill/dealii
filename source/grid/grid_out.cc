@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -230,9 +230,9 @@ namespace GridOutFlags
   void
   EpsFlagsBase::parse_parameters(ParameterHandler &param)
   {
-    if (param.get("Size by") == std::string("width"))
+    if (param.get("Size by") == "width")
       size_type = width;
-    else if (param.get("Size by") == std::string("height"))
+    else if (param.get("Size by") == "height")
       size_type = height;
     size                     = param.get_integer("Size");
     line_width               = param.get_double("Line width");
@@ -344,7 +344,7 @@ namespace GridOutFlags
     param.declare_entry("Azimuth",
                         "30",
                         Patterns::Double(),
-                        "Azimuth of the viw point, that is, the angle "
+                        "Azimuth of the view point, that is, the angle "
                         "in the plane from the x-axis.");
     param.declare_entry("Elevation",
                         "30",
@@ -1212,7 +1212,8 @@ GridOut::write_ucd(const Triangulation<dim, spacedim> &tria,
       // May, 1992, p. E6
       //
       // note: vertex numbers are 1-base
-      for (const unsigned int vertex : GeometryInfo<dim>::vertex_indices())
+      Assert(cell->reference_cell().is_hyper_cube(), ExcNotImplemented());
+      for (const unsigned int vertex : cell->vertex_indices())
         out << cell->vertex_index(GeometryInfo<dim>::ucd_to_deal[vertex]) + 1
             << ' ';
       out << '\n';
@@ -1441,12 +1442,12 @@ GridOut::write_xfig(const Triangulation<2> &tria,
 
 
 
-#ifdef DEAL_II_GMSH_WITH_API
 template <int dim, int spacedim>
 void
 GridOut::write_msh(const Triangulation<dim, spacedim> &tria,
                    const std::string                  &filename) const
 {
+#ifdef DEAL_II_GMSH_WITH_API
   // mesh Type renumbering
   const std::array<int, 8> dealii_to_gmsh_type = {{15, 1, 2, 3, 4, 7, 6, 5}};
 
@@ -1637,8 +1638,12 @@ GridOut::write_msh(const Triangulation<dim, spacedim> &tria,
   gmsh::write(filename);
   gmsh::clear();
   gmsh::finalize();
-}
+#else
+  (void)tria;
+  (void)filename;
+  AssertThrow(false, ExcNeedsGMSHAPI());
 #endif
+}
 
 
 
@@ -2139,7 +2144,13 @@ GridOut::write_svg(const Triangulation<2, 2> &tria, std::ostream &out) const
           double h;
 
           if (n != 1)
-            h = .6 - (index / (n - 1.)) * .6;
+            {
+              // The assert is a workaround for a compiler bug in ROCm 5.7 which
+              // evaluated index/(n-1) when n == 1 in debug mode. When adding
+              // the assert the ratio is not evaluated.
+              Assert((n - 1.) != 0., ExcInvalidState());
+              h = .6 - (index / (n - 1.)) * .6;
+            }
           else
             h = .6;
 
@@ -3117,15 +3128,15 @@ namespace
    * This is made particularly simple because the patch only needs to
    * contain geometry info and additional properties of cells
    */
-  template <int dim, int spacedim, typename ITERATOR, typename END>
+  template <int dim, int spacedim, typename IteratorType>
   void
   generate_triangulation_patches(
     std::vector<DataOutBase::Patch<dim, spacedim>> &patches,
-    ITERATOR                                        cell,
-    END                                             end)
+    const IteratorType                             &begin,
+    const std_cxx20::type_identity_t<IteratorType> &end)
   {
     // convert each of the active cells into a patch
-    for (; cell != end; ++cell)
+    for (auto cell = begin; cell != end; ++cell)
       {
         DataOutBase::Patch<dim, spacedim> patch;
         patch.reference_cell = cell->reference_cell();
@@ -3602,7 +3613,7 @@ GridOut::write_mesh_per_processor_as_vtu(
   data_names.emplace_back("level_subdomain");
   data_names.emplace_back("proc_writing");
 
-  const auto reference_cells = tria.get_reference_cells();
+  const auto &reference_cells = tria.get_reference_cells();
 
   AssertDimension(reference_cells.size(), 1);
 
@@ -3683,7 +3694,8 @@ GridOut::write_mesh_per_processor_as_vtu(
           else
             pos += 1;
           const unsigned int n_procs =
-            Utilities::MPI::n_mpi_processes(tr->get_communicator());
+            Utilities::MPI::n_mpi_processes(tr->get_mpi_communicator());
+          filenames.reserve(n_procs);
           for (unsigned int i = 0; i < n_procs; ++i)
             filenames.push_back(filename_without_extension.substr(pos) +
                                 ".proc" + Utilities::int_to_string(i, 4) +
@@ -4158,7 +4170,7 @@ namespace internal
      */
     template <int spacedim>
     void
-    remove_colinear_points(std::vector<Point<spacedim>> &points)
+    remove_collinear_points(std::vector<Point<spacedim>> &points)
     {
       while (points.size() > 2)
         {
@@ -4166,7 +4178,7 @@ namespace internal
           first_difference /= first_difference.norm();
           Tensor<1, spacedim> second_difference = points[2] - points[1];
           second_difference /= second_difference.norm();
-          // If the three points are colinear then remove the middle one.
+          // If the three points are collinear then remove the middle one.
           if ((first_difference - second_difference).norm() < 1e-10)
             points.erase(points.begin() + 1);
           else
@@ -4282,7 +4294,7 @@ namespace internal
                       gnuplot_flags.curved_inner_cells)
                     {
                       // Save the points on each face to a vector and then try
-                      // to remove colinear points that won't show up in the
+                      // to remove collinear points that won't show up in the
                       // generated plot.
                       std::vector<Point<spacedim>> line_points;
                       // compute offset of quadrature points within set of
@@ -4293,11 +4305,12 @@ namespace internal
                           face_no,
                           cell->combined_face_orientation(face_no),
                           n_points);
+                      line_points.reserve(n_points);
                       for (unsigned int i = 0; i < n_points; ++i)
                         line_points.push_back(
                           mapping->transform_unit_to_real_cell(
                             cell, q_projector.point(offset + i)));
-                      internal::remove_colinear_points(line_points);
+                      internal::remove_collinear_points(line_points);
 
                       for (const Point<spacedim> &point : line_points)
                         out << point << ' ' << cell->level() << ' '
@@ -4556,7 +4569,7 @@ namespace internal
                               gnuplot_flags.curved_inner_cells)
                             {
                               // Save the points on each face to a vector and
-                              // then try to remove colinear points that won't
+                              // then try to remove collinear points that won't
                               // show up in the generated plot.
                               std::vector<Point<spacedim>> line_points;
                               // transform_real_to_unit_cell could be replaced
@@ -4567,13 +4580,14 @@ namespace internal
                                                                           v0),
                                 u1 = mapping->transform_real_to_unit_cell(cell,
                                                                           v1);
+                              line_points.reserve(n_points);
                               for (unsigned int i = 0; i < n_points; ++i)
                                 line_points.push_back(
                                   mapping->transform_unit_to_real_cell(
                                     cell,
                                     (1 - boundary_points[i][0]) * u0 +
                                       boundary_points[i][0] * u1));
-                              internal::remove_colinear_points(line_points);
+                              internal::remove_collinear_points(line_points);
                               for (const Point<spacedim> &point : line_points)
                                 out << point << ' ' << cell->level() << ' '
                                     << static_cast<unsigned int>(
@@ -5197,7 +5211,7 @@ GridOut::write(const Triangulation<dim, spacedim> &tria,
 
 
 // explicit instantiations
-#include "grid_out.inst"
+#include "grid/grid_out.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

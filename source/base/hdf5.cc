@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2024 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,12 +38,7 @@ namespace HDF5
       check_exception(const std::string &type, const std::string &name)
       {
 #  ifdef DEAL_II_WITH_MPI
-#    if __cpp_lib_uncaught_exceptions >= 201411
-        // std::uncaught_exception() is deprecated in c++17
-        if (std::uncaught_exceptions() != 0)
-#    else
-        if (std::uncaught_exception() == true)
-#    endif
+        if (std::uncaught_exceptions() > 0)
           {
             std::cerr
               << "---------------------------------------------------------\n"
@@ -100,7 +95,6 @@ namespace HDF5
       // Release the HDF5 resource
       const herr_t ret = H5Dclose(*pointer);
       AssertNothrow(ret >= 0, ExcInternalError());
-      (void)ret;
       delete pointer;
     });
     dataspace      = std::shared_ptr<hid_t>(new hid_t, [](hid_t *pointer) {
@@ -109,7 +103,6 @@ namespace HDF5
       // Release the HDF5 resource
       const herr_t ret = H5Sclose(*pointer);
       AssertNothrow(ret >= 0, ExcInternalError());
-      (void)ret;
       delete pointer;
     });
 
@@ -159,7 +152,6 @@ namespace HDF5
       // Release the HDF5 resource
       const herr_t ret = H5Dclose(*pointer);
       AssertNothrow(ret >= 0, ExcInternalError());
-      (void)ret;
       delete pointer;
     });
     dataspace      = std::shared_ptr<hid_t>(new hid_t, [](hid_t *pointer) {
@@ -168,7 +160,6 @@ namespace HDF5
       // Release the HDF5 resource
       const herr_t ret = H5Sclose(*pointer);
       AssertNothrow(ret >= 0, ExcInternalError());
-      (void)ret;
       delete pointer;
     });
 
@@ -217,28 +208,28 @@ namespace HDF5
     switch (io_mode)
       {
         case (H5D_MPIO_NO_COLLECTIVE):
-          return std::string("H5D_MPIO_NO_COLLECTIVE");
+          return "H5D_MPIO_NO_COLLECTIVE";
           break;
         case (H5D_MPIO_CHUNK_INDEPENDENT):
-          return std::string("H5D_MPIO_CHUNK_INDEPENDENT");
+          return "H5D_MPIO_CHUNK_INDEPENDENT";
           break;
         case (H5D_MPIO_CHUNK_COLLECTIVE):
-          return std::string("H5D_MPIO_CHUNK_COLLECTIVE");
+          return "H5D_MPIO_CHUNK_COLLECTIVE";
           break;
         case (H5D_MPIO_CHUNK_MIXED):
-          return std::string("H5D_MPIO_CHUNK_MIXED");
+          return "H5D_MPIO_CHUNK_MIXED";
           break;
         case (H5D_MPIO_CONTIGUOUS_COLLECTIVE):
-          return std::string("H5D_MPIO_CONTIGUOUS_COLLECTIVE");
+          return "H5D_MPIO_CONTIGUOUS_COLLECTIVE";
           break;
         default:
           DEAL_II_ASSERT_UNREACHABLE();
-          return std::string("Internal error");
+          return "Internal error";
           break;
       }
     // The function should not reach this line.
     DEAL_II_ASSERT_UNREACHABLE();
-    return std::string("Internal error");
+    return "Internal error";
   }
 
 
@@ -336,7 +327,6 @@ namespace HDF5
       // Release the HDF5 resource
       const herr_t ret = H5Gclose(*pointer);
       AssertNothrow(ret >= 0, ExcInternalError());
-      (void)ret;
       delete pointer;
     });
     switch (mode)
@@ -425,7 +415,6 @@ namespace HDF5
       // Release the HDF5 resource
       const herr_t err = H5Fclose(*pointer);
       AssertNothrow(err >= 0, ExcInternalError());
-      (void)err;
       delete pointer;
     });
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2021 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -42,7 +42,7 @@ main()
   std::vector<double> coefficients_a;
 
   //      arbitrary point
-  double evalutation_number = 12.123;
+  double evaluation_number = 12.123;
 
   for (unsigned int pp = 0; pp < p_dim; ++pp)
     {
@@ -53,6 +53,6 @@ main()
 
       test_poly_b -= test_poly_a;
 
-      deallog << test_poly_b.value(evalutation_number) << std::endl;
+      deallog << test_poly_b.value(evaluation_number) << std::endl;
     }
 }

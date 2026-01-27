@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,9 +19,9 @@
 
 #include <deal.II/base/config.h>
 
-#include "deal.II/base/floating_point_comparator.h"
 #include <deal.II/base/aligned_vector.h>
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/floating_point_comparator.h>
 #include <deal.II/base/vectorization.h>
 
 #include <deal.II/fe/fe_dgq.h>
@@ -52,16 +52,16 @@ namespace NonMatching
     public:
       static UpdateFlags
       required_update_flags(
-        const SmartPointer<const Mapping<dim, spacedim>> &mapping,
-        const UpdateFlags                                &update_flags)
+        const ObserverPointer<const Mapping<dim, spacedim>> &mapping,
+        const UpdateFlags                                   &update_flags)
       {
         return mapping->requires_update_flags(update_flags);
       }
 
       static void
       compute_mapping_data_for_quadrature(
-        const SmartPointer<const Mapping<dim, spacedim>> &mapping,
-        const UpdateFlags                                &update_flags_mapping,
+        const ObserverPointer<const Mapping<dim, spacedim>> &mapping,
+        const UpdateFlags &update_flags_mapping,
         const typename Triangulation<dim, spacedim>::cell_iterator &cell,
         CellSimilarity::Similarity &cell_similarity,
         const Quadrature<dim>      &quadrature,
@@ -83,8 +83,8 @@ namespace NonMatching
 
       static void
       compute_mapping_data_for_immersed_surface_quadrature(
-        const SmartPointer<const Mapping<dim, spacedim>> &mapping,
-        const UpdateFlags                                &update_flags_mapping,
+        const ObserverPointer<const Mapping<dim, spacedim>> &mapping,
+        const UpdateFlags &update_flags_mapping,
         const typename Triangulation<dim, spacedim>::cell_iterator &cell,
         const ImmersedSurfaceQuadrature<dim>                       &quadrature,
         std::unique_ptr<typename Mapping<dim, spacedim>::InternalDataBase>
@@ -105,8 +105,8 @@ namespace NonMatching
 
       static void
       compute_mapping_data_for_face_quadrature(
-        const SmartPointer<const Mapping<dim, spacedim>> &mapping,
-        const UpdateFlags                                &update_flags_mapping,
+        const ObserverPointer<const Mapping<dim, spacedim>> &mapping,
+        const UpdateFlags &update_flags_mapping,
         const typename Triangulation<dim, spacedim>::cell_iterator &cell,
         const unsigned int                                          face_no,
         const Quadrature<dim - 1>                                  &quadrature,
@@ -124,13 +124,11 @@ namespace NonMatching
               dynamic_cast<typename MappingQ<dim, spacedim>::InternalData &>(
                 *internal_mapping_data);
             data.initialize_face(update_flags_mapping,
-                                 QProjector<dim>::project_to_oriented_face(
-                                   ReferenceCells::get_hypercube<dim>(),
+                                 QProjector<dim>::project_to_face(
+                                   cell->reference_cell(),
                                    quadrature,
                                    face_no,
-                                   cell->face_orientation(face_no),
-                                   cell->face_flip(face_no),
-                                   cell->face_rotation(face_no)),
+                                   cell->combined_face_orientation(face_no)),
                                  quadrature.size());
 
             mapping_q->fill_mapping_data_for_face_quadrature(
@@ -218,7 +216,7 @@ namespace NonMatching
    * held.
    */
   template <int dim, int spacedim = dim, typename Number = double>
-  class MappingInfo : public Subscriptor
+  class MappingInfo : public EnableObserverPointer
   {
   public:
     /**
@@ -654,7 +652,7 @@ namespace NonMatching
     /**
      * A pointer to the underlying mapping.
      */
-    const SmartPointer<const Mapping<dim, spacedim>> mapping;
+    const ObserverPointer<const Mapping<dim, spacedim>> mapping;
 
     /**
      * The desired update flags for the evaluation.
@@ -757,7 +755,7 @@ namespace NonMatching
      * reinit functions. This field is only set if
      * AdditionalData::store_cells is enabled.
      */
-    SmartPointer<const Triangulation<dim, spacedim>> triangulation;
+    ObserverPointer<const Triangulation<dim, spacedim>> triangulation;
 
     /**
      * Level and indices of cells passed to the reinit functions. This
@@ -1534,15 +1532,21 @@ namespace NonMatching
         const auto &cell_p =
           cell_m->at_boundary(f_m) ? cell_m : cell_m->neighbor(f_m);
         const auto f_p =
-          cell_m->at_boundary(f_m) ? f_m : cell_m->neighbor_of_neighbor(f_m);
+          cell_m->at_boundary(f_m) ? f_m : cell_m->neighbor_face_no(f_m);
+
+        Assert(
+          empty || (cell_m->level() == cell_p->level()),
+          ExcMessage(
+            "Intersected faces with quadrature points need to have the same "
+            "refinement level!"));
 
         face_number.emplace_back(f_m, f_p);
 
         Assert(
           cell_m->combined_face_orientation(f_m) ==
-              ReferenceCell::default_combined_face_orientation() &&
+              numbers::default_geometric_orientation &&
             cell_p->combined_face_orientation(f_p) ==
-              ReferenceCell::default_combined_face_orientation(),
+              numbers::default_geometric_orientation,
           ExcMessage(
             "Non standard face orientation is currently not implemented."));
 

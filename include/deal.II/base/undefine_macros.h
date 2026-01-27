@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2020 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,14 +24,6 @@
 #ifdef AssertARKode
 #  undef AssertARKode
 #endif // #ifdef AssertARKode
-
-#ifdef AssertCuda
-#  undef AssertCuda
-#endif // #ifdef AssertCuda
-
-#ifdef AssertCudaKernel
-#  undef AssertCudaKernel
-#endif // #ifdef AssertCudaKernel
 
 #ifdef AssertCusolver
 #  undef AssertCusolver
@@ -64,10 +56,6 @@
 #ifdef AssertNothrow
 #  undef AssertNothrow
 #endif // #ifdef AssertNothrow
-
-#ifdef AssertNothrowCuda
-#  undef AssertNothrowCuda
-#endif // #ifdef AssertNothrowCuda
 
 #ifdef AssertNothrowCusparse
 #  undef AssertNothrowCusparse

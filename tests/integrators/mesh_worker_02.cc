@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,7 +38,7 @@
 
 // Use local matrices for Laplacian / interior penalty DG
 template <int dim>
-class MatrixIntegrator : public Subscriptor
+class MatrixIntegrator : public EnableObserverPointer
 {
 public:
   static void

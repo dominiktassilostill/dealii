@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,6 +28,7 @@
 #include <deal.II/fe/fe_tools.h>
 #include <deal.II/fe/fe_update_flags.h>
 #include <deal.II/fe/fe_values.h>
+#include <deal.II/fe/mapping_internal.h>
 #include <deal.II/fe/mapping_q.h>
 
 #include <deal.II/grid/grid_tools_geometry.h>
@@ -39,8 +40,10 @@
 #include <deal.II/matrix_free/shape_info.h>
 #include <deal.II/matrix_free/tensor_product_point_kernels.h>
 
+#include <algorithm>
 #include <array>
 #include <limits>
+#include <numeric>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -146,8 +149,8 @@ namespace internal
        */
       const long double subexpr0        = -eta * x2 + x0 * (eta - 1);
       const long double xi_denominator0 = eta * x3 - x1 * (eta - 1) + subexpr0;
-      const long double max_x = std::max(std::max(std::abs(x0), std::abs(x1)),
-                                         std::max(std::abs(x2), std::abs(x3)));
+      const long double max_x =
+        std::max({std::abs(x0), std::abs(x1), std::abs(x2), std::abs(x3)});
 
       if (std::abs(xi_denominator0) > 1e-10 * max_x)
         {
@@ -157,8 +160,7 @@ namespace internal
       else
         {
           const long double max_y =
-            std::max(std::max(std::abs(y0), std::abs(y1)),
-                     std::max(std::abs(y2), std::abs(y3)));
+            std::max({std::abs(y0), std::abs(y1), std::abs(y2), std::abs(y3)});
           const long double subexpr1 = -eta * y2 + y0 * (eta - 1);
           const long double xi_denominator1 =
             eta * y3 - y1 * (eta - 1) + subexpr1;
@@ -552,7 +554,7 @@ namespace internal
       const unsigned int newton_iteration_limit = 20;
 
       Point<dim, Number> invalid_point;
-      invalid_point[0]                = std::numeric_limits<double>::infinity();
+      invalid_point[0]                = std::numeric_limits<double>::lowest();
       bool tried_project_to_unit_cell = false;
 
       unsigned int newton_iteration            = 0;
@@ -571,7 +573,13 @@ namespace internal
             for (unsigned int e = 0; e < dim; ++e)
               df[d][e] = p_real.second[e][d];
 
-          // check determinand(df) > 0 on all SIMD lanes
+          // Check determinant(df) > 0 on all SIMD lanes. The
+          // condition here is unreadable (but really corresponds to
+          // asking whether det(df) > 0 for all elements of the
+          // vector) because VectorizedArray does not have a member
+          // that can be used to check that all vector elements are
+          // positive. But VectorizedArray has a std::min() function,
+          // and operator==().
           if (!(std::min(determinant(df),
                          Number(std::numeric_limits<double>::min())) ==
                 Number(std::numeric_limits<double>::min())))
@@ -2295,18 +2303,11 @@ namespace internal
               Assert(rank == 2, ExcMessage("Only for rank 2"));
 
               for (unsigned int i = 0; i < output.size(); ++i)
-                {
-                  const DerivativeForm<1, dim, spacedim> covariant =
-                    data.output_data->inverse_jacobians[i].transpose();
-                  const DerivativeForm<1, spacedim, dim> A =
-                    apply_transformation(covariant, input[i]);
-                  const Tensor<2, spacedim> T =
-                    apply_transformation(data.output_data->jacobians[i],
-                                         A.transpose());
-
-                  output[i] = transpose(T);
-                  output[i] /= data.volume_elements[i];
-                }
+                output[i] = internal::apply_piola_gradient(
+                  data.output_data->inverse_jacobians[i].transpose(),
+                  data.output_data->jacobians[i],
+                  data.volume_elements[i],
+                  input[i]);
 
               return;
             }
@@ -2356,37 +2357,12 @@ namespace internal
                     data.output_data->inverse_jacobians[q].transpose();
                   const DerivativeForm<1, dim, spacedim> contravariant =
                     data.output_data->jacobians[q];
-
-                  for (unsigned int i = 0; i < spacedim; ++i)
-                    {
-                      double tmp1[dim][dim];
-                      for (unsigned int J = 0; J < dim; ++J)
-                        for (unsigned int K = 0; K < dim; ++K)
-                          {
-                            tmp1[J][K] =
-                              contravariant[i][0] * input[q][0][J][K];
-                            for (unsigned int I = 1; I < dim; ++I)
-                              tmp1[J][K] +=
-                                contravariant[i][I] * input[q][I][J][K];
-                          }
-                      for (unsigned int j = 0; j < spacedim; ++j)
-                        {
-                          double tmp2[dim];
-                          for (unsigned int K = 0; K < dim; ++K)
-                            {
-                              tmp2[K] = covariant[j][0] * tmp1[0][K];
-                              for (unsigned int J = 1; J < dim; ++J)
-                                tmp2[K] += covariant[j][J] * tmp1[J][K];
-                            }
-                          for (unsigned int k = 0; k < spacedim; ++k)
-                            {
-                              output[q][i][j][k] = covariant[k][0] * tmp2[0];
-                              for (unsigned int K = 1; K < dim; ++K)
-                                output[q][i][j][k] += covariant[k][K] * tmp2[K];
-                            }
-                        }
-                    }
+                  output[q] =
+                    internal::apply_contravariant_hessian(covariant,
+                                                          contravariant,
+                                                          input[q]);
                 }
+
               return;
             }
 
@@ -2400,34 +2376,8 @@ namespace internal
                 {
                   const DerivativeForm<1, dim, spacedim> covariant =
                     data.output_data->inverse_jacobians[q].transpose();
-
-                  for (unsigned int i = 0; i < spacedim; ++i)
-                    {
-                      double tmp1[dim][dim];
-                      for (unsigned int J = 0; J < dim; ++J)
-                        for (unsigned int K = 0; K < dim; ++K)
-                          {
-                            tmp1[J][K] = covariant[i][0] * input[q][0][J][K];
-                            for (unsigned int I = 1; I < dim; ++I)
-                              tmp1[J][K] += covariant[i][I] * input[q][I][J][K];
-                          }
-                      for (unsigned int j = 0; j < spacedim; ++j)
-                        {
-                          double tmp2[dim];
-                          for (unsigned int K = 0; K < dim; ++K)
-                            {
-                              tmp2[K] = covariant[j][0] * tmp1[0][K];
-                              for (unsigned int J = 1; J < dim; ++J)
-                                tmp2[K] += covariant[j][J] * tmp1[J][K];
-                            }
-                          for (unsigned int k = 0; k < spacedim; ++k)
-                            {
-                              output[q][i][j][k] = covariant[k][0] * tmp2[0];
-                              for (unsigned int K = 1; K < dim; ++K)
-                                output[q][i][j][k] += covariant[k][K] * tmp2[K];
-                            }
-                        }
-                    }
+                  output[q] =
+                    internal::apply_covariant_hessian(covariant, input[q]);
                 }
 
               return;
@@ -2451,37 +2401,11 @@ namespace internal
                     data.output_data->inverse_jacobians[q].transpose();
                   const DerivativeForm<1, dim, spacedim> contravariant =
                     data.output_data->jacobians[q];
-                  for (unsigned int i = 0; i < spacedim; ++i)
-                    {
-                      double factor[dim];
-                      for (unsigned int I = 0; I < dim; ++I)
-                        factor[I] =
-                          contravariant[i][I] * (1. / data.volume_elements[q]);
-                      double tmp1[dim][dim];
-                      for (unsigned int J = 0; J < dim; ++J)
-                        for (unsigned int K = 0; K < dim; ++K)
-                          {
-                            tmp1[J][K] = factor[0] * input[q][0][J][K];
-                            for (unsigned int I = 1; I < dim; ++I)
-                              tmp1[J][K] += factor[I] * input[q][I][J][K];
-                          }
-                      for (unsigned int j = 0; j < spacedim; ++j)
-                        {
-                          double tmp2[dim];
-                          for (unsigned int K = 0; K < dim; ++K)
-                            {
-                              tmp2[K] = covariant[j][0] * tmp1[0][K];
-                              for (unsigned int J = 1; J < dim; ++J)
-                                tmp2[K] += covariant[j][J] * tmp1[J][K];
-                            }
-                          for (unsigned int k = 0; k < spacedim; ++k)
-                            {
-                              output[q][i][j][k] = covariant[k][0] * tmp2[0];
-                              for (unsigned int K = 1; K < dim; ++K)
-                                output[q][i][j][k] += covariant[k][K] * tmp2[K];
-                            }
-                        }
-                    }
+                  output[q] =
+                    internal::apply_piola_hessian(covariant,
+                                                  contravariant,
+                                                  data.volume_elements[q],
+                                                  input[q]);
                 }
 
               return;

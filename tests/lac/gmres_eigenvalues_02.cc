@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,8 +28,7 @@ void
 test()
 {
   const unsigned int n = 2;
-  ;
-  Vector<number> rhs(n), sol(n);
+  Vector<number>     rhs(n), sol(n);
   rhs = 0.;
 
   LAPACKFullMatrix<number> matrix(n, n);

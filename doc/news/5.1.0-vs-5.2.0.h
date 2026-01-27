@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -397,7 +397,7 @@ inconvenience this causes.
   <li> <p>
        Improved: The class <code>Quadrature</code> has a new
        constructor generating the <tt>dim</tt>-dimensional tensor product of a
-       one-dimensonal formula directly.
+       one-dimensional formula directly.
        <br>
        (GK, 2005/06/10)
        </p>

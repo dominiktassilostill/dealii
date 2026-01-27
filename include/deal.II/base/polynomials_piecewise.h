@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,10 +19,10 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/point.h>
 #include <deal.II/base/polynomial.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <vector>
 
@@ -60,7 +60,7 @@ namespace Polynomials
    * @ingroup Polynomials
    */
   template <typename number>
-  class PiecewisePolynomial : public Subscriptor
+  class PiecewisePolynomial : public EnableObserverPointer
   {
   public:
     /**
@@ -301,7 +301,7 @@ namespace Polynomials
   PiecewisePolynomial<number>::serialize(Archive &ar, const unsigned int)
   {
     // forward to serialization function in the base class.
-    ar &static_cast<Subscriptor &>(*this);
+    ar &static_cast<EnableObserverPointer &>(*this);
     ar &polynomial;
     ar &n_intervals;
     ar &interval;

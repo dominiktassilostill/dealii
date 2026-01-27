@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -90,7 +90,6 @@ namespace VectorTools
     std::enable_if_t<dealii::is_serial_vector<VectorType>::value == false>
     subtract_mean_value(VectorType &v, const std::vector<bool> &p_select)
     {
-      (void)p_select;
       Assert(p_select.empty(), ExcNotImplemented());
       // In case of an empty boolean mask operate on the whole vector:
       v.add(-v.mean_value());
@@ -273,9 +272,9 @@ namespace VectorTools
 
 
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
-  template <int dim, int spacedim, typename ValueType>
+  template <int dim, int spacedim, typename ValueType, typename MemorySpace>
   void
-  add_constant(LinearAlgebra::TpetraWrappers::Vector<ValueType> &,
+  add_constant(LinearAlgebra::TpetraWrappers::Vector<ValueType, MemorySpace> &,
                const DoFHandler<dim, spacedim> &,
                const unsigned int,
                const ValueType)
@@ -314,6 +313,7 @@ namespace VectorTools
 
     Number                                            mean = Number();
     typename numbers::NumberTraits<Number>::real_type area = 0.;
+    const Vector<Number>                              exemplar(n_components);
     // Compute mean value
     for (const auto &cell :
          dof.active_cell_iterators() | IteratorFilters::LocallyOwnedCell())
@@ -322,8 +322,7 @@ namespace VectorTools
         const FEValues<dim, spacedim> &fe_values =
           fe_values_collection.get_present_fe_values();
 
-        values.resize(fe_values.n_quadrature_points,
-                      Vector<Number>(n_components));
+        values.resize(fe_values.n_quadrature_points, exemplar);
         fe_values.get_function_values(v, values);
         for (unsigned int k = 0; k < fe_values.n_quadrature_points; ++k)
           {
@@ -353,7 +352,7 @@ namespace VectorTools
                                        3,
                                        MPI_DOUBLE,
                                        MPI_SUM,
-                                       p_triangulation->get_communicator());
+                                       p_triangulation->get_mpi_communicator());
         AssertThrowMPI(ierr);
 
         internal::set_possibly_complex_number(global_values[0],

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2023 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,6 +19,7 @@
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/memory_consumption.h>
+#include <deal.II/base/types.h>
 
 #include <algorithm>
 #include <iosfwd>
@@ -83,7 +84,7 @@ public:
    * Deprecated constructor allowing implicit conversion.
    */
   template <typename = void>
-  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT(
+  DEAL_II_DEPRECATED_WITH_COMMENT(
     "Implicit conversions from std::vector<bool> to BlockMask are deprecated!")
   BlockMask(const std::vector<bool> &block_mask);
 

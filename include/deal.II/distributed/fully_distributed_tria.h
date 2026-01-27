@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,6 +22,8 @@
 
 #include <deal.II/distributed/repartitioning_policy_tools.h>
 #include <deal.II/distributed/tria_base.h>
+
+#include <deal.II/grid/tria_description.h>
 
 #include <vector>
 
@@ -257,22 +259,13 @@ namespace parallel
        * must be empty before calling this function.
        *
        * You need to load with the same number of MPI processes that
-       * you saved with, hence autopartition is disabled.
+       * you saved with.
        *
        * Cell-based data that was saved with register_data_attach() can be read
        * in with notify_ready_to_unpack() after calling load().
        */
       virtual void
       load(const std::string &filename) override;
-
-      /**
-       * @copydoc load()
-       *
-       * @deprecated The autopartition parameter has been removed.
-       */
-      DEAL_II_DEPRECATED
-      virtual void
-      load(const std::string &filename, const bool autopartition) override;
 
     private:
       virtual unsigned int
@@ -294,8 +287,8 @@ namespace parallel
        * The stored vector will have a size equal to the number of locally owned
        * active cells and will be ordered by the occurrence of those cells.
        */
-      virtual void
-      update_cell_relations() override;
+      void
+      update_cell_relations();
 
       virtual void
       update_number_cache() override;
@@ -315,7 +308,7 @@ namespace parallel
       /**
        * Partitioner used during repartition().
        */
-      SmartPointer<const RepartitioningPolicyTools::Base<dim, spacedim>>
+      ObserverPointer<const RepartitioningPolicyTools::Base<dim, spacedim>>
         partitioner_distributed;
 
       /**

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -145,6 +145,13 @@ public:
   clone() const override;
 
   /**
+   * Compute the lexicographic to hierarchic numbering underlying this class,
+   * necessary for the creation of the respective vector polynomial space.
+   */
+  static std::vector<unsigned int>
+  get_lexicographic_numbering(const unsigned int degree);
+
+  /**
    * This function returns @p true, if the shape function @p shape_index has
    * non-zero function values somewhere on the face @p face_index.
    *
@@ -191,7 +198,7 @@ private:
 
   /**
    * Initialize the interpolation from functions on refined mesh cells onto
-   * the father cell. According to the philosophy of the Raviart-Thomas
+   * the parent cell. According to the philosophy of the Raviart-Thomas
    * element, this restriction operator preserves the divergence of a function
    * weakly.
    */
@@ -226,7 +233,7 @@ private:
    * faces. These are given in the form three flags (face_orientation,
    * face_flip, face_rotation), see the documentation in GeometryInfo<dim> and
    * this
-   * @ref GlossFaceOrientation "glossary entry on face orientation".
+   * @ref GlossCombinedOrientation "glossary entry on face orientations".
    *
    * <h3>Example: Raviart-Thomas Elements of order 2 (tensor polynomial
    * degree 3)</h3>

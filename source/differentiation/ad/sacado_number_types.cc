@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,9 +23,9 @@ DEAL_II_NAMESPACE_OPEN
 
 /*---------------------- Explicit Instantiations ----------------------*/
 
-#  include "sacado_number_types.inst1"
+#  include "differentiation/ad/sacado_number_types.inst1"
 #  ifdef DEAL_II_TRILINOS_CXX_SUPPORTS_SACADO_COMPLEX_RAD
-#    include "sacado_number_types.inst2"
+#    include "differentiation/ad/sacado_number_types.inst2"
 #  endif
 
 DEAL_II_NAMESPACE_CLOSE

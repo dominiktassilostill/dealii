@@ -1,9 +1,14 @@
 name: indent
 
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - 'master'
+      - 'dealii-*'
+  pull_request:
 
 concurrency:
-  group: ${ {github.event_name }}-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{github.event_name == 'pull_request'}}
 
 permissions:
@@ -14,29 +19,69 @@ jobs:
     # run the indent checks
 
     name: indent
-    runs-on: [ubuntu-20.04]
+    runs-on: ubuntu-24.04
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
       with:
-        fetch-depth: 100
-    - uses: ssciwr/doxygen-install@v1
-      with:
-        version: "1.9.6"
+        # Fetches full history, but only for the ref being checked out.
+        fetch-depth: 0
     - name: setup
       run: |
         ./contrib/utilities/download_clang_format
-        sudo apt update && sudo apt install graphviz perl texlive-bibtex-extra
-        doxygen --version
     - name: indent
       run: |
         ./contrib/utilities/check_indentation.sh
-    - name: documentation
+    - name: detect merges
+      if: github.event_name == 'pull_request'
+      run: |
+        # Enable exit on error.
+        set -euo pipefail
+        # We already fetched the full head branch with actions/checkout.
+        # Now we also need to fetch the base branch.
+        git fetch --quiet origin $GITHUB_BASE_REF
+        # For pull_request events, HEAD contains a tentative merge from the
+        # feature into the base branch. Count the number of commits in this pull
+        # request for sanity checks. It should be 1 higher than in the feature
+        # branch (because of the merge commit).
+        echo "Number of commits: $(git rev-list origin/$GITHUB_BASE_REF..HEAD --count)"
+        # Commits with more than two parents are merge commits.
+        MERGES=$(git rev-list origin/$GITHUB_BASE_REF..HEAD --parents | awk 'NF > 2 { print $1 }')
+        # Check whether there are more merge commits than the tentative one.
+        if (( $(wc -w <<< "$MERGES") != 1 )); then
+          echo "Merge commits detected in this PR!"
+          for c in $MERGES; do
+            echo "  - $c"
+          done
+          exit 1
+        fi
+        echo "No merge commits found!"
+
+  doxygen:
+    # build the documentation
+
+    name: doxygen
+    runs-on: ubuntu-24.04
+
+    env:
+      MAKEFLAGS: "--jobs=4"
+
+    steps:
+    - name: setup
+      run: |
+        sudo apt update
+        sudo apt install doxygen graphviz perl texlive-bibtex-extra
+        doxygen --version
+    - uses: actions/checkout@v6
+    - name: build documentation
       run: |
         mkdir build
         cd build
         cmake -DDEAL_II_COMPONENT_DOCUMENTATION=ON -DDEAL_II_DOXYGEN_USE_MATHJAX=ON ..
-        make -j 2 documentation
+        make documentation
+    - name: check for doxygen errors and warnings
+      run: |
+        cd build
         cat doxygen.log
         # Suppress:
         # warning: Inheritance graph for 'SmartPointer' not generated, too many nodes (138), threshold is 50. Consider increasing DOT_GRAPH_MAX_NODES.
@@ -47,10 +92,23 @@ jobs:
         sed -i '/explicit link request to/d' doxygen.log
         # Remove empty lines
         sed -i '/^$/d' doxygen.log
+        # Check if remaining log is zero size
         ! [ -s doxygen.log ] || exit 1
-        tar -czf doxygen_documentation.tar.gz doc/doxygen
-    - name: archive documentation
-      uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v6
       with:
-        name: doxygen_documentation.tar.gz
-        path: build/doxygen_documentation.tar.gz
+        name: doxygen_documentation
+        path: build/doc/doxygen
+
+  pre-commit:
+    # run pre-commit checks
+
+    name: pre-commit
+    runs-on: ubuntu-24.04
+
+    env:
+      SKIP: clang-format, no-commit-to-branch
+
+    steps:
+    - uses: actions/checkout@v6
+    - run:  python -m pip install networkx
+    - uses: pre-commit/action@v3.0.1

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2022 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -35,7 +35,7 @@ MappingQ1<dim, spacedim>::clone() const
 }
 
 //--------------------------- Explicit instantiations -----------------------
-#include "mapping_q1.inst"
+#include "fe/mapping_q1.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

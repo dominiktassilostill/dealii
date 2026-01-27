@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,7 +14,7 @@
 
 
 /**
- * Test MGTransferGlobalCoarsening::interpolate_to_mg() for FE_Q and FE_DGQ.
+ * Test MGTransferMatrixFree::interpolate_to_mg() for FE_Q and FE_DGQ.
  */
 
 #include <deal.II/base/conditional_ostream.h>
@@ -85,7 +85,7 @@ create_partitioner(const DoFHandler<dim> &dof_handler)
   return std::make_shared<Utilities::MPI::Partitioner>(
     dof_handler.locally_owned_dofs(),
     DoFTools::extract_locally_active_dofs(dof_handler),
-    dof_handler.get_communicator());
+    dof_handler.get_mpi_communicator());
 }
 
 
@@ -145,7 +145,7 @@ test(const unsigned int n_refinements,
   for (unsigned int l = min_level; l < max_level; ++l)
     transfers[l + 1].reinit(dof_handlers[l + 1], dof_handlers[l]);
 
-  MGTransferGlobalCoarsening<dim, VectorType> transfer(
+  MGTransferMatrixFree<dim, Number> transfer(
     transfers, [&](const auto l, auto &vec) {
       vec.reinit(create_partitioner(dof_handlers[l]));
     });

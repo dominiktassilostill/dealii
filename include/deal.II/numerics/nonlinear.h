@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -12,11 +12,16 @@
 //
 // ------------------------------------------------------------------------
 
+#ifndef dealii_nonlinear_h
+#define dealii_nonlinear_h
+
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/mpi_stub.h>
 
 #include <deal.II/lac/petsc_snes.h>
+#include <deal.II/lac/vector.h>
 
 #include <deal.II/sundials/kinsol.h>
 
@@ -205,12 +210,6 @@ public:
    * Constructor, filling in default values
    */
   NonlinearSolverSelector();
-
-  /**
-   * Constructor, selecting the solver and other parametersspecified in
-   * @p additional_data.
-   */
-  NonlinearSolverSelector(const AdditionalData &additional_data);
 
   /**
    * Constructor.
@@ -404,6 +403,8 @@ void
 NonlinearSolverSelector<VectorType>::set_data(
   const AdditionalData &additional_data)
 {
+  (void)additional_data;
+
 #ifdef DEAL_II_WITH_SUNDIALS
   // These if statements pass on the strategy to the other nonlinear solvers
   if (additional_data.strategy ==
@@ -482,17 +483,9 @@ NonlinearSolverSelector<VectorType>::set_data(
 
 
 template <typename VectorType>
-NonlinearSolverSelector<VectorType>::NonlinearSolverSelector() = default;
-
-
-
-template <typename VectorType>
-NonlinearSolverSelector<VectorType>::NonlinearSolverSelector(
-  const AdditionalData &additional_data)
-  : additional_data(additional_data)
-{
-  set_data(additional_data);
-}
+NonlinearSolverSelector<VectorType>::NonlinearSolverSelector()
+  : mpi_communicator(MPI_COMM_SELF)
+{}
 
 
 
@@ -683,15 +676,15 @@ NonlinearSolverSelector<VectorType>::solve(
     }
   else
     {
-      const std::string solvers =
+      const std::string solvers = ""
 #ifdef DEAL_II_WITH_SUNDIALS
-        "kinsol\n"
+                                  "kinsol\n"
 #endif
 #ifdef DEAL_II_TRILINOS_WITH_NOX
-        "NOX\n"
+                                  "NOX\n"
 #endif
 #ifdef DEAL_II_WITH_PETSC
-        "SNES\n"
+                                  "SNES\n"
 #endif
         ;
 
@@ -704,3 +697,5 @@ NonlinearSolverSelector<VectorType>::solve(
 }
 
 DEAL_II_NAMESPACE_CLOSE
+
+#endif

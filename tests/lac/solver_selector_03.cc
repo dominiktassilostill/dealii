@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2020 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -34,7 +34,7 @@ check(const MatrixType &A, const VectorType &f)
   names.push_back("cg");
   names.push_back("gmres");
 
-  SolverControl                          cont(100, 1.e-7);
+  SolverControl                          cont(100, 1.e-7, false, true);
   SolverSelector<VectorType>             solver;
   PreconditionSSOR<SparseMatrix<double>> pre;
   pre.initialize(A);

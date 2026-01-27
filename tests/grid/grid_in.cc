@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2021 by the deal.II authors
+// Copyright (C) 2002 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -133,8 +133,8 @@ check_file(const std::string name, typename GridIn<dim>::Format format)
 void
 filename_resolution()
 {
-  check_file<2>(std::string(SOURCE_DIR "/grid_in/2d"), GridIn<2>::ucd);
-  check_file<2>(std::string(SOURCE_DIR "/grid_in/2d"), GridIn<2>::xda);
+  check_file<2>(std::string(SOURCE_DIR "/grid_in/2d.inp"), GridIn<2>::ucd);
+  check_file<2>(std::string(SOURCE_DIR "/grid_in/2d.xda"), GridIn<2>::xda);
 }
 
 

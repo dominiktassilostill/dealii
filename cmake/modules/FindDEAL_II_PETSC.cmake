@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2023 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -18,13 +18,14 @@
 # This module exports:
 #
 #     PETSC_FOUND
-#     PETSC_LIBRARIES
 #     PETSC_INCLUDE_DIRS
+#     PETSC_KOKKOS_DIR
+#     PETSC_LIBRARIES
 #     PETSC_VERSION
 #     PETSC_VERSION_MAJOR
 #     PETSC_VERSION_MINOR
-#     PETSC_VERSION_SUBMINOR
 #     PETSC_VERSION_PATCH
+#     PETSC_VERSION_SUBMINOR
 #     PETSC_WITH_64BIT_INDICES
 #     PETSC_WITH_COMPLEX
 #     PETSC_WITH_HYPRE
@@ -193,6 +194,17 @@ if(NOT PETSC_PETSCVARIABLES MATCHES "-NOTFOUND")
 
     endif()
   endforeach()
+
+  #
+  # When configuring Kokkos we have to ensure that we actually pick up the
+  # correct Kokkos installation coming from PETSc.
+  #
+  if(PETSC_WITH_KOKKOS)
+    file(STRINGS "${PETSC_PETSCVARIABLES}" KOKKOS_INCLUDE
+      REGEX "^KOKKOS_INCLUDE =.*")
+    string(REGEX REPLACE "^KOKKOS_INCLUDE = -I" "" KOKKOS_INCLUDE "${KOKKOS_INCLUDE}")
+    set(PETSC_KOKKOS_DIR "${KOKKOS_INCLUDE}/..")
+  endif()
 endif()
 
 if(PETSC_WITH_MPIUNI)

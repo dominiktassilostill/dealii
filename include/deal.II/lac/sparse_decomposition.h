@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -104,7 +104,7 @@ DEAL_II_NAMESPACE_OPEN
  */
 template <typename number>
 class SparseLUDecomposition : protected SparseMatrix<number>,
-                              public virtual Subscriptor
+                              public virtual EnableObserverPointer
 {
 protected:
   /**

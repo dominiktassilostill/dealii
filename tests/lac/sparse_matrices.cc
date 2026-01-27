@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,16 +33,21 @@
 
 
 
-#define PREC_CHECK(solver, method, precond) \
-  deallog.push(#precond);                   \
-  try                                       \
-    {                                       \
-      u = 0.;                               \
-      solver.method(A, u, f, precond);      \
-    }                                       \
-  catch (...)                               \
-    {}                                      \
-  deallog.pop();                            \
+#define PREC_CHECK(solver, method, precond)                  \
+  deallog.push(#precond);                                    \
+  try                                                        \
+    {                                                        \
+      u = 0.;                                                \
+      solver.method(A, u, f, precond);                       \
+    }                                                        \
+  catch (const SolverControl::NoConvergence &e)              \
+    {                                                        \
+      deallog << "Failure step " << e.last_step << " value " \
+              << e.last_residual << std::endl;               \
+    }                                                        \
+  catch (...)                                                \
+    {}                                                       \
+  deallog.pop();                                             \
   residuals.push_back(control.last_value())
 
 template <typename MatrixType>

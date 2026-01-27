@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2023 by the deal.II authors
+## Copyright (C) 2023 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -28,7 +28,7 @@
 #
 function(target_compile_flags _target _keyword _string)
   if(NOT TARGET ${_target})
-    message(FATAL_ERROR "»${_target}« is not a valid target")
+    message(FATAL_ERROR "\"${_target}\" is not a valid target")
   endif()
   if(NOT ${_keyword} MATCHES "(INTERFACE|PUBLIC|PRIVATE)")
     message(FATAL_ERROR

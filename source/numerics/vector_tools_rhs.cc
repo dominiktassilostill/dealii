@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,6 +14,9 @@
 
 
 #include <deal.II/numerics/vector_tools_rhs.templates.h>
+
+#include <set>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -53,6 +56,6 @@ namespace VectorTools
 } // namespace VectorTools
 
 // ---------------------------- explicit instantiations --------------------
-#include "vector_tools_rhs.inst"
+#include "numerics/vector_tools_rhs.inst"
 
 DEAL_II_NAMESPACE_CLOSE

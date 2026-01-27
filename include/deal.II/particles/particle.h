@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,9 +23,11 @@
 
 #include <deal.II/particles/property_pool.h>
 
+#include <boost/geometry/index/indexable.hpp>
 #include <boost/serialization/array.hpp>
 
 #include <cstdint>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -682,19 +684,15 @@ namespace Particles
 
 } // namespace Particles
 
-DEAL_II_NAMESPACE_CLOSE
+DEAL_II_NAMESPACE_CLOSE // Do not convert for module purposes
 
 
-namespace boost
+  namespace boost
 {
   namespace geometry
   {
     namespace index
     {
-      // Forward declaration of bgi::indexable
-      template <class T>
-      struct indexable;
-
       /**
        * Make sure we can construct an RTree of Particles::Particle objects.
        */
@@ -718,5 +716,9 @@ namespace boost
     } // namespace index
   }   // namespace geometry
 } // namespace boost
+
+
+DEAL_II_NAMESPACE_OPEN // Do not convert for module purposes
+  DEAL_II_NAMESPACE_CLOSE
 
 #endif

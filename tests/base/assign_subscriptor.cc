@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2019 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,19 +14,19 @@
 
 
 
-// Check the behavior of the SmartPointer-Subscriptor pair
-// for copy and move semantics.
+// Check the behavior of the ObserverPointer-EnableObserverPointer
+// pair for copy and move semantics.
 
 
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <iostream>
 #include <vector>
 
 #include "../tests.h"
 
-class Test : public Subscriptor
+class Test : public EnableObserverPointer
 {};
 
 int
@@ -39,10 +39,10 @@ main()
   {
     deallog << "Checking copy assignment" << std::endl;
 
-    Subscriptor               subscriptor_1;
-    Subscriptor               subscriptor_2;
-    SmartPointer<Subscriptor> smart_pointer_1(&subscriptor_1);
-    SmartPointer<Subscriptor> smart_pointer_2(&subscriptor_2);
+    EnableObserverPointer                  subscriptor_1;
+    EnableObserverPointer                  subscriptor_2;
+    ObserverPointer<EnableObserverPointer> smart_pointer_1(&subscriptor_1);
+    ObserverPointer<EnableObserverPointer> smart_pointer_2(&subscriptor_2);
 
     subscriptor_2 = subscriptor_1;
 
@@ -73,10 +73,10 @@ main()
   {
     deallog << "Checking copy construction" << std::endl;
 
-    Subscriptor               subscriptor_1;
-    SmartPointer<Subscriptor> smart_pointer_1(&subscriptor_1);
+    EnableObserverPointer                  subscriptor_1;
+    ObserverPointer<EnableObserverPointer> smart_pointer_1(&subscriptor_1);
 
-    Subscriptor subscriptor_2(subscriptor_1);
+    EnableObserverPointer subscriptor_2(subscriptor_1);
 
     deallog << "Checking smart_pointer_1" << std::endl;
     try
@@ -94,10 +94,10 @@ main()
   {
     deallog << "Checking move assignment" << std::endl;
 
-    Subscriptor               subscriptor_1;
-    Subscriptor               subscriptor_2;
-    SmartPointer<Subscriptor> smart_pointer_1(&subscriptor_1);
-    SmartPointer<Subscriptor> smart_pointer_2(&subscriptor_2);
+    EnableObserverPointer                  subscriptor_1;
+    EnableObserverPointer                  subscriptor_2;
+    ObserverPointer<EnableObserverPointer> smart_pointer_1(&subscriptor_1);
+    ObserverPointer<EnableObserverPointer> smart_pointer_2(&subscriptor_2);
 
     subscriptor_2 = std::move(subscriptor_1);
 
@@ -128,10 +128,10 @@ main()
   {
     deallog << "Checking move construction" << std::endl;
 
-    Subscriptor               subscriptor_1;
-    SmartPointer<Subscriptor> smart_pointer_1(&subscriptor_1);
+    EnableObserverPointer                  subscriptor_1;
+    ObserverPointer<EnableObserverPointer> smart_pointer_1(&subscriptor_1);
 
-    Subscriptor subscriptor_2(std::move(subscriptor_1));
+    EnableObserverPointer subscriptor_2(std::move(subscriptor_1));
 
     deallog << "Checking smart_pointer_1" << std::endl;
     try

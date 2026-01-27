@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2014 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,7 @@
  *
  * A collection of classes and functions simplifying the coding of
  * loops over all cells and faces.
- * All classes and functions of this module are in the MeshWorker
+ * All classes and functions of this group are in the MeshWorker
  * namespace, which also contains documentation on the usage.
  *
  * @ingroup Integrators

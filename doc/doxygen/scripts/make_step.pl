@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2013 - 2023 by the deal.II authors
+## Copyright (C) 2013 - 2024 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -46,7 +46,7 @@ if ($buildson ne "")
 # then show the table of contents
 print
 "\@htmlonly
-<table class=\"tutorial\" width=\"50%\">
+<table class=\"tutorial\" width=\"75%\">
 <tr><th colspan=\"2\"><b><small>Table of contents</small></b></th></tr>
 <tr><td width=\"50%\" valign=\"top\">
 <ol>
@@ -70,6 +70,7 @@ print
 "  <li> <a href=\"#$step_underscore-PlainProg\" class=bold>The plain program</a>
 </ol> </td> </tr> </table>
 \@endhtmlonly
+
 ";
 
 system $^X, "$cmake_source_dir/doc/doxygen/scripts/create_anchors.pl", "$cmake_source_dir/examples/$step/doc/intro.dox" , "--prefix=$step_underscore";

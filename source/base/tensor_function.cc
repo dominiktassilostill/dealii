@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2015 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,6 @@
 DEAL_II_NAMESPACE_OPEN
 
 // explicit instantiations
-#include "tensor_function.inst"
+#include "base/tensor_function.inst"
 
 DEAL_II_NAMESPACE_CLOSE

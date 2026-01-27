@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -54,7 +54,7 @@ main(int argc, char **argv)
       MatrixOut matrix_out;
       matrix_out.build_patches(sparse_matrix,
                                "sparse_matrix",
-                               MatrixOut::Options(true, 1, true));
+                               MatrixOut::Options(true, 1, true, false));
       matrix_out.write_gnuplot(logfile);
     }
 }

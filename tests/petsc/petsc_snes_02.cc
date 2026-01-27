@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,7 +22,7 @@
  * and exceptions handling for PETSCWrappers::NonlinearSolver.
  */
 
-class VectorType : public Subscriptor
+class VectorType : public EnableObserverPointer
 {
 public:
   explicit VectorType(Vec v)
@@ -39,7 +39,7 @@ private:
   Vec v;
 };
 
-class MatrixType : public Subscriptor
+class MatrixType : public EnableObserverPointer
 {
 public:
   explicit MatrixType(Mat A)

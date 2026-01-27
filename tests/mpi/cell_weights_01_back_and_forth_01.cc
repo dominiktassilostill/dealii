@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -83,7 +83,7 @@ test()
   tr.repartition();
 
   const auto n_locally_owned_active_cells_per_processor =
-    Utilities::MPI::all_gather(tr.get_communicator(),
+    Utilities::MPI::all_gather(tr.get_mpi_communicator(),
                                tr.n_locally_owned_active_cells());
   if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
     for (unsigned int p = 0; p < numproc; ++p)

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -286,7 +286,7 @@ namespace GridTools
                 &(*tria)))
           {
             covering_rtree[level] = GridTools::build_global_description_tree(
-              boxes, tria_mpi->get_communicator());
+              boxes, tria_mpi->get_mpi_communicator());
           }
         else
           {
@@ -359,7 +359,7 @@ namespace GridTools
     return vertices_with_ghost_neighbors;
   }
 
-#include "grid_tools_cache.inst"
+#include "grid/grid_tools_cache.inst"
 
 } // namespace GridTools
 

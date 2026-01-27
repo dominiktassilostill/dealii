@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,8 +16,8 @@
 #define dealii_function_restriction_h
 
 #include <deal.II/base/function.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/point.h>
-#include <deal.II/base/smartpointer.h>
 #include <deal.II/base/tensor.h>
 
 DEAL_II_NAMESPACE_OPEN
@@ -74,7 +74,7 @@ namespace Functions
 
   private:
     // The higher-dimensional function that has been restricted.
-    const SmartPointer<const Function<dim + 1>> function;
+    const ObserverPointer<const Function<dim + 1>> function;
 
     // The (`dim + 1`)-coordinate direction that has been restricted.
     const unsigned int restricted_direction;
@@ -133,7 +133,7 @@ namespace Functions
 
   private:
     // The higher-dimensional function that has been restricted.
-    const SmartPointer<const Function<dim + 1>> function;
+    const ObserverPointer<const Function<dim + 1>> function;
 
     // The (`dim + 1`)-coordinate direction that is kept "open"
     const unsigned int open_direction;

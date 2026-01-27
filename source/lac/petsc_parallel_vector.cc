@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2023 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -126,6 +126,9 @@ namespace PETScWrappers
                    true);
         }
 
+      if (ghosted)
+        release_ghost_form();
+
       PetscErrorCode ierr = VecCopy(v.vector, vector);
       AssertThrow(ierr == 0, ExcPETScError(ierr));
 
@@ -135,6 +138,8 @@ namespace PETScWrappers
           AssertThrow(ierr == 0, ExcPETScError(ierr));
           ierr = VecGhostUpdateEnd(vector, INSERT_VALUES, SCATTER_FORWARD);
           AssertThrow(ierr == 0, ExcPETScError(ierr));
+
+          acquire_ghost_form();
         }
       return *this;
     }
@@ -159,25 +164,18 @@ namespace PETScWrappers
     {
       // only do something if the sizes
       // mismatch (may not be true for every proc)
+      const bool update_size =
+        Utilities::MPI::logical_or((size() != n) ||
+                                     (locally_owned_size() != local_sz),
+                                   get_mpi_communicator());
 
-      int k_global, k = ((size() != n) || (locally_owned_size() != local_sz));
-      {
-        const int ierr =
-          MPI_Allreduce(&k, &k_global, 1, MPI_INT, MPI_LOR, communicator);
-        AssertThrowMPI(ierr);
-      }
-
-      if (k_global || has_ghost_elements())
+      if (update_size || has_ghost_elements())
         {
-          // FIXME: I'd like to use this here,
-          // but somehow it leads to odd errors
-          // somewhere down the line in some of
-          // the tests:
-          //         const PetscErrorCode ierr = VecSetSizes (vector, n, n);
-          //         AssertThrow (ierr == 0, ExcPETScError(ierr));
+          if (has_ghost_elements())
+            release_ghost_form();
 
-          // so let's go the slow way:
-
+          // PETSc doesn't support resizing non-empty vectors so create a new
+          // one:
           const PetscErrorCode ierr = VecDestroy(&vector);
           AssertThrow(ierr == 0, ExcPETScError(ierr));
 
@@ -188,6 +186,9 @@ namespace PETScWrappers
       // desired
       if (omit_zeroing_entries == false)
         *this = 0;
+
+      if (has_ghost_elements())
+        acquire_ghost_form();
     }
 
 
@@ -220,6 +221,9 @@ namespace PETScWrappers
                    const IndexSet &ghost,
                    const MPI_Comm  comm)
     {
+      if (ghosted)
+        release_ghost_form();
+
       const PetscErrorCode ierr = VecDestroy(&vector);
       AssertThrow(ierr == 0, ExcPETScError(ierr));
 
@@ -234,6 +238,9 @@ namespace PETScWrappers
     void
     Vector::reinit(const IndexSet &local, const MPI_Comm comm)
     {
+      if (ghosted)
+        release_ghost_form();
+
       const PetscErrorCode ierr = VecDestroy(&vector);
       AssertThrow(ierr == 0, ExcPETScError(ierr));
 
@@ -270,7 +277,6 @@ namespace PETScWrappers
                           const size_type n,
                           const size_type locally_owned_size)
     {
-      (void)n;
       AssertIndexRange(locally_owned_size, n + 1);
       ghosted = false;
 
@@ -291,69 +297,61 @@ namespace PETScWrappers
                           const size_type locally_owned_size,
                           const IndexSet &ghostnodes)
     {
-      (void)n;
       AssertIndexRange(locally_owned_size, n + 1);
+      // If the size of the index set can be converted to a PetscInt then every
+      // index can also be converted
+      AssertThrowIntegerConversion(static_cast<PetscInt>(n), n);
       ghosted       = true;
       ghost_indices = ghostnodes;
 
-      const std::vector<size_type> ghostindices = ghostnodes.get_index_vector();
-
-      const PetscInt *ptr =
-        (ghostindices.size() > 0 ?
-           reinterpret_cast<const PetscInt *>(ghostindices.data()) :
-           nullptr);
+      std::size_t           i = 0;
+      std::vector<PetscInt> petsc_ghost_indices(ghostnodes.n_elements());
+      for (const auto &index : ghostnodes)
+        {
+          petsc_ghost_indices[i] = static_cast<PetscInt>(index);
+          ++i;
+        }
 
       PetscErrorCode ierr = VecCreateGhost(communicator,
                                            locally_owned_size,
                                            PETSC_DETERMINE,
-                                           ghostindices.size(),
-                                           ptr,
+                                           petsc_ghost_indices.size(),
+                                           petsc_ghost_indices.data(),
                                            &vector);
       AssertThrow(ierr == 0, ExcPETScError(ierr));
 
       Assert(size() == n, ExcDimensionMismatch(size(), n));
 
-#  ifdef DEBUG
-      {
-        // test ghost allocation in debug mode
-        PetscInt begin, end;
+      if constexpr (running_in_debug_mode())
+        {
+          // test ghost allocation in debug mode
+          PetscInt begin, end;
 
-        ierr = VecGetOwnershipRange(vector, &begin, &end);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
+          ierr = VecGetOwnershipRange(vector, &begin, &end);
+          AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        AssertDimension(locally_owned_size,
-                        static_cast<size_type>(end - begin));
+          AssertDimension(locally_owned_size,
+                          static_cast<size_type>(end - begin));
 
-        Vec l;
-        ierr = VecGhostGetLocalForm(vector, &l);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
+          Vec l;
+          ierr = VecGhostGetLocalForm(vector, &l);
+          AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        PetscInt lsize;
-        ierr = VecGetSize(l, &lsize);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
+          PetscInt lsize;
+          ierr = VecGetSize(l, &lsize);
+          AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        ierr = VecGhostRestoreLocalForm(vector, &l);
-        AssertThrow(ierr == 0, ExcPETScError(ierr));
+          ierr = VecGhostRestoreLocalForm(vector, &l);
+          AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-        AssertDimension(lsize,
-                        end - begin +
-                          static_cast<PetscInt>(ghost_indices.n_elements()));
-      }
-#  endif
+          AssertDimension(lsize,
+                          end - begin +
+                            static_cast<PetscInt>(ghost_indices.n_elements()));
+        }
+
+      acquire_ghost_form();
     }
 
-
-
-    bool
-    Vector::all_zero() const
-    {
-      unsigned int has_nonzero = VectorBase::all_zero() ? 0 : 1;
-      // in parallel, check that the vector
-      // is zero on _all_ processors.
-      unsigned int num_nonzero =
-        Utilities::MPI::sum(has_nonzero, this->get_mpi_communicator());
-      return num_nonzero == 0;
-    }
 
 
     void

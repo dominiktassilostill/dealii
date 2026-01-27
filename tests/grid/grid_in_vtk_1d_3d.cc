@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -58,6 +58,9 @@ main()
         }
     }
 
+  for (const auto &boundary_id : triangulation1.get_boundary_ids())
+    deallog << "  boundary_id = " << boundary_id << std::endl;
+
   deallog << "Triangulation 2:\n";
   for (const auto &cell : triangulation2.active_cell_iterators())
     {
@@ -68,6 +71,9 @@ main()
           deallog << "    vertex: " << v << std::endl;
         }
     }
+
+  for (const auto &boundary_id : triangulation1.get_boundary_ids())
+    deallog << "  boundary_id = " << boundary_id << std::endl;
 
   GridGenerator::merge_triangulations(triangulation2,
                                       triangulation1,

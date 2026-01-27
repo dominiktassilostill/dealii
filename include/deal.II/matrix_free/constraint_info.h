@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -101,9 +101,9 @@ namespace internal
        * constraints are resolved with the help of AffineConstraints.
        */
       void
-      reinit(const DoFHandler<dim> &dof_handler,
-             const unsigned int     n_cells,
-             const bool             use_fast_hanging_node_algorithm = true);
+      reinit(const DoFHandler<dim, dim> &dof_handler,
+             const unsigned int          n_cells,
+             const bool use_fast_hanging_node_algorithm = true);
 
       void
       read_dof_indices(
@@ -157,9 +157,9 @@ namespace internal
 
     private:
       // for setup
-      ConstraintValues<double>               constraint_values;
-      std::vector<std::vector<unsigned int>> dof_indices_per_cell;
-      std::vector<std::vector<unsigned int>> plain_dof_indices_per_cell;
+      ConstraintValues<double>            constraint_values;
+      std::vector<std::vector<IndexType>> dof_indices_per_cell;
+      std::vector<std::vector<IndexType>> plain_dof_indices_per_cell;
       std::vector<std::vector<std::pair<unsigned short, unsigned short>>>
         constraint_indicator_per_cell;
 
@@ -296,9 +296,9 @@ namespace internal
     template <int dim, typename Number, typename IndexType>
     inline void
     ConstraintInfo<dim, Number, IndexType>::reinit(
-      const DoFHandler<dim> &dof_handler,
-      const unsigned int     n_cells,
-      const bool             use_fast_hanging_node_algorithm)
+      const DoFHandler<dim, dim> &dof_handler,
+      const unsigned int          n_cells,
+      const bool                  use_fast_hanging_node_algorithm)
     {
       this->dof_indices_per_cell.resize(n_cells);
       this->plain_dof_indices_per_cell.resize(n_cells);
@@ -619,6 +619,7 @@ namespace internal
       AssertDimension(constraint_pool_data.size(), length);
 
       this->dof_indices_per_cell.clear();
+      this->plain_dof_indices_per_cell.clear();
       constraint_indicator_per_cell.clear();
 
       if (hanging_nodes &&
@@ -749,6 +750,7 @@ namespace internal
       AssertDimension(constraint_pool_data.size(), length);
 
       this->dof_indices_per_cell.clear();
+      this->plain_dof_indices_per_cell.clear();
       constraint_indicator_per_cell.clear();
 
       if (hanging_nodes &&

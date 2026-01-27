@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2023 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -63,40 +63,14 @@ macro(feature_petsc_find_external var)
       set(${var} FALSE)
     endif()
 
-    #
-    # PETSc has to be configured with the same number of bits for indices as
-    # deal.II.
-    #
-    # petscconf.h should export PETSC_WITH_64BIT_INDICES 1 in case 64bits
-    # indices support is enabled.
-    # So we check for this:
-    #
-    if( (NOT PETSC_WITH_64BIT_INDICES AND DEAL_II_WITH_64BIT_INDICES)
-         OR
-         (PETSC_WITH_64BIT_INDICES AND NOT DEAL_II_WITH_64BIT_INDICES))
-      message(STATUS "Could not find a sufficient PETSc installation: "
-        "PETSc has to be configured to use the same number of bits for the "
-        "global indices as deal.II."
-        )
-      set(PETSC_ADDITIONAL_ERROR_STRING
-        ${PETSC_ADDITIONAL_ERROR_STRING}
-        "Could not find a sufficient PETSc installation:\n"
-        "PETSc has to be configured to use the same number of bits for the "
-        "global indices as deal.II, but found:\n"
-        "  DEAL_II_WITH_64BIT_INDICES = ${DEAL_II_WITH_64BIT_INDICES}\n"
-        "  PETSC_WITH_64BIT_INDICES = (${PETSC_WITH_64BIT_INDICES})\n"
-        )
-      set(${var} FALSE)
-    endif()
-
     # If PETSc is compiled with complex scalar type we need to have support
     # for complex values within deal.II as well.
     #
-    if( PETSC_WITH_COMPLEX AND NOT DEAL_II_WITH_COMPLEX_VALUES )
+    if(PETSC_WITH_COMPLEX AND NOT DEAL_II_WITH_COMPLEX_VALUES)
         message(STATUS "The PETSc configuration is incompatible with the deal.II configuration: "
-        "PETSc is compiled with complex scalar type. "
-        "This requires support for complex values in deal.II as well."
-        )
+          "PETSc is compiled with complex scalar type. "
+          "This requires support for complex values in deal.II as well."
+          )
       set(PETSC_ADDITIONAL_ERROR_STRING
         ${PETSC_ADDITIONAL_ERROR_STRING}
         "The PETSc configuration is incompatible with the deal.II configuration:\n"
@@ -108,7 +82,7 @@ macro(feature_petsc_find_external var)
       set(${var} FALSE)
     endif()
 
-    if(DEAL_II_PETSC_WITH_KOKKOS)
+    if(PETSC_WITH_KOKKOS)
       if(DEAL_II_FORCE_BUNDLED_KOKKOS)
         set(PETSC_ADDITIONAL_ERROR_STRING
           ${PETSC_ADDITIONAL_ERROR_STRING}
@@ -125,6 +99,19 @@ endmacro()
 
 
 macro(feature_petsc_configure_external)
+  #
+  # Propagate some PETSc configuration variables into DEAL_II namespace:
+  #
+
+  set(DEAL_II_PETSC_WITH_COMPLEX ${PETSC_WITH_COMPLEX})
+  set(DEAL_II_PETSC_WITH_HYPRE ${PETSC_WITH_HYPRE})
+  set(DEAL_II_PETSC_WITH_MUMPS ${PETSC_WITH_MUMPS})
+  set(DEAL_II_PETSC_WITH_KOKKOS ${PETSC_WITH_KOKKOS})
+
+  #
+  # Figure out all the possible instantiations we need:
+  #
+
   set(DEAL_II_EXPAND_PETSC_MPI_VECTOR "PETScWrappers::MPI::Vector")
   set(DEAL_II_EXPAND_PETSC_MPI_BLOCKVECTOR "PETScWrappers::MPI::BlockVector")
   set(DEAL_II_EXPAND_PETSC_SPARSE_MATRICES
@@ -164,7 +151,3 @@ endmacro()
 
 
 configure_feature(PETSC)
-set(DEAL_II_PETSC_WITH_COMPLEX ${PETSC_WITH_COMPLEX})
-set(DEAL_II_PETSC_WITH_HYPRE ${PETSC_WITH_HYPRE})
-set(DEAL_II_PETSC_WITH_MUMPS ${PETSC_WITH_MUMPS})
-set(DEAL_II_PETSC_WITH_KOKKOS ${PETSC_WITH_KOKKOS})

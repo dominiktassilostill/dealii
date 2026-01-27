@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2020 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -67,6 +67,7 @@ std::vector<Polynomials::Polynomial<number>>
 generate_complete_bernstein_basis(const unsigned int degree)
 {
   std::vector<Polynomials::Polynomial<number>> v;
+  v.reserve(degree + 1);
   for (unsigned int i = 0; i < degree + 1; ++i)
     v.push_back(PolynomialsBernstein<number>(i, degree));
   return v;

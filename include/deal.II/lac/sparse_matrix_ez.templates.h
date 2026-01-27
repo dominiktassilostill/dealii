@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -40,7 +40,7 @@ SparseMatrixEZ<number>::SparseMatrixEZ()
 
 template <typename number>
 SparseMatrixEZ<number>::SparseMatrixEZ(const SparseMatrixEZ<number> &m)
-  : Subscriptor(m)
+  : EnableObserverPointer(m)
   , n_columns(0)
   , increment(m.increment)
   , saved_default_row_length(m.saved_default_row_length)
@@ -69,7 +69,6 @@ template <typename number>
 SparseMatrixEZ<number> &
 SparseMatrixEZ<number>::operator=(const SparseMatrixEZ<number> &m)
 {
-  (void)m;
   Assert(m.empty(),
          ExcMessage("This operator can only be called if the provided right "
                     "hand side is an empty matrix. This operator can not be "
@@ -83,7 +82,6 @@ template <typename number>
 SparseMatrixEZ<number> &
 SparseMatrixEZ<number>::operator=(const double d)
 {
-  (void)d;
   Assert(d == 0, ExcScalarAssignmentOnlyForZeroValue());
 
   typename std::vector<Entry>::iterator       e   = data.begin();
@@ -101,11 +99,11 @@ SparseMatrixEZ<number>::operator=(const double d)
 
 template <typename number>
 void
-SparseMatrixEZ<number>::reinit(const size_type n_rows,
-                               const size_type n_cols,
-                               size_type       default_row_length,
-                               unsigned int    default_increment,
-                               size_type       reserve)
+SparseMatrixEZ<number>::reinit(const size_type    n_rows,
+                               const size_type    n_cols,
+                               const size_type    default_row_length,
+                               const unsigned int default_increment,
+                               const size_type    reserve)
 {
   clear();
 

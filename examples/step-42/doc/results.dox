@@ -155,16 +155,16 @@ inequality is active):
 <table align="center">
   <tr>
     <td>
-    <img src="https://www.dealii.org/images/steps/developer/step-42.CellConstitutionColorbar.png">
+    <img src="https://dealii.org/images/steps/developer/step-42.CellConstitutionColorbar.png">
     </td>
     <td>
-    <img src="https://www.dealii.org/images/steps/developer/step-42.CellConstitutionBall2.png" alt="" width="70%">
+    <img src="https://dealii.org/images/steps/developer/step-42.CellConstitutionBall2.png" alt="" width="70%">
     </td>
     <td valign="top">
       &nbsp;
     </td>
     <td>
-    <img src="https://www.dealii.org/images/steps/developer/step-42.CellConstitutionLi2.png" alt="" alt="" width="70%">
+    <img src="https://dealii.org/images/steps/developer/step-42.CellConstitutionLi2.png" alt="" alt="" width="70%">
     </td>
   </tr>
 </table>
@@ -178,10 +178,9 @@ color means that this cell contains only elastic quadrature points in
 contrast to the red cells in which all quadrature points are plastified.
 In the middle of the top surface -
 where the mesh is finest - a very close look shows the dimple caused by the
-obstacle. This is the result of the <code>move_mesh()</code>
-function. However, because the indentation of the obstacles we consider here
-is so small, it is hard to discern this effect; one could play with displacing
-vertices of the mesh by a multiple of the computed displacement.
+obstacle. This is the result of showing the mesh in the *deformed* configuration;
+we have obtained this deformed mesh by using the MappingQEulerian class
+in the call to DataOut::build_patches() in the `output_results()` function.
 
 Further discussion of results that can be obtained using this program is
 provided in the publication mentioned at the very top of this page.

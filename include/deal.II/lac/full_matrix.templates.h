@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -36,6 +36,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <iomanip>
 #include <limits>
 #include <vector>
 
@@ -121,13 +122,9 @@ FullMatrix<number>::all_zero() const
 {
   Assert(!this->empty(), ExcEmptyMatrix());
 
-  const number       *p = this->values.data();
-  const number *const e = this->values.data() + this->n_elements();
-  while (p != e)
-    if (*p++ != number(0.0))
-      return false;
-
-  return true;
+  return std::all_of(this->values.begin(),
+                     this->values.end(),
+                     numbers::value_is_zero<number>);
 }
 
 
@@ -434,6 +431,21 @@ FullMatrix<number>::swap_col(const size_type i, const size_type j)
 
 template <typename number>
 void
+FullMatrix<number>::permute(const std::vector<unsigned int> &row_perm,
+                            const std::vector<unsigned int> &col_perm)
+{
+  AssertDimension(row_perm.size(), this->m());
+  AssertDimension(col_perm.size(), this->n());
+
+  FullMatrix<number> tmp = *this; // copy current matrix
+  for (unsigned int i = 0; i < this->m(); ++i)
+    for (unsigned int j = 0; j < this->n(); ++j)
+      (*this)(row_perm[i], col_perm[j]) = tmp(i, j);
+}
+
+
+template <typename number>
+void
 FullMatrix<number>::diagadd(const number src)
 {
   Assert(!this->empty(), ExcEmptyMatrix());
@@ -519,10 +531,19 @@ FullMatrix<number>::mmult(FullMatrix<number2>       &dst,
   Assert(n() == src.m(), ExcDimensionMismatch(n(), src.m()));
   Assert(dst.n() == src.n(), ExcDimensionMismatch(dst.n(), src.n()));
   Assert(dst.m() == m(), ExcDimensionMismatch(m(), dst.m()));
+  if constexpr (std::is_same_v<number, number2>)
+    {
+      Assert(&dst != this,
+             ExcMessage(
+               "The output matrix cannot be the same as the current matrix."));
+      Assert(&dst != &src,
+             ExcMessage(
+               "The output matrix cannot be the same as the input matrix."));
+    }
 
-  // see if we can use BLAS algorithms for this and if the type for 'number'
-  // works for us (it is usually not efficient to use BLAS for very small
-  // matrices):
+    // see if we can use BLAS algorithms for this and if the type for 'number'
+    // works for us (it is usually not efficient to use BLAS for very small
+    // matrices):
 #ifdef DEAL_II_WITH_LAPACK
   const size_type max_blas_int = std::numeric_limits<types::blas_int>::max();
   if ((std::is_same_v<number, double> ||
@@ -929,6 +950,32 @@ FullMatrix<number>::triple_product(const FullMatrix<number> &A,
           for (size_type k = 0; k < m(); ++k)
             this->operator()(k, j) += scaling * ADij * B(k, i);
       }
+}
+
+
+template <typename number>
+void
+FullMatrix<number>::kronecker_product(const FullMatrix<number> &A,
+                                      const FullMatrix<number> &B,
+                                      const bool                adding)
+{
+  Assert(!A.empty(), ExcEmptyMatrix());
+  Assert(!B.empty(), ExcEmptyMatrix());
+
+  const size_type m = A.m() * B.m();
+  const size_type n = A.n() * B.n();
+
+  if (adding)
+    {
+      AssertDimension(m, this->m());
+      AssertDimension(n, this->n());
+    }
+  else
+    this->reinit(m, n);
+
+  for (size_type i = 0; i < m; ++i)
+    for (size_type j = 0; j < n; ++j)
+      (*this)(i, j) += A(i / B.m(), j / B.n()) * B(i % B.m(), j % B.n());
 }
 
 
@@ -1799,7 +1846,6 @@ FullMatrix<number>::gauss_jordan()
   for (size_type i = 0; i < N; ++i)
     diagonal_sum += std::abs((*this)(i, i));
   const double typical_diagonal_element = diagonal_sum / N;
-  (void)typical_diagonal_element;
 
   // initialize the array that holds
   // the permutations that we find

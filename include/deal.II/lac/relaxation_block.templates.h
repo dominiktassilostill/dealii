@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2024 by the deal.II authors
+// Copyright (C) 2010 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -187,7 +187,6 @@ namespace internal
     // for a serial computation (don't!), or nobody implemented, instantiated,
     // and tested the parallel version for your vector type.
     Assert(other == nullptr, ExcNotImplemented());
-    (void)other;
     return prev;
   }
 
@@ -269,12 +268,13 @@ RelaxationBlock<MatrixType, InverseNumberType, VectorType>::do_step(
             }
           // Apply inverse diagonal
           this->inverse_vmult(block, x_cell, b_cell);
-#ifdef DEBUG
-          for (unsigned int i = 0; i < x_cell.size(); ++i)
+          if constexpr (running_in_debug_mode())
             {
-              AssertIsFinite(x_cell(i));
+              for (unsigned int i = 0; i < x_cell.size(); ++i)
+                {
+                  AssertIsFinite(x_cell(i));
+                }
             }
-#endif
           // Store in result vector
           row = additional_data->block_list.begin(block);
           for (size_type row_cell = 0; row_cell < bs; ++row_cell, ++row)

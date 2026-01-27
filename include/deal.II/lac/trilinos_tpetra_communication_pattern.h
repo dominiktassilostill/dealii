@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,13 +18,14 @@
 
 #include <deal.II/base/config.h>
 
-#include "deal.II/base/memory_space.h"
+#include <deal.II/base/memory_space.h>
 
 #include <deal.II/lac/trilinos_tpetra_types.h>
 
 #ifdef DEAL_II_TRILINOS_WITH_TPETRA
 
 #  include <deal.II/base/communication_pattern_base.h>
+#  include <deal.II/base/memory_space.h>
 
 #  include <Tpetra_Export.hpp>
 #  include <Tpetra_Import.hpp>
@@ -40,10 +41,13 @@ namespace LinearAlgebra
     /**
      * This class implements a wrapper to Tpetra::Import and Tpetra::Export.
      */
+    template <typename MemorySpace = dealii::MemorySpace::Host>
     class CommunicationPattern : public Utilities::MPI::CommunicationPatternBase
     {
+      static_assert(std::is_same_v<MemorySpace, dealii::MemorySpace::Default> ||
+                    std::is_same_v<MemorySpace, dealii::MemorySpace::Host>);
+
     public:
-      using MemorySpace = dealii::MemorySpace::Host;
       /**
        * Initialize the communication pattern.
        *
@@ -128,6 +132,14 @@ namespace LinearAlgebra
   } // end of namespace TpetraWrappers
 } // end of namespace LinearAlgebra
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

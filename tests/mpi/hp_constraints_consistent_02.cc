@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -86,16 +86,17 @@ test(const unsigned int degree_center,
         // set different FE on center cell
         cell->set_active_fe_index(1);
 
-#ifdef DEBUG
-        // verify that our scenario is initialized correctly
-        // by checking the number of neighbors of the center cell
-        unsigned int n_neighbors = 0;
-        for (const unsigned int i : GeometryInfo<dim>::face_indices())
-          if (static_cast<unsigned int>(cell->neighbor_index(i)) !=
-              numbers::invalid_unsigned_int)
-            ++n_neighbors;
-        Assert(n_neighbors == 3, ExcInternalError());
-#endif
+        if constexpr (running_in_debug_mode())
+          {
+            // verify that our scenario is initialized correctly
+            // by checking the number of neighbors of the center cell
+            unsigned int n_neighbors = 0;
+            for (const unsigned int i : GeometryInfo<dim>::face_indices())
+              if (static_cast<unsigned int>(cell->neighbor_index(i)) !=
+                  numbers::invalid_unsigned_int)
+                ++n_neighbors;
+            Assert(n_neighbors == 3, ExcInternalError());
+          }
       }
 
   dh.distribute_dofs(fe_collection);
@@ -106,7 +107,7 @@ test(const unsigned int degree_center,
 
   AffineConstraints<double> constraints;
   constraints.clear();
-  constraints.reinit(locally_relevant_dofs);
+  constraints.reinit(dh.locally_owned_dofs(), locally_relevant_dofs);
 
   DoFTools::make_hanging_node_constraints(dh, constraints);
 
@@ -120,7 +121,8 @@ test(const unsigned int degree_center,
 
   // ------ verify -----
   std::vector<IndexSet> locally_owned_dofs_per_processor =
-    Utilities::MPI::all_gather(dh.get_communicator(), dh.locally_owned_dofs());
+    Utilities::MPI::all_gather(dh.get_mpi_communicator(),
+                               dh.locally_owned_dofs());
 
   const IndexSet locally_active_dofs =
     DoFTools::extract_locally_active_dofs(dh);

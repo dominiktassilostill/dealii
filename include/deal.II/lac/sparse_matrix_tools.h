@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/mpi_compute_index_owner_internal.h>
+#include <deal.II/base/mpi_consensus_algorithms.h>
 
 #include <deal.II/dofs/dof_handler.h>
 
@@ -170,9 +170,8 @@ namespace SparseMatrixTools
               std::enable_if_t<!has_get_mpi_communicator<SparseMatrixType>,
                                SparseMatrixType> * = nullptr>
     MPI_Comm
-    get_mpi_communicator(const SparseMatrixType &sparse_matrix)
+    get_mpi_communicator(const SparseMatrixType & /*sparse_matrix*/)
     {
-      (void)sparse_matrix;
       return MPI_COMM_SELF;
     }
 
@@ -215,21 +214,15 @@ namespace SparseMatrixTools
       IndexSet locally_owned_dofs(total_sum);
       locally_owned_dofs.add_range(prefix_sum, prefix_sum + local_size);
 
-      Utilities::MPI::internal::ComputeIndexOwner::ConsensusAlgorithmsPayload
-        process(locally_owned_dofs, locally_active_dofs, comm, dummy, true);
-
-      Utilities::MPI::ConsensusAlgorithms::Selector<
-        std::vector<
-          std::pair<types::global_dof_index, types::global_dof_index>>,
-        std::vector<unsigned int>>
-        consensus_algorithm;
-      consensus_algorithm.run(process, comm);
-
       using T1 = std::vector<
         std::pair<types::global_dof_index,
                   std::vector<std::pair<types::global_dof_index, Number>>>>;
 
-      auto requesters = process.get_requesters();
+      std::map<unsigned int, IndexSet> requesters;
+      std::tie(std::ignore, requesters) =
+        Utilities::MPI::compute_index_owner_and_requesters(locally_owned_dofs,
+                                                           locally_active_dofs,
+                                                           comm);
 
       std::vector<std::vector<std::pair<types::global_dof_index, Number>>>
         locally_relevant_matrix_entries(locally_active_dofs.n_elements());
@@ -510,12 +503,34 @@ namespace SparseMatrixTools
               if (locally_owned_dofs.is_element(
                     local_dof_indices[i])) // row is local
                 {
-                  cell_matrix(i, j) =
-                    sparsity_pattern.exists(local_dof_indices[i],
-                                            local_dof_indices[j]) ?
-                      system_matrix(local_dof_indices[i],
-                                    local_dof_indices[j]) :
-                      0;
+                  if constexpr (std::is_same_v<SparseMatrixType,
+                                               dealii::SparseMatrix<Number>>)
+                    {
+                      const types::global_dof_index ind =
+                        system_matrix.get_sparsity_pattern()(
+                          local_dof_indices[i], local_dof_indices[j]);
+
+                      // If SparsityPattern::operator()` found the entry, then
+                      // we can access the corresponding value without a
+                      // second search in the sparse matrix, otherwise the
+                      // matrix entry at that index is zero because it does
+                      // not exist in the sparsity pattern
+                      if (ind != SparsityPattern::invalid_entry)
+                        {
+                          const SparseMatrixIterators::Accessor<Number, true>
+                            accessor(&system_matrix, ind);
+                          cell_matrix(i, j) = accessor.value();
+                        }
+                      else
+                        cell_matrix(i, j) = 0.0;
+                    }
+                  else
+                    cell_matrix(i, j) =
+                      sparsity_pattern.exists(local_dof_indices[i],
+                                              local_dof_indices[j]) ?
+                        system_matrix(local_dof_indices[i],
+                                      local_dof_indices[j]) :
+                        0.0;
                 }
               else // row is ghost
                 {

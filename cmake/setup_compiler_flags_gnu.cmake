@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2024 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -162,7 +162,6 @@ if (CMAKE_BUILD_TYPE MATCHES "Release")
 
   enable_if_supported(DEAL_II_CXX_FLAGS_RELEASE "-funroll-loops")
   enable_if_supported(DEAL_II_CXX_FLAGS_RELEASE "-funroll-all-loops")
-  enable_if_supported(DEAL_II_CXX_FLAGS_RELEASE "-fstrict-aliasing")
 
   #
   # Disable assert() in deal.II and user projects in release mode
@@ -170,11 +169,13 @@ if (CMAKE_BUILD_TYPE MATCHES "Release")
   list(APPEND DEAL_II_DEFINITIONS_RELEASE "NDEBUG")
 
   #
-  # There are many places in the library where we create a new typedef and then
-  # immediately use it in an Assert. Hence, only ignore unused typedefs in Release
-  # mode.
+  # There are many places in the library where we
+  #  - create a new typedef and then only use it in an Assert.
+  #  - use a function parameter only in an Assert.
+  # Thus disable these two warnings in release mode.
   #
   enable_if_supported(DEAL_II_CXX_FLAGS_RELEASE "-Wno-unused-local-typedefs")
+  enable_if_supported(DEAL_II_CXX_FLAGS_RELEASE "-Wno-unused-parameter")
 endif()
 
 
@@ -187,6 +188,23 @@ endif()
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
 
   list(APPEND DEAL_II_DEFINITIONS_DEBUG "DEBUG")
+
+  # Enable invalid element access and other checks in the c++ standard library:
+  list(APPEND DEAL_II_DEFINITIONS_DEBUG "_GLIBCXX_ASSERTIONS")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # _LIBCPP_ENABLE_ASSERTIONS was deprecated in clang++-19
+    # _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE should be used instead
+    if (CMAKE_CXX_COMPILER_ID STREQUAL AppleClang)
+      if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 17)
+        list(APPEND DEAL_II_DEFINITIONS_DEBUG "_LIBCPP_ENABLE_ASSERTIONS")
+      endif()
+    else()
+      if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19)
+        list(APPEND DEAL_II_DEFINITIONS_DEBUG "_LIBCPP_ENABLE_ASSERTIONS")
+      endif()
+    endif()
+    list(APPEND DEAL_II_DEFINITIONS_DEBUG "_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE")
+  endif()
 
   #
   # We have to ensure that we emit floating-point instructions in debug

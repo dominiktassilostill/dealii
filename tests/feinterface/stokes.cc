@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2021 - 2024 by the deal.II authors
+ * Copyright (C) 2021 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -431,7 +431,7 @@ namespace StokesTests
     // Velocities start at component 0:
     const FEValuesExtractors::Vector velocities(0);
 
-    // ILU behaves better if we apply a reordering to reduce fillin. There
+    // ILU behaves better if we apply a reordering to reduce filling. There
     // is no advantage in doing this for the other solvers.
     DoFRenumbering::Cuthill_McKee(dof_handler);
 

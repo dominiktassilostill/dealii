@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2023 by the deal.II authors
+// Copyright (C) 2015 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -57,7 +57,7 @@ template <int dim,
           int fe_degree,
           int n_q_points_1d = fe_degree + 1,
           typename number   = double>
-class LaplaceOperator : public Subscriptor
+class LaplaceOperator : public EnableObserverPointer
 {
 public:
   using value_type = number;

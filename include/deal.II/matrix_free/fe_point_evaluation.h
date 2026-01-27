@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -685,8 +685,8 @@ protected:
    * faces.
    */
   FEPointEvaluationBase(
-    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-    const FiniteElement<dim, spacedim>              &fe,
+    const NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim, spacedim>                    &fe,
     const unsigned int first_selected_component = 0,
     const bool         is_interior              = true);
 
@@ -746,6 +746,43 @@ public:
   submit_gradient(const gradient_type &, const unsigned int point_index);
 
   /**
+   * Return the divergence in real coordinates at the point with index
+   * `point_index` after a call to FEPointEvaluation::evaluate() with
+   * EvaluationFlags::gradients set, or the divergence that has been stored
+   * there with a call to FEPointEvaluationBase::submit_divergence(). This
+   * functions only makes sense for a vector field with dim components.
+   */
+  Number
+  get_divergence(const unsigned int point_index) const;
+
+  /**
+   * Write a contribution that is tested by the divergence to the field
+   * containing the values on points with the given `point_index`. Access to
+   * the same field as through get_divergence(). If applied before the function
+   * FEPointEvaluation::integrate(EvaluationFlags::gradients) is called,
+   * this specifies what is tested by all basis function gradients on the
+   * current cell and integrated over.
+   *
+   * @note This operation writes the data to the same field as
+   * submit_gradient(). As a consequence, only one of these functions can be
+   * used. In case several terms of this kind appear in a weak form, the
+   * contribution of a potential call to this function must be added into the
+   * diagonal of the rank-2 tensor contribution passed to submit_gradient(),
+   * in order not to overwrite information.
+   */
+  void
+  submit_divergence(const Number &value, const unsigned int point_index);
+
+  /**
+   * Return the curl in real coordinates at the point with index
+   * `point_index` after a call to FEPointEvaluation::evaluate() with
+   * EvaluationFlags::gradients set. This functions only makes sense for a
+   * vector field with dim components and dim > 1.
+   */
+  Tensor<1, (dim == 2 ? 1 : dim), Number>
+  get_curl(const unsigned int point_index) const;
+
+  /**
    * Return the Jacobian of the transformation on the current cell with the
    * given point index. Prerequisite: This class needs to be constructed with
    * UpdateFlags containing `update_jacobian`.
@@ -776,8 +813,8 @@ public:
    *
    * @deprecated Use the function quadrature_point() instead.
    */
-  DEAL_II_DEPRECATED_EARLY Point<spacedim, Number>
-                           real_point(const unsigned int point_index) const;
+  DEAL_II_DEPRECATED Point<spacedim, Number>
+                     real_point(const unsigned int point_index) const;
 
   /**
    * Return the position in real coordinates of the given point index among
@@ -863,12 +900,12 @@ protected:
   /**
    * Pointer to the Mapping object passed to the constructor.
    */
-  SmartPointer<const Mapping<dim, spacedim>> mapping;
+  ObserverPointer<const Mapping<dim, spacedim>> mapping;
 
   /**
    * Pointer to the FiniteElement object passed to the constructor.
    */
-  SmartPointer<const FiniteElement<dim, spacedim>> fe;
+  ObserverPointer<const FiniteElement<dim, spacedim>> fe;
 
   /**
    * Description of the 1d polynomial basis for tensor product elements used
@@ -1017,7 +1054,8 @@ protected:
    * Pointer to currently used mapping info (either on the fly or external
    * precomputed).
    */
-  SmartPointer<NonMatching::MappingInfo<dim, spacedim, Number>> mapping_info;
+  ObserverPointer<const NonMatching::MappingInfo<dim, spacedim, Number>>
+    mapping_info;
 
   /**
    * The current cell index to access mapping data from mapping info.
@@ -1085,7 +1123,7 @@ protected:
  * from MappingQ and MappingCartesian and for finite elements with tensor
  * product structure that work with the
  * @ref matrixfree
- * module. In those cases, the cost implied
+ * topic. In those cases, the cost implied
  * by this class is similar (or sometimes even somewhat lower) than using
  * `FEValues::reinit(cell)` followed by `FEValues::get_function_gradients`.
  */
@@ -1123,7 +1161,15 @@ public:
    * passed to the evaluate() function.
    *
    * @param fe The FiniteElement object that is used for the evaluation, which
-   * is typically the same on all cells to be evaluated.
+   * is typically the same on all cells to be evaluated. For the case multiple
+   * components are set as template argument @p n_components of this class,
+   * there are two supported modes of evaluation. One is multi-component
+   * FiniteElement objects, where the chosen template argument together with
+   * the parameter @p first_selected_component selects a subset of components
+   * for evaluation. A second mode is to provide a scalar FiniteElement
+   * object, but select multiple components by the template argument
+   * @p n_components. Then, the class expects the different components to be
+   * sorted one after the other.
    *
    * @param update_flags Specify the quantities to be computed by the mapping
    * during the call of reinit(). During evaluate() or integrate(), this data
@@ -1133,11 +1179,20 @@ public:
    * @param first_selected_component For multi-component FiniteElement
    * objects, this parameter allows to select a range of `n_components`
    * components starting from this parameter.
+   *
+   * @param force_lexicographic_numbering By default, this class uses the DoF
+   * numbering detected from the FiniteElement passed to this class (which is
+   * lexicographic for e.g. FE_DGQ but hierarchic for FE_Q). However, it is
+   * possible to force a lexicographic numbering of DoFs instead by setting this
+   * parameter to true, which is useful if this class is used together with
+   * FEEvaluation, for instance. This is because DoF values within FEEvaluation
+   * are stored in lexicographic numbering.
    */
   FEPointEvaluation(const Mapping<dim, spacedim>       &mapping,
                     const FiniteElement<dim, spacedim> &fe,
                     const UpdateFlags                   update_flags,
-                    const unsigned int first_selected_component = 0);
+                    const unsigned int first_selected_component      = 0,
+                    const bool         force_lexicographic_numbering = false);
 
   /**
    * Constructor to make the present class able to re-use the geometry
@@ -1154,11 +1209,20 @@ public:
    * @param first_selected_component For multi-component FiniteElement
    * objects, this parameter allows to select a range of `n_components`
    * components starting from this parameter.
+   *
+   * @param force_lexicographic_numbering By default, this class uses the DoF
+   * numbering detected from the FiniteElement passed to this class (which is
+   * lexicographic for e.g. FE_DGQ but hierarchic for FE_Q). However, it is
+   * possible to force a lexicographic numbering of DoFs instead by setting this
+   * parameter to true, which is useful if this class is used together with
+   * FEEvaluation, for instance. This is because DoF values within FEEvaluation
+   * are stored in lexicographic numbering.
    */
   FEPointEvaluation(
-    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-    const FiniteElement<dim, spacedim>              &fe,
-    const unsigned int first_selected_component = 0);
+    const NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim, spacedim>                    &fe,
+    const unsigned int first_selected_component      = 0,
+    const bool         force_lexicographic_numbering = false);
 
   /**
    * Set up the mapping information for the given cell, e.g., by computing the
@@ -1349,6 +1413,22 @@ public:
   Tensor<1, spacedim, Number>
   normal_vector(const unsigned int point_index) const;
 
+  /**
+   * Return the normal derivative in real coordinates at the point with index
+   * `point_index` after a call to FEPointEvaluation::evaluate() with
+   * EvaluationFlags::gradients set.
+   */
+  const value_type
+  get_normal_derivative(const unsigned int point_index) const;
+
+  /**
+   * Write a contribution that is tested by the normal derivative to the field
+   * containing the values on points with the given `point_index`. Access to
+   * the same field as through set_gradient()/get_gradient.
+   */
+  void
+  submit_normal_derivative(const value_type &, const unsigned int point_index);
+
 private:
   static constexpr std::size_t n_lanes_user_interface =
     internal::VectorizedArrayTrait<Number>::width();
@@ -1356,6 +1436,8 @@ private:
     internal::VectorizedArrayTrait<VectorizedArrayType>::width();
   static constexpr std::size_t stride =
     internal::VectorizedArrayTrait<Number>::stride();
+
+  const bool lexicographic_numbering;
 
   /**
    * Resizes necessary data fields, reads in and renumbers solution values.
@@ -1514,10 +1596,10 @@ public:
    * Constructor. Allows to select if interior or exterior face is selected.
    */
   FEFacePointEvaluation(
-    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-    const FiniteElement<dim, spacedim>              &fe,
-    const bool                                       is_interior = true,
-    const unsigned int first_selected_component                  = 0);
+    const NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim, spacedim>                    &fe,
+    const bool                                             is_interior = true,
+    const unsigned int first_selected_component                        = 0);
 
   /**
    * Reinitialize the evaluator to point to the correct precomputed mapping of
@@ -1707,6 +1789,22 @@ public:
   Tensor<1, spacedim, Number>
   normal_vector(const unsigned int point_index) const;
 
+  /**
+   * Return the normal derivative in real coordinates at the point with index
+   * `point_index` after a call to FEFacePointEvaluation::evaluate() with
+   * EvaluationFlags::gradients set.
+   */
+  const value_type
+  get_normal_derivative(const unsigned int point_index) const;
+
+  /**
+   * Write a contribution that is tested by the normal derivative to the field
+   * containing the values on points with the given `point_index`. Access to
+   * the same field as through set_gradient()/get_gradient.
+   */
+  void
+  submit_normal_derivative(const value_type &, const unsigned int point_index);
+
 private:
   static constexpr std::size_t n_lanes_user_interface =
     internal::VectorizedArrayTrait<Number>::width();
@@ -1785,10 +1883,10 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
 template <int n_components_, int dim, int spacedim, typename Number>
 FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
   FEPointEvaluationBase(
-    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-    const FiniteElement<dim, spacedim>              &fe,
-    const unsigned int                               first_selected_component,
-    const bool                                       is_interior)
+    const NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim, spacedim>                    &fe,
+    const unsigned int first_selected_component,
+    const bool         is_interior)
   : n_q_batches(numbers::invalid_unsigned_int)
   , n_q_points(numbers::invalid_unsigned_int)
   , n_q_points_scalar(numbers::invalid_unsigned_int)
@@ -1847,33 +1945,7 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
 
 template <int n_components_, int dim, int spacedim, typename Number>
 FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
-  FEPointEvaluationBase(FEPointEvaluationBase &&other) noexcept
-  : n_q_batches(other.n_q_batches)
-  , n_q_points(other.n_q_points)
-  , n_q_points_scalar(other.n_q_points_scalar)
-  , mapping(other.mapping)
-  , fe(other.fe)
-  , poly(other.poly)
-  , use_linear_path(other.use_linear_path)
-  , renumber(other.renumber)
-  , solution_renumbered(other.solution_renumbered)
-  , solution_renumbered_vectorized(other.solution_renumbered_vectorized)
-  , values(other.values)
-  , gradients(other.gradients)
-  , dofs_per_component(other.dofs_per_component)
-  , dofs_per_component_face(other.dofs_per_component_face)
-  , component_in_base_element(other.component_in_base_element)
-  , nonzero_shape_function_component(other.nonzero_shape_function_component)
-  , update_flags(other.update_flags)
-  , fe_values(other.fe_values)
-  , mapping_info_on_the_fly(std::move(other.mapping_info_on_the_fly))
-  , mapping_info(other.mapping_info)
-  , current_cell_index(other.current_cell_index)
-  , current_face_number(other.current_face_number)
-  , fast_path(other.fast_path)
-  , must_reinitialize_pointers(other.must_reinitialize_pointers)
-  , is_interior(other.is_interior)
-{}
+  FEPointEvaluationBase(FEPointEvaluationBase &&other) noexcept = default;
 
 
 
@@ -1882,8 +1954,9 @@ void
 FEPointEvaluationBase<n_components_, dim, spacedim, Number>::setup(
   const unsigned int first_selected_component)
 {
-  AssertIndexRange(first_selected_component + n_components,
-                   fe->n_components() + 1);
+  if (fe->n_components() > 1)
+    AssertIndexRange(first_selected_component + n_components,
+                     fe->n_components() + 1);
 
   shapes.reserve(100);
 
@@ -1891,12 +1964,18 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::setup(
   unsigned int base_element_number = 0;
   component_in_base_element        = 0;
   unsigned int component           = 0;
+
   for (; base_element_number < fe->n_base_elements(); ++base_element_number)
     if (component + fe->element_multiplicity(base_element_number) >
         first_selected_component)
       {
-        if (first_selected_component + n_components >
-            component + fe->element_multiplicity(base_element_number))
+        // check if we have multiple base elements and span across those base
+        // elements; if there is a single base element, we can also support
+        // evaluation of multiple vectors despite a single component in the
+        // finite element
+        if (fe->n_components() > 1 &&
+            first_selected_component + n_components >
+              component + fe->element_multiplicity(base_element_number))
           same_base_element = false;
         component_in_base_element = first_selected_component - component;
         break;
@@ -2012,30 +2091,34 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::do_reinit()
     mapping_info->compute_data_index_offset(geometry_index);
   const unsigned int compressed_data_offset =
     mapping_info->compute_compressed_data_index_offset(geometry_index);
-#ifdef DEBUG
-  const UpdateFlags update_flags_mapping =
-    mapping_info->get_update_flags_mapping();
-  if (update_flags_mapping & UpdateFlags::update_quadrature_points)
-    real_point_ptr = mapping_info->get_real_point(data_offset);
-  if (update_flags_mapping & UpdateFlags::update_jacobians)
-    jacobian_ptr =
-      mapping_info->get_jacobian(compressed_data_offset, is_interior);
-  if (update_flags_mapping & UpdateFlags::update_inverse_jacobians)
-    inverse_jacobian_ptr =
-      mapping_info->get_inverse_jacobian(compressed_data_offset, is_interior);
-  if (update_flags_mapping & UpdateFlags::update_normal_vectors)
-    normal_ptr = mapping_info->get_normal_vector(data_offset);
-  if (update_flags_mapping & UpdateFlags::update_JxW_values)
-    JxW_ptr = mapping_info->get_JxW(data_offset);
-#else
-  real_point_ptr = mapping_info->get_real_point(data_offset);
-  jacobian_ptr =
-    mapping_info->get_jacobian(compressed_data_offset, is_interior);
-  inverse_jacobian_ptr =
-    mapping_info->get_inverse_jacobian(compressed_data_offset, is_interior);
-  normal_ptr = mapping_info->get_normal_vector(data_offset);
-  JxW_ptr    = mapping_info->get_JxW(data_offset);
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      const UpdateFlags update_flags_mapping =
+        mapping_info->get_update_flags_mapping();
+      if (update_flags_mapping & UpdateFlags::update_quadrature_points)
+        real_point_ptr = mapping_info->get_real_point(data_offset);
+      if (update_flags_mapping & UpdateFlags::update_jacobians)
+        jacobian_ptr =
+          mapping_info->get_jacobian(compressed_data_offset, is_interior);
+      if (update_flags_mapping & UpdateFlags::update_inverse_jacobians)
+        inverse_jacobian_ptr =
+          mapping_info->get_inverse_jacobian(compressed_data_offset,
+                                             is_interior);
+      if (update_flags_mapping & UpdateFlags::update_normal_vectors)
+        normal_ptr = mapping_info->get_normal_vector(data_offset);
+      if (update_flags_mapping & UpdateFlags::update_JxW_values)
+        JxW_ptr = mapping_info->get_JxW(data_offset);
+    }
+  else
+    {
+      real_point_ptr = mapping_info->get_real_point(data_offset);
+      jacobian_ptr =
+        mapping_info->get_jacobian(compressed_data_offset, is_interior);
+      inverse_jacobian_ptr =
+        mapping_info->get_inverse_jacobian(compressed_data_offset, is_interior);
+      normal_ptr = mapping_info->get_normal_vector(data_offset);
+      JxW_ptr    = mapping_info->get_JxW(data_offset);
+    }
 
   if (!is_linear && fast_path)
     {
@@ -2119,6 +2202,20 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::get_gradient(
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
+inline Number
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::get_divergence(
+  const unsigned int point_index) const
+{
+  static_assert(n_components == dim,
+                "Only makes sense for a vector field with dim components");
+
+  AssertIndexRange(point_index, values.size());
+  return trace(gradients[point_index]);
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
 inline void
 FEPointEvaluationBase<n_components_, dim, spacedim, Number>::submit_value(
   const value_type  &value,
@@ -2138,6 +2235,52 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::submit_gradient(
 {
   AssertIndexRange(point_index, n_q_points);
   gradients[point_index] = gradient;
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::submit_divergence(
+  const Number      &value,
+  const unsigned int point_index)
+{
+  static_assert(n_components == dim,
+                "Only makes sense for a vector field with dim components");
+
+  AssertIndexRange(point_index, n_q_points);
+  gradients[point_index] = gradient_type();
+  for (unsigned int d = 0; d < dim; ++d)
+    gradients[point_index][d][d] = value;
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+Tensor<1, (dim == 2 ? 1 : dim), Number>
+FEPointEvaluationBase<n_components_, dim, spacedim, Number>::get_curl(
+  const unsigned int point_index) const
+{
+  static_assert(
+    dim > 1 && n_components == dim,
+    "Only makes sense for a vector field with dim components and dim > 1");
+
+  const Tensor<2, dim, Number>            grad = get_gradient(point_index);
+  Tensor<1, (dim == 2 ? 1 : dim), Number> curl;
+  switch (dim)
+    {
+      case 2:
+        curl[0] = grad[1][0] - grad[0][1];
+        break;
+      case 3:
+        curl[0] = grad[2][1] - grad[1][2];
+        curl[1] = grad[0][2] - grad[2][0];
+        curl[2] = grad[1][0] - grad[0][1];
+        break;
+      default:
+        DEAL_II_NOT_IMPLEMENTED();
+    }
+  return curl;
 }
 
 
@@ -2200,7 +2343,6 @@ FEPointEvaluationBase<n_components_, dim, spacedim, Number>::real_point(
   const unsigned int point_index) const
 {
   return quadrature_point(point_index);
-  ;
 }
 
 
@@ -2241,20 +2383,24 @@ inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FEPointEvaluationBase<n_components_, dim, spacedim, Number>::
   quadrature_point_indices() const
 {
-  return {0U, n_q_points};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(0U,
+                                                                  n_q_points);
 }
 
 
 
 template <int n_components_, int dim, int spacedim, typename Number>
 FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
-  NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-  const FiniteElement<dim, spacedim>              &fe,
-  const unsigned int                               first_selected_component)
+  const NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+  const FiniteElement<dim, spacedim>                    &fe,
+  const unsigned int first_selected_component,
+  const bool         force_lexicographic_numbering)
   : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
       mapping_info,
       fe,
       first_selected_component)
+  , lexicographic_numbering(force_lexicographic_numbering ||
+                            this->renumber.empty())
 {}
 
 
@@ -2264,12 +2410,15 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::FEPointEvaluation(
   const Mapping<dim, spacedim>       &mapping,
   const FiniteElement<dim, spacedim> &fe,
   const UpdateFlags                   update_flags,
-  const unsigned int                  first_selected_component)
+  const unsigned int                  first_selected_component,
+  const bool                          force_lexicographic_numbering)
   : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
       mapping,
       fe,
       update_flags,
       first_selected_component)
+  , lexicographic_numbering(force_lexicographic_numbering ||
+                            this->renumber.empty())
 {}
 
 
@@ -2310,7 +2459,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::reinit(
   AssertThrow(this->mapping_info_on_the_fly.get() != nullptr,
               ExcNotImplemented());
 
-  this->mapping_info->reinit(cell, unit_points);
+  this->mapping_info_on_the_fly->reinit(cell, unit_points);
   this->must_reinitialize_pointers = false;
 
   if (!this->fast_path)
@@ -2376,19 +2525,24 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::evaluate(
   const StridedArrayView<const ScalarNumber, stride_view> &solution_values,
   const EvaluationFlags::EvaluationFlags                  &evaluation_flags)
 {
-  if (this->must_reinitialize_pointers)
-    internal_reinit_single_cell_state_mapping_info();
-
-  if (this->n_q_points == 0)
-    return;
-
   Assert(!(evaluation_flags & EvaluationFlags::hessians), ExcNotImplemented());
 
   if (!((evaluation_flags & EvaluationFlags::values) ||
         (evaluation_flags & EvaluationFlags::gradients))) // no evaluation flags
     return;
 
-  AssertDimension(solution_values.size(), this->fe->dofs_per_cell);
+  if (this->must_reinitialize_pointers)
+    internal_reinit_single_cell_state_mapping_info();
+
+  if (this->n_q_points == 0)
+    return;
+
+  if (this->fe->n_components() > 1)
+    AssertDimension(solution_values.size(), this->fe->dofs_per_cell);
+  else
+    AssertDimension(solution_values.size(),
+                    n_components * this->fe->dofs_per_cell);
+
   if (this->fast_path)
     {
       if (this->use_linear_path)
@@ -2524,7 +2678,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::prepare_evaluate_fast(
       const std::size_t offset =
         (this->component_in_base_element + comp) * dofs_per_comp;
 
-      if ((is_linear && n_components == 1) || this->renumber.empty())
+      if ((is_linear && n_components == 1) || lexicographic_numbering)
         {
           for (unsigned int i = 0; i < dofs_per_comp; ++i)
             ETT::read_value(solution_values[i + offset],
@@ -2533,11 +2687,22 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::prepare_evaluate_fast(
         }
       else
         {
-          const unsigned int *renumber_ptr = this->renumber.data() + offset;
-          for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            ETT::read_value(solution_values[renumber_ptr[i]],
-                            comp,
-                            this->solution_renumbered[i]);
+          // Consider the case where multiple copies should be evaluated from
+          // a scalar base element, in that case we should only pick the
+          // scalar renumbering
+          if (n_components > this->fe->n_components())
+            for (unsigned int i = 0; i < dofs_per_comp; ++i)
+              ETT::read_value(solution_values[this->renumber[i] + offset],
+                              comp,
+                              this->solution_renumbered[i]);
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                ETT::read_value(solution_values[renumber_ptr[i]],
+                                comp,
+                                this->solution_renumbered[i]);
+            }
         }
     }
 }
@@ -2826,7 +2991,7 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::finish_integrate_fast(
       const std::size_t offset =
         (this->component_in_base_element + comp) * dofs_per_comp;
 
-      if (is_linear || this->renumber.empty())
+      if (is_linear || lexicographic_numbering)
         {
           for (unsigned int i = 0; i < dofs_per_comp; ++i)
             if (sum_into_values)
@@ -2844,14 +3009,30 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::finish_integrate_fast(
         }
       else
         {
-          const unsigned int *renumber_ptr = this->renumber.data() + offset;
-          for (unsigned int i = 0; i < dofs_per_comp; ++i)
-            if (sum_into_values)
-              solution_values[renumber_ptr[i]] +=
-                ETT::sum_value(comp, this->solution_renumbered_vectorized[i]);
-            else
-              solution_values[renumber_ptr[i]] =
-                ETT::sum_value(comp, this->solution_renumbered_vectorized[i]);
+          // Consider the case where multiple copies should be evaluated from
+          // a scalar base element, in that case we should only pick the
+          // scalar renumbering
+          if (n_components > this->fe->n_components())
+            for (unsigned int i = 0; i < dofs_per_comp; ++i)
+              if (sum_into_values)
+                solution_values[this->renumber[i] + offset] +=
+                  ETT::sum_value(comp, this->solution_renumbered_vectorized[i]);
+              else
+                solution_values[this->renumber[i] + offset] =
+                  ETT::sum_value(comp, this->solution_renumbered_vectorized[i]);
+          else
+            {
+              const unsigned int *renumber_ptr = this->renumber.data() + offset;
+              for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                if (sum_into_values)
+                  solution_values[renumber_ptr[i]] +=
+                    ETT::sum_value(comp,
+                                   this->solution_renumbered_vectorized[i]);
+                else
+                  solution_values[renumber_ptr[i]] =
+                    ETT::sum_value(comp,
+                                   this->solution_renumbered_vectorized[i]);
+            }
         }
     }
 }
@@ -3050,7 +3231,12 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
     ExcMessage(
       "JxW pointer is not set! If you do not want to integrate() use test_and_sum()"));
 
-  AssertDimension(solution_values.size(), this->fe->dofs_per_cell);
+  if (this->fe->n_components() > 1)
+    AssertDimension(solution_values.size(), this->fe->dofs_per_cell);
+  else
+    AssertDimension(solution_values.size(),
+                    n_components * this->fe->dofs_per_cell);
+
   if (this->fast_path)
     {
       if (this->use_linear_path)
@@ -3078,10 +3264,48 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::normal_vector(
          internal::FEPointEvaluation::
            ExcFEPointEvaluationAccessToUninitializedMappingField(
              "update_normal_vectors"));
-  if (this->is_interior)
-    return this->normal_ptr[point_index];
+  return this->normal_ptr[point_index];
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline const typename FEPointEvaluation<n_components_,
+                                        dim,
+                                        spacedim,
+                                        Number>::value_type
+FEPointEvaluation<n_components_, dim, spacedim, Number>::get_normal_derivative(
+  const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, this->gradients.size());
+
+  value_type normal_derivative;
+  if constexpr (n_components == 1)
+    normal_derivative =
+      this->gradients[point_index] * normal_vector(point_index);
   else
-    return -this->normal_ptr[point_index];
+    for (unsigned int comp = 0; comp < n_components; ++comp)
+      normal_derivative[comp] =
+        this->gradients[point_index][comp] * normal_vector(point_index);
+
+  return normal_derivative;
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEPointEvaluation<n_components_, dim, spacedim, Number>::
+  submit_normal_derivative(const value_type  &value,
+                           const unsigned int point_index)
+{
+  AssertIndexRange(point_index, this->gradients.size());
+  if constexpr (n_components == 1)
+    this->gradients[point_index] = value * normal_vector(point_index);
+  else
+    for (unsigned int comp = 0; comp < n_components; ++comp)
+      this->gradients[point_index][comp] =
+        value[comp] * normal_vector(point_index);
 }
 
 
@@ -3089,10 +3313,10 @@ FEPointEvaluation<n_components_, dim, spacedim, Number>::normal_vector(
 template <int n_components_, int dim, int spacedim, typename Number>
 FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
   FEFacePointEvaluation(
-    NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
-    const FiniteElement<dim, spacedim>              &fe,
-    const bool                                       is_interior,
-    const unsigned int                               first_selected_component)
+    const NonMatching::MappingInfo<dim, spacedim, Number> &mapping_info,
+    const FiniteElement<dim, spacedim>                    &fe,
+    const bool                                             is_interior,
+    const unsigned int first_selected_component)
   : FEPointEvaluationBase<n_components_, dim, spacedim, Number>(
       mapping_info,
       fe,
@@ -3209,10 +3433,19 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_evaluate(
             }
           else
             {
-              const unsigned int *renumber_ptr = this->renumber.data() + offset;
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                this->scratch_data_scalar[i + comp * dofs_per_comp] =
-                  solution_values[renumber_ptr[i]];
+              if (n_components > this->fe->n_components())
+                for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                  ETT::read_value(solution_values[this->renumber[i] + offset],
+                                  comp,
+                                  this->solution_renumbered[i]);
+              else
+                {
+                  const unsigned int *renumber_ptr =
+                    this->renumber.data() + offset;
+                  for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                    this->scratch_data_scalar[i + comp * dofs_per_comp] =
+                      solution_values[renumber_ptr[i]];
+                }
             }
         }
       input = this->scratch_data_scalar.data();
@@ -3417,14 +3650,28 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::do_integrate(
             }
           else
             {
-              const unsigned int *renumber_ptr = this->renumber.data() + offset;
-              for (unsigned int i = 0; i < dofs_per_comp; ++i)
-                if (sum_into_values)
-                  solution_values[renumber_ptr[i]] +=
-                    output[i + comp * dofs_per_comp];
-                else
-                  solution_values[renumber_ptr[i]] =
-                    output[i + comp * dofs_per_comp];
+              if (n_components > this->fe->n_components())
+                for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                  if (sum_into_values)
+                    solution_values[this->renumber[i] + offset] +=
+                      ETT::sum_value(comp,
+                                     this->solution_renumbered_vectorized[i]);
+                  else
+                    solution_values[this->renumber[i] + offset] =
+                      ETT::sum_value(comp,
+                                     this->solution_renumbered_vectorized[i]);
+              else
+                {
+                  const unsigned int *renumber_ptr =
+                    this->renumber.data() + offset;
+                  for (unsigned int i = 0; i < dofs_per_comp; ++i)
+                    if (sum_into_values)
+                      solution_values[renumber_ptr[i]] +=
+                        output[i + comp * dofs_per_comp];
+                    else
+                      solution_values[renumber_ptr[i]] =
+                        output[i + comp * dofs_per_comp];
+                }
             }
         }
     }
@@ -3803,18 +4050,54 @@ FEFacePointEvaluation<n_components_, dim, spacedim, Number>::normal_vector(
         normal[d] =
           internal::VectorizedArrayTrait<Number>::get(this->normal_ptr[0][d],
                                                       0);
-      if (this->is_interior)
-        return normal;
-      else
-        return -normal;
+
+      return normal;
     }
   else
     {
-      if (this->is_interior)
-        return this->normal_ptr[point_index];
-      else
-        return -(this->normal_ptr[point_index]);
+      return this->normal_ptr[point_index];
     }
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline const typename FEFacePointEvaluation<n_components_,
+                                            dim,
+                                            spacedim,
+                                            Number>::value_type
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
+  get_normal_derivative(const unsigned int point_index) const
+{
+  AssertIndexRange(point_index, this->gradients.size());
+
+  value_type normal_derivative;
+  if constexpr (n_components == 1)
+    normal_derivative =
+      this->gradients[point_index] * normal_vector(point_index);
+  else
+    for (unsigned int comp = 0; comp < n_components; ++comp)
+      normal_derivative[comp] =
+        this->gradients[point_index][comp] * normal_vector(point_index);
+
+  return normal_derivative;
+}
+
+
+
+template <int n_components_, int dim, int spacedim, typename Number>
+inline void
+FEFacePointEvaluation<n_components_, dim, spacedim, Number>::
+  submit_normal_derivative(const value_type  &value,
+                           const unsigned int point_index)
+{
+  AssertIndexRange(point_index, this->gradients.size());
+  if constexpr (n_components == 1)
+    this->gradients[point_index] = value * normal_vector(point_index);
+  else
+    for (unsigned int comp = 0; comp < n_components; ++comp)
+      this->gradients[point_index][comp] =
+        value[comp] * normal_vector(point_index);
 }
 
 DEAL_II_NAMESPACE_CLOSE

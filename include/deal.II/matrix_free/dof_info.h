@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2023 by the deal.II authors
+// Copyright (C) 2012 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -262,7 +262,8 @@ namespace internal
       template <int length>
       void
       compute_face_index_compression(
-        const std::vector<FaceToCellTopology<length>> &faces);
+        const std::vector<FaceToCellTopology<length>> &faces,
+        bool hold_all_faces_to_owned_cells);
 
       /**
        * This function computes the connectivity of the currently stored

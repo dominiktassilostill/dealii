@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,8 +13,7 @@
 // ------------------------------------------------------------------------
 
 
-#include <deal.II/base/mpi_compute_index_owner_internal.h>
-#include <deal.II/base/mpi_consensus_algorithms.h>
+#include <deal.II/base/mpi.h>
 
 #include <deal.II/distributed/repartitioning_policy_tools.h>
 #include <deal.II/distributed/tria_base.h>
@@ -71,7 +70,7 @@ namespace RepartitioningPolicyTools
     return {};
 #else
 
-    const auto comm = tria->get_communicator();
+    const auto comm = tria->get_mpi_communicator();
 
     const unsigned int process_has_active_locally_owned_cells =
       tria->n_locally_owned_active_cells() > 0;
@@ -134,7 +133,7 @@ namespace RepartitioningPolicyTools
   FirstChildPolicy<dim, spacedim>::partition(
     const Triangulation<dim, spacedim> &tria_coarse_in) const
   {
-    const auto communicator = tria_coarse_in.get_communicator();
+    const auto communicator = tria_coarse_in.get_mpi_communicator();
 
     const internal::CellIDTranslator<dim> cell_id_translator(n_coarse_cells,
                                                              n_global_levels);
@@ -145,28 +144,14 @@ namespace RepartitioningPolicyTools
       if (cell->is_locally_owned())
         is_coarse.add_index(cell_id_translator.translate(cell));
 
-    std::vector<unsigned int> owning_ranks_of_coarse_cells(
-      is_coarse.n_elements());
-    {
-      Utilities::MPI::internal::ComputeIndexOwner::ConsensusAlgorithmsPayload
-        process(is_level_partitions,
-                is_coarse,
-                communicator,
-                owning_ranks_of_coarse_cells,
-                false);
-
-      Utilities::MPI::ConsensusAlgorithms::Selector<
-        std::vector<
-          std::pair<types::global_cell_index, types::global_cell_index>>,
-        std::vector<unsigned int>>
-        consensus_algorithm;
-      consensus_algorithm.run(process, communicator);
-    }
+    const std::vector<unsigned int> owning_ranks_of_coarse_cells =
+      Utilities::MPI::compute_index_owner(is_level_partitions,
+                                          is_coarse,
+                                          communicator);
 
     const auto tria =
       dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
         &tria_coarse_in);
-
     Assert(tria, ExcNotImplemented());
 
     LinearAlgebra::distributed::Vector<double> partition(
@@ -212,7 +197,7 @@ namespace RepartitioningPolicyTools
                       tria_in.end()),
                     [](const auto &cell) { return cell.is_locally_owned(); });
 
-    const auto comm = tria_in.get_communicator();
+    const auto comm = tria_in.get_mpi_communicator();
 
     if (Utilities::MPI::min(n_locally_owned_active_cells, comm) >= n_min_cells)
       return {}; // all processes have enough cells
@@ -289,7 +274,7 @@ namespace RepartitioningPolicyTools
 
     std::vector<unsigned int> weights(partitioner->locally_owned_size());
 
-    const auto mpi_communicator = tria_in.get_communicator();
+    const auto mpi_communicator = tria_in.get_mpi_communicator();
     const auto n_subdomains = Utilities::MPI::n_mpi_processes(mpi_communicator);
 
     // determine weight of each cell
@@ -307,7 +292,7 @@ namespace RepartitioningPolicyTools
     // weight
     const auto [process_local_weight_offset, total_weight] =
       Utilities::MPI::partial_and_total_sum(process_local_weight,
-                                            tria->get_communicator());
+                                            tria->get_mpi_communicator());
 
     // set up partition
     LinearAlgebra::distributed::Vector<double> partition(partitioner);
@@ -328,6 +313,6 @@ namespace RepartitioningPolicyTools
 
 
 /*-------------- Explicit Instantiations -------------------------------*/
-#include "repartitioning_policy_tools.inst"
+#include "distributed/repartitioning_policy_tools.inst"
 
 DEAL_II_NAMESPACE_CLOSE

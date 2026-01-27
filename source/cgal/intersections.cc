@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -27,7 +27,12 @@
 
 #  include <deal.II/grid/tria.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <CGAL/Boolean_set_operations_2.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
+
+#  include <deal.II/cgal/utilities.h>
+
 #  include <CGAL/Cartesian.h>
 #  include <CGAL/Circular_kernel_intersections.h>
 #  include <CGAL/Constrained_Delaunay_triangulation_2.h>
@@ -42,6 +47,7 @@
 #  include <CGAL/Projection_traits_xy_3.h>
 #  include <CGAL/Segment_3.h>
 #  include <CGAL/Simple_cartesian.h>
+#  include <CGAL/Surface_mesh/Surface_mesh.h>
 #  include <CGAL/Tetrahedron_3.h>
 #  include <CGAL/Triangle_2.h>
 #  include <CGAL/Triangle_3.h>
@@ -49,7 +55,6 @@
 #  include <CGAL/Triangulation_3.h>
 #  include <CGAL/Triangulation_face_base_with_id_2.h>
 #  include <CGAL/Triangulation_face_base_with_info_2.h>
-#  include <deal.II/cgal/utilities.h>
 
 #  include <optional>
 #  include <variant>
@@ -100,6 +105,20 @@ namespace CGALWrappers
   using Vertex_handle = CDT::Vertex_handle;
   using Face_handle   = CDT::Face_handle;
 
+  template <class T, class... Types>
+  const T *
+  get_if_(const std::variant<Types...> *v)
+  {
+    return std::get_if<T>(v);
+  }
+
+  template <class T, class... Types>
+  const T *
+  get_if_(const boost::variant<Types...> *v)
+  {
+    return boost::get<T>(v);
+  }
+
   namespace internal
   {
     namespace
@@ -145,6 +164,13 @@ namespace CGALWrappers
             // std::optional object.
             return {};
           }
+      }
+
+      template <typename... Types>
+      const std::optional<std::variant<Types...>> &
+      convert_boost_to_std(const std::optional<std::variant<Types...>> &opt)
+      {
+        return opt;
       }
     } // namespace
 
@@ -489,8 +515,7 @@ namespace CGALWrappers
             {
               const auto intersection =
                 CGAL::intersection(segm, cdt.triangle(f));
-              if (const CGALSegment2 *s =
-                    boost::get<CGALSegment2>(&*intersection))
+              if (const CGALSegment2 *s = get_if_<CGALSegment2>(&*intersection))
                 {
                   vertices.push_back(
                     {{CGALWrappers::cgal_point_to_dealii_point<2>((*s)[0]),
@@ -538,7 +563,7 @@ namespace CGALWrappers
               const auto intersection =
                 CGAL::intersection(cgal_segment, cgal_tetrahedron);
               if (const CGALSegment3_exact *s =
-                    boost::get<CGALSegment3_exact>(&*intersection))
+                    get_if_<CGALSegment3_exact>(&*intersection))
                 {
                   if (s->squared_length() > tol * tol)
                     {
@@ -610,7 +635,7 @@ namespace CGALWrappers
                     CGAL::intersection(triangulation_quad.triangle(f), tet);
 
                   if (const CGALTriangle3_exact *t =
-                        boost::get<CGALTriangle3_exact>(&*intersection))
+                        get_if_<CGALTriangle3_exact>(&*intersection))
                     {
                       if (CGAL::to_double(t->squared_area()) > tol * tol)
                         {
@@ -622,8 +647,7 @@ namespace CGALWrappers
                     }
 
                   if (const std::vector<CGALPoint3_exact> *vps =
-                        boost::get<std::vector<CGALPoint3_exact>>(
-                          &*intersection))
+                        get_if_<std::vector<CGALPoint3_exact>>(&*intersection))
                     {
                       Triangulation3_exact tria_inter;
                       tria_inter.insert(vps->begin(), vps->end());
@@ -843,7 +867,15 @@ namespace CGALWrappers
       vertices0, vertices1, tol);
   }
 
-#  include "intersections.inst"
+// Explicit instantiations.
+//
+// We don't build the instantiations.inst file if deal.II isn't
+// configured with CGAL, but doxygen doesn't know that and tries to
+// find that file anyway for parsing -- which then of course it fails
+// on. So exclude the following from doxygen consideration.
+#  ifndef DOXYGEN
+#    include "cgal/intersections.inst"
+#  endif
 
 } // namespace CGALWrappers
 

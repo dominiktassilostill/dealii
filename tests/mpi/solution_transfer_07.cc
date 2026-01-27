@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -62,7 +62,8 @@ test(const bool allow_artificial_cells)
   dh.distribute_dofs(fe);
 
   Vector<double> sol_new(dh.n_dofs());
-  soltrans.interpolate(sol_old, sol_new);
+  soltrans.interpolate(sol_new);
+
   for (unsigned int i = 0; i < sol_new.size(); ++i)
     AssertThrow(sol_new[i] == 1., ExcInternalError());
 

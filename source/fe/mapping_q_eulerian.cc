@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2024 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -33,13 +33,13 @@
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
 
+#include <boost/container/small_vector.hpp>
+
 #include <memory>
+
 
 DEAL_II_NAMESPACE_OPEN
 
-
-
-// .... MAPPING Q EULERIAN CONSTRUCTOR
 
 
 template <int dim, typename VectorType, int spacedim>
@@ -53,7 +53,9 @@ MappingQEulerian<dim, VectorType, spacedim>::MappingQEulerian(
   , euler_dof_handler(&euler_dof_handler)
   , level(level)
   , support_quadrature(degree)
-  , fe_values(euler_dof_handler.get_fe(),
+  , mapping_q(degree)
+  , fe_values(mapping_q,
+              euler_dof_handler.get_fe(),
               support_quadrature,
               update_values | update_quadrature_points)
 {}
@@ -69,8 +71,6 @@ MappingQEulerian<dim, VectorType, spacedim>::clone() const
 }
 
 
-
-// .... SUPPORT QUADRATURE CONSTRUCTOR
 
 template <int dim, typename VectorType, int spacedim>
 MappingQEulerian<dim, VectorType, spacedim>::SupportQuadrature::
@@ -95,11 +95,14 @@ MappingQEulerian<dim, VectorType, spacedim>::SupportQuadrature::
 
 
 
-// .... COMPUTE MAPPING SUPPORT POINTS
-
 template <int dim, typename VectorType, int spacedim>
 boost::container::small_vector<Point<spacedim>,
-                               GeometryInfo<dim>::vertices_per_cell>
+#ifndef _MSC_VER
+                               ReferenceCells::max_n_vertices<dim>()
+#else
+                               GeometryInfo<dim>::vertices_per_cell
+#endif
+                               >
 MappingQEulerian<dim, VectorType, spacedim>::get_vertices(
   const typename Triangulation<dim, spacedim>::cell_iterator &cell) const
 {
@@ -107,9 +110,13 @@ MappingQEulerian<dim, VectorType, spacedim>::get_vertices(
   const std::vector<Point<spacedim>> a = compute_mapping_support_points(cell);
 
   boost::container::small_vector<Point<spacedim>,
-                                 GeometryInfo<dim>::vertices_per_cell>
-    vertex_locations(a.begin(),
-                     a.begin() + GeometryInfo<dim>::vertices_per_cell);
+#ifndef _MSC_VER
+                                 ReferenceCells::max_n_vertices<dim>()
+#else
+                                 GeometryInfo<dim>::vertices_per_cell
+#endif
+                                 >
+    vertex_locations(a.begin(), a.begin() + cell->n_vertices());
 
   return vertex_locations;
 }
@@ -126,10 +133,6 @@ MappingQEulerian<dim, VectorType, spacedim>::compute_mapping_support_points(
   const types::global_dof_index n_dofs =
     mg_vector ? euler_dof_handler->n_dofs(level) : euler_dof_handler->n_dofs();
   const types::global_dof_index vector_size = euler_vector->size();
-
-  (void)n_dofs;
-  (void)vector_size;
-
   AssertDimension(vector_size, n_dofs);
 
   // we then transform our tria iterator into a dof iterator so we can access
@@ -215,7 +218,7 @@ MappingQEulerian<dim, VectorType, spacedim>::fill_fe_values(
 
 
 // explicit instantiations
-#include "mapping_q_eulerian.inst"
+#include "fe/mapping_q_eulerian.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

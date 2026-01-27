@@ -132,7 +132,7 @@ namespace Step40
     system_rhs.reinit(locally_owned_dofs, mpi_communicator);
 
     constraints.clear();
-    constraints.reinit(locally_relevant_dofs);
+    constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
     DoFTools::make_hanging_node_constraints(dof_handler, constraints);
     VectorTools::interpolate_boundary_values(dof_handler,
                                              0,
@@ -281,7 +281,7 @@ namespace Step40
               << "      ";
         const auto n_locally_owned_active_cells_per_processor =
           Utilities::MPI::all_gather(
-            triangulation.get_communicator(),
+            triangulation.get_mpi_communicator(),
             triangulation.n_locally_owned_active_cells());
         for (unsigned int i = 0;
              i < Utilities::MPI::n_mpi_processes(mpi_communicator);

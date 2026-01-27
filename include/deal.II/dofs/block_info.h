@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2023 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,9 +17,11 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/exceptions.h>
 #include <deal.II/base/memory_consumption.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/template_constraints.h>
+#include <deal.II/base/types.h>
 
 #include <deal.II/lac/block_indices.h>
 
@@ -91,7 +93,7 @@ class DoFHandler;
  *
  * @ingroup dofs
  */
-class BlockInfo : public Subscriptor
+class BlockInfo : public EnableObserverPointer
 {
 public:
   /**

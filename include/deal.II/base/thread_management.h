@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2024 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,6 +21,7 @@
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/multithread_info.h>
 #include <deal.II/base/mutex.h>
+#include <deal.II/base/std_cxx20/type_traits.h>
 #include <deal.II/base/template_constraints.h>
 
 #ifdef DEAL_II_WITH_TASKFLOW
@@ -504,8 +505,28 @@ namespace Threads
       if (MultithreadInfo::n_threads() > 1)
         {
 #ifdef DEAL_II_WITH_TASKFLOW
-          task_data = std::make_shared<TaskData>(
-            MultithreadInfo::get_taskflow_executor().async(function_object));
+          // If we are creating the task from a thread not managed by the
+          // current Taskflow executor, then emplace the new task and run it
+          // asynchronously. Otherwise, we would be asking Taskflow to emplace
+          // a new task with the same executor, which may lead to deadlocks
+          // (see
+          // https://taskflow.github.io/taskflow/ExecuteTaskflow.html#ExecuteATaskflowFromAnInternalWorker
+          // and the discussion in
+          // https://github.com/dealii/dealii/issues/19079). As a consequence,
+          // we let the code fall through to the code at the bottom of the
+          // function that executes the task right there and then,
+          // synchronously.
+          //
+          // In practice, this means that one can't use task-based programming
+          // in a nested way. That's unfortunate but it is what it is for
+          // now.
+          if (MultithreadInfo::get_taskflow_executor().this_worker_id() < 0)
+            {
+              task_data = std::make_shared<TaskData>(
+                MultithreadInfo::get_taskflow_executor().async(
+                  function_object));
+              return;
+            }
 #elif defined(DEAL_II_WITH_TBB)
           // Create a promise object and from it extract a future that
           // we can use to refer to the outcome of the task. For reasons
@@ -573,6 +594,7 @@ namespace Threads
                     }
                 }
             });
+          return;
 
 #else
           // If no threading library is supported, just fall back onto C++11
@@ -595,40 +617,40 @@ namespace Threads
           task_data = std::make_shared<TaskData>(
             std::async(std::launch::async | std::launch::deferred,
                        function_object));
+          return;
 #endif
         }
-      else
-        {
-          // Only one thread allowed. So let the task run to completion
-          // and just emplace a 'ready' future.
-          //
-          // The design of std::promise/std::future is unclear, but it
-          // seems that the intent is to obtain the std::future before
-          // we set the std::promise. So create the TaskData object at
-          // the top and then run the task and set the returned
-          // value. Since everything here happens sequentially, it
-          // really doesn't matter in which order all of this is
-          // happening.
-          std::promise<RT> promise;
-          task_data = std::make_shared<TaskData>(promise.get_future());
-          try
-            {
-              internal::evaluate_and_set_promise(function_object, promise);
-            }
-          catch (...)
-            {
-              try
-                {
-                  // store anything thrown in the promise
-                  promise.set_exception(std::current_exception());
-                }
-              catch (...)
-                {
-                  // set_exception() may throw too. But ignore this on
-                  // the task.
-                }
-            }
-        }
+      {
+        // Only one thread allowed. So let the task run to completion
+        // and just emplace a 'ready' future.
+        //
+        // The design of std::promise/std::future is unclear, but it
+        // seems that the intent is to obtain the std::future before
+        // we set the std::promise. So create the TaskData object at
+        // the top and then run the task and set the returned
+        // value. Since everything here happens sequentially, it
+        // really doesn't matter in which order all of this is
+        // happening.
+        std::promise<RT> promise;
+        task_data = std::make_shared<TaskData>(promise.get_future());
+        try
+          {
+            internal::evaluate_and_set_promise(function_object, promise);
+          }
+        catch (...)
+          {
+            try
+              {
+                // store anything thrown in the promise
+                promise.set_exception(std::current_exception());
+              }
+            catch (...)
+              {
+                // set_exception() may throw too. But ignore this on
+                // the task.
+              }
+          }
+      }
     }
 
     /**
@@ -978,7 +1000,7 @@ namespace Threads
               // the current executor from scheduling more tasks, but it is
               // unrelated to the tasks of the scheduler for which we are
               // waiting for something, and so that other executor will
-              // eventually get arond to scheduling the task we are waiting
+              // eventually get around to scheduling the task we are waiting
               // for, at which point the current task will also complete.
               future.wait();
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,8 +17,8 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/lac/precondition_block_base.h>
 #include <deal.II/lac/sparsity_pattern.h>
@@ -77,7 +77,7 @@ public:
    * structure in #block_list and an optional ordering of the blocks in
    * #order.
    */
-  class AdditionalData : public Subscriptor
+  class AdditionalData : public EnableObserverPointer
   {
   public:
     /**
@@ -246,15 +246,15 @@ protected:
    * inverse matrices should not be stored) until the last call of the
    * preconditioning @p vmult function of the derived classes.
    */
-  SmartPointer<const MatrixType,
-               RelaxationBlock<MatrixType, InverseNumberType, VectorType>>
+  ObserverPointer<const MatrixType,
+                  RelaxationBlock<MatrixType, InverseNumberType, VectorType>>
     A;
 
   /**
    * Control information.
    */
-  SmartPointer<const AdditionalData,
-               RelaxationBlock<MatrixType, InverseNumberType, VectorType>>
+  ObserverPointer<const AdditionalData,
+                  RelaxationBlock<MatrixType, InverseNumberType, VectorType>>
     additional_data;
 
 private:
@@ -283,7 +283,7 @@ template <typename MatrixType,
           typename InverseNumberType = typename MatrixType::value_type,
           typename VectorType        = Vector<double>>
 class RelaxationBlockJacobi
-  : public virtual Subscriptor,
+  : public virtual EnableObserverPointer,
     protected RelaxationBlock<MatrixType, InverseNumberType, VectorType>
 {
 public:
@@ -379,7 +379,7 @@ template <typename MatrixType,
           typename InverseNumberType = typename MatrixType::value_type,
           typename VectorType        = Vector<double>>
 class RelaxationBlockSOR
-  : public virtual Subscriptor,
+  : public virtual EnableObserverPointer,
     protected RelaxationBlock<MatrixType, InverseNumberType, VectorType>
 {
 public:
@@ -475,7 +475,7 @@ template <typename MatrixType,
           typename InverseNumberType = typename MatrixType::value_type,
           typename VectorType        = Vector<double>>
 class RelaxationBlockSSOR
-  : public virtual Subscriptor,
+  : public virtual EnableObserverPointer,
     protected RelaxationBlock<MatrixType, InverseNumberType, VectorType>
 {
 public:

@@ -21,7 +21,7 @@
 // The program starts with including a bunch of include files that we will use
 // in the various parts of the program. Most of them have been discussed in
 // previous tutorials already:
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/convergence_table.h>
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/quadrature_selector.h>
@@ -230,10 +230,10 @@ namespace Step34
     // finite element space. The order of the finite element space and of the
     // mapping can be selected in the constructor of the class.
 
-    Triangulation<dim - 1, dim> tria;
-    const FE_Q<dim - 1, dim>    fe;
-    DoFHandler<dim - 1, dim>    dof_handler;
-    MappingQ<dim - 1, dim>      mapping;
+    Triangulation<dim - 1, dim>  tria;
+    const FE_Q<dim - 1, dim>     fe;
+    DoFHandler<dim - 1, dim>     dof_handler;
+    const MappingQ<dim - 1, dim> mapping;
 
     // In BEM methods, the matrix that is generated is dense. Depending on the
     // size of the problem, the final system might be solved by direct LU

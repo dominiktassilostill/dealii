@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2024 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,11 +22,15 @@
 #  include <deal.II/lac/trilinos_sparse_matrix.h>
 #  include <deal.II/lac/trilinos_vector.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
+
 #  include <AztecOO_StatusTest.h>
 #  include <AztecOO_StatusTestCombo.h>
 #  include <AztecOO_StatusTestMaxIters.h>
 #  include <AztecOO_StatusTestResNorm.h>
 #  include <AztecOO_StatusType.h>
+
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #  include <cmath>
 #  include <limits>
@@ -469,7 +473,7 @@ namespace TrilinosWrappers
     if (!status_test)
       {
         if (const ReductionControl *const reduction_control =
-              dynamic_cast<const ReductionControl *const>(&solver_control))
+              dynamic_cast<const ReductionControl *>(&solver_control))
           {
             status_test = std::make_unique<internal::TrilinosReductionControl>(
               reduction_control->max_steps(),
@@ -522,10 +526,10 @@ namespace TrilinosWrappers
     // compute it ourself.
     if (const internal::TrilinosReductionControl
           *const reduction_control_status =
-            dynamic_cast<const internal::TrilinosReductionControl *const>(
+            dynamic_cast<const internal::TrilinosReductionControl *>(
               status_test.get()))
       {
-        Assert(dynamic_cast<const ReductionControl *const>(&solver_control),
+        Assert(dynamic_cast<const ReductionControl *>(&solver_control),
                ExcInternalError());
 
         // Check to see if solver converged in one step
@@ -684,7 +688,7 @@ namespace TrilinosWrappers
 
     AssertThrow(Factory.Query(additional_data.solver_type.c_str()),
                 ExcMessage(
-                  std::string("You tried to select the solver type <") +
+                  "You tried to select the solver type <" +
                   additional_data.solver_type +
                   "> but this solver is not supported by Trilinos either "
                   "because it does not exist, or because Trilinos was not "
@@ -811,7 +815,7 @@ namespace TrilinosWrappers
 
     AssertThrow(Factory.Query(additional_data.solver_type.c_str()),
                 ExcMessage(
-                  std::string("You tried to select the solver type <") +
+                  "You tried to select the solver type <" +
                   additional_data.solver_type +
                   "> but this solver is not supported by Trilinos either "
                   "because it does not exist, or because Trilinos was not "
@@ -841,6 +845,69 @@ namespace TrilinosWrappers
       AssertThrow(false,
                   SolverControl::NoConvergence(solver_control.last_step(),
                                                solver_control.last_value()));
+  }
+
+
+  void
+  SolverDirect::solve(const Epetra_Operator    &A,
+                      Epetra_MultiVector       &x,
+                      const Epetra_MultiVector &b)
+  {
+    // We need an Epetra_LinearProblem object to let the Amesos solver know
+    // about the matrix and vectors.
+    linear_problem =
+      std::make_unique<Epetra_LinearProblem>(const_cast<Epetra_Operator *>(&A),
+                                             &x,
+                                             const_cast<Epetra_MultiVector *>(
+                                               &b));
+
+    do_solve();
+  }
+
+
+  void
+  SolverDirect::solve(const SparseMatrix       &sparse_matrix,
+                      FullMatrix<double>       &solution,
+                      const FullMatrix<double> &rhs)
+  {
+    Assert(sparse_matrix.m() == sparse_matrix.n(), ExcInternalError());
+    Assert(rhs.m() == sparse_matrix.m(), ExcInternalError());
+    Assert(rhs.m() == solution.m(), ExcInternalError());
+    Assert(rhs.n() == solution.n(), ExcInternalError());
+
+    const unsigned int m = rhs.m();
+    const unsigned int n = rhs.n();
+
+    FullMatrix<double> rhs_t(n, m);
+    FullMatrix<double> solution_t(n, m);
+
+    rhs_t.copy_transposed(rhs);
+    solution_t.copy_transposed(solution);
+
+    std::vector<double *> rhs_ptrs(n);
+    std::vector<double *> sultion_ptrs(n);
+
+    for (unsigned int i = 0; i < n; ++i)
+      {
+        rhs_ptrs[i]     = &rhs_t[i][0];
+        sultion_ptrs[i] = &solution_t[i][0];
+      }
+
+    const Epetra_CrsMatrix &mat = sparse_matrix.trilinos_matrix();
+
+    Epetra_MultiVector trilinos_dst(View,
+                                    mat.OperatorRangeMap(),
+                                    sultion_ptrs.data(),
+                                    sultion_ptrs.size());
+    Epetra_MultiVector trilinos_src(View,
+                                    mat.OperatorDomainMap(),
+                                    rhs_ptrs.data(),
+                                    rhs_ptrs.size());
+
+    this->initialize(sparse_matrix);
+    this->solve(mat, trilinos_dst, trilinos_src);
+
+    solution.copy_transposed(solution_t);
   }
 
 

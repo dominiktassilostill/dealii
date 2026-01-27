@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2005 - 2023 by the deal.II authors
+// Copyright (C) 2005 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,7 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/mutex.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/table.h>
 
 #include <deal.II/lac/lapack_support.h>
@@ -766,7 +766,7 @@ public:
    * to just have this function compute the eigenvalues and have a separate
    * function that returns whatever eigenvalue is requested. Eigenvalues can
    * be retrieved using the eigenvalue() function.  The number of computed
-   * eigenvectors is equal to eigenvectors.size()
+   * eigenvectors is equal to `eigenvectors.size()`.
    *
    * @note Calls the LAPACK function Xsygv.
    */
@@ -917,6 +917,12 @@ public:
                   const double       threshold   = 0.,
                   const char        *separator   = " ") const;
 
+  /**
+   * Return current state after the last operation here.
+   */
+  LAPACKSupport::State
+  get_state() const;
+
 private:
   /**
    * Internal function to compute various norms.
@@ -1007,7 +1013,7 @@ private:
  * @ingroup Preconditioners
  */
 template <typename number>
-class PreconditionLU : public Subscriptor
+class PreconditionLU : public EnableObserverPointer
 {
 public:
   void
@@ -1024,8 +1030,9 @@ public:
   Tvmult(BlockVector<number> &, const BlockVector<number> &) const;
 
 private:
-  SmartPointer<const LAPACKFullMatrix<number>, PreconditionLU<number>> matrix;
-  SmartPointer<VectorMemory<Vector<number>>, PreconditionLU<number>>   mem;
+  ObserverPointer<const LAPACKFullMatrix<number>, PreconditionLU<number>>
+                                                                        matrix;
+  ObserverPointer<VectorMemory<Vector<number>>, PreconditionLU<number>> mem;
 };
 
 /*---------------------- Inline functions -----------------------------------*/

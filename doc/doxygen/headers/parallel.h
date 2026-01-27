@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2022 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,9 +16,9 @@
 /**
  * @defgroup Parallel Parallel computing
  *
- * @brief A module discussing the use of multiple processors.
+ * @brief A group discussing the use of multiple processors.
  *
- * This module contains information on %parallel computing. It is
+ * This group contains information on %parallel computing. It is
  * subdivided into parts on @ref threads and on @ref distributed.
  */
 

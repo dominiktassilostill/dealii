@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -318,6 +318,6 @@ namespace FESeries
 
 
 // explicit instantiations
-#include "fe_series_legendre.inst"
+#include "fe/fe_series_legendre.inst"
 
 DEAL_II_NAMESPACE_CLOSE

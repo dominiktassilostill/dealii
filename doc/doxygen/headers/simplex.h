@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,12 +14,12 @@
 
 
 /**
- * @defgroup simplex Simplex support (experimental)
+ * @defgroup simplex Simplex support
  *
- * This module describes the experimental simplex support in deal.II.
+ * This group describes the simplex support in deal.II.
  *
- * Simplex and mixed meshes in deal.II are still experimental, i.e., work
- * in progress. Large parts of the library have been ported to be able to
+ * Simplex and mixed meshes in deal.II are work in progress.
+ * Large parts of the library have been ported to be able to
  * operate on such kind of meshes. However, there are still many functions
  * that need to be generalized.
  *
@@ -65,10 +65,8 @@
  *
  * @section simplex_reference_cells Reference cells
  *
- * In 2D, we provide triangles and quadrilaterals with the following possible
- * orientations in 3D:
+ * In 2D, we provide triangles and quadrilaterals:
  *
- * <div class="twocolumn" style="width: 100%">
  *   <div class="parent">
  *     <div class="img" align="center">
  *       @image html reference_cells_0.png
@@ -77,15 +75,6 @@
  *       2D: triangle and quadrilateral
  *     </div>
  *   </div>
- *   <div class="parent">
- *     <div class="img" align="center">
- *       @image html reference_cells_1.png
- *     </div>
- *     <div class="text" align="center">
- *       Possible orientations of triangles and quadrilaterals in 3D
- *     </div>
- *   </div>
- * </div>
  *
  * In 3D, tetrahedra, pyramids, wedges, and hexahedra are available:
  *

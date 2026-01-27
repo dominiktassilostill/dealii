@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 #ifndef DOXYGEN
-#  include "vector.inst"
+#  include "lac/vector.inst"
 
 #  ifndef DEAL_II_WITH_COMPLEX_VALUES
 // instantiate for std::complex<double> since we are using it internally in
@@ -83,37 +83,65 @@ Vector<int>::lp_norm(const real_type) const
 }
 
 #ifdef DEAL_II_TRILINOS_WITH_TPETRA
-#  ifdef HAVE_TPETRA_INST_FLOAT
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_FLOAT
 template Vector<float>::Vector(
-  const LinearAlgebra::TpetraWrappers::Vector<float> &);
+  const LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Host> &);
+template Vector<float>::Vector(
+  const LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Default> &);
 template Vector<float> &
-Vector<float>::operator=
-  <float>(const LinearAlgebra::TpetraWrappers::Vector<float> &);
+Vector<float>::operator=<float>(
+  const LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Host> &);
+template Vector<float> &
+Vector<float>::operator=<float>(
+  const LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Default> &);
 #  endif
 
-#  ifdef HAVE_TPETRA_INST_DOUBLE
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_DOUBLE
 template Vector<double>::Vector(
-  const LinearAlgebra::TpetraWrappers::Vector<double> &);
+  const LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Host> &);
+template Vector<double>::Vector(
+  const LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default> &);
 template Vector<double> &
-Vector<double>::operator=
-  <double>(const LinearAlgebra::TpetraWrappers::Vector<double> &);
+Vector<double>::operator=<double>(
+  const LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Host> &);
+template Vector<double> &
+Vector<double>::operator=<double>(
+  const LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default> &);
 #  endif
 
 #  ifdef DEAL_II_WITH_COMPLEX_VALUES
-#    ifdef HAVE_TPETRA_INST_COMPLEX_FLOAT
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_FLOAT
 template Vector<std::complex<float>>::Vector(
-  const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>> &);
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>,
+                                              MemorySpace::Host> &);
+template Vector<std::complex<float>>::Vector(
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>,
+                                              MemorySpace::Default> &);
 template Vector<std::complex<float>> &
 Vector<std::complex<float>>::operator=<std::complex<float>>(
-  const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>> &);
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>,
+                                              MemorySpace::Host> &);
+template Vector<std::complex<float>> &
+Vector<std::complex<float>>::operator=<std::complex<float>>(
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<float>,
+                                              MemorySpace::Default> &);
 #    endif
 
-#    ifdef HAVE_TPETRA_INST_COMPLEX_DOUBLE
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_DOUBLE
 template Vector<std::complex<double>>::Vector(
-  const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>> &);
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>,
+                                              MemorySpace::Host> &);
+template Vector<std::complex<double>>::Vector(
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>,
+                                              MemorySpace::Default> &);
 template Vector<std::complex<double>> &
 Vector<std::complex<double>>::operator=<std::complex<double>>(
-  const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>> &);
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>,
+                                              MemorySpace::Host> &);
+template Vector<std::complex<double>> &
+Vector<std::complex<double>>::operator=<std::complex<double>>(
+  const LinearAlgebra::TpetraWrappers::Vector<std::complex<double>,
+                                              MemorySpace::Default> &);
 #    endif
 #  endif
 #endif

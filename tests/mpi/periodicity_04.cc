@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2015 - 2024 by the deal.II authors
+ * Copyright (C) 2015 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -188,7 +188,7 @@ check(const unsigned int orientation, bool reverse)
   const IndexSet  locally_relevant_dofs =
     DoFTools::extract_locally_relevant_dofs(dof_handler);
 
-  constraints.reinit(locally_relevant_dofs);
+  constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
   {
     std::vector<
       GridTools::PeriodicFacePair<typename DoFHandler<dim>::cell_iterator>>
@@ -261,10 +261,12 @@ check(const unsigned int orientation, bool reverse)
 
   using CellFace =
     std::pair<typename Triangulation<dim>::cell_iterator, unsigned int>;
-  const typename std::map<CellFace, std::pair<CellFace, unsigned char>>
+  const typename std::map<CellFace,
+                          std::pair<CellFace, types::geometric_orientation>>
     &face_map = triangulation.get_periodic_face_map();
-  typename std::map<CellFace,
-                    std::pair<CellFace, unsigned char>>::const_iterator it;
+  typename std::map<
+    CellFace,
+    std::pair<CellFace, types::geometric_orientation>>::const_iterator it;
   int sum_of_pairs_local = face_map.size();
   int sum_of_pairs_global;
   MPI_Allreduce(&sum_of_pairs_local,
@@ -272,7 +274,7 @@ check(const unsigned int orientation, bool reverse)
                 1,
                 MPI_INT,
                 MPI_SUM,
-                triangulation.get_communicator());
+                triangulation.get_mpi_communicator());
   Assert(sum_of_pairs_global > 0, ExcInternalError());
   for (it = face_map.begin(); it != face_map.end(); ++it)
     {
@@ -295,8 +297,10 @@ check(const unsigned int orientation, bool reverse)
             {
               std::cout << "face_center_1: " << face_center_1 << std::endl;
               std::cout << "face_center_2: " << face_center_2 << std::endl;
-              typename std::map<CellFace, std::pair<CellFace, unsigned char>>::
-                const_iterator it;
+              typename std::map<
+                CellFace,
+                std::pair<CellFace,
+                          types::geometric_orientation>>::const_iterator it;
               for (it = triangulation.get_periodic_face_map().begin();
                    it != triangulation.get_periodic_face_map().end();
                    ++it)

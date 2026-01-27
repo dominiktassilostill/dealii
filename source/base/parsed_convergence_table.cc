@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,10 @@
 #include <deal.II/base/parsed_convergence_table.h>
 #include <deal.II/base/patterns.h>
 #include <deal.II/base/utilities.h>
+
+#include <fstream>
+#include <set>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -248,9 +252,8 @@ ParsedConvergenceTable::output_table()
       else
         {
           AssertThrow(false,
-                      ExcInternalError(
-                        std::string("Unrecognized file format: ") +
-                        error_file_format));
+                      ExcInternalError("Unrecognized file format: " +
+                                       error_file_format));
         }
       table_file.close();
     }

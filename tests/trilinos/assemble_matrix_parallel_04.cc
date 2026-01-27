@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -468,11 +468,14 @@ LaplaceProblem<dim>::run()
         {
           GridGenerator::hyper_shell(
             triangulation, Point<dim>(), 0.5, 1., (dim == 3) ? 96 : 12, false);
-#ifdef DEBUG
-          triangulation.refine_global(3);
-#else
-          triangulation.refine_global(5);
-#endif
+          if constexpr (running_in_debug_mode())
+            {
+              triangulation.refine_global(3);
+            }
+          else
+            {
+              triangulation.refine_global(5);
+            }
         }
 
       setup_system();

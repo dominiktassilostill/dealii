@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -90,8 +90,13 @@ test(const unsigned int fe_degree0, const unsigned int fe_degree1 = 0)
 
         const auto &q_points = fiv.get_quadrature_points();
         for (unsigned int qpoint = 0; qpoint < q_points.size(); ++qpoint)
-          deallog << "qpoint " << qpoint << ": " << q_points[qpoint]
-                  << std::endl;
+          {
+            Assert(q_points[qpoint] == fiv.quadrature_point(qpoint),
+                   ExcInternalError());
+
+            deallog << "qpoint " << qpoint << ": " << q_points[qpoint]
+                    << std::endl;
+          }
 
         for (unsigned int idx = 0; idx < n_dofs; ++idx)
           {

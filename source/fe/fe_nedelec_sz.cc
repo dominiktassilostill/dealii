@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2024 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -3334,7 +3334,8 @@ FE_NedelecSZ<dim, spacedim>::get_prolongation_matrix(
   Assert(refinement_case != RefinementCase<dim>::no_refinement,
          ExcMessage(
            "Prolongation matrices are only available for refined cells!"));
-  AssertIndexRange(child, GeometryInfo<dim>::n_children(refinement_case));
+  AssertIndexRange(
+    child, this->reference_cell().template n_children<dim>(refinement_case));
 
   // initialization upon first request
   if (this->prolongation[refinement_case - 1][child].n() == 0)
@@ -3371,6 +3372,6 @@ FE_NedelecSZ<dim, spacedim>::get_prolongation_matrix(
 }
 
 // explicit instantiations
-#include "fe_nedelec_sz.inst"
+#include "fe/fe_nedelec_sz.inst"
 
 DEAL_II_NAMESPACE_CLOSE

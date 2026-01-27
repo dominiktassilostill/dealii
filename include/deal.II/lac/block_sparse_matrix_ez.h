@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,9 +23,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/table.h>
 
 #include <deal.II/lac/block_indices.h>
@@ -57,7 +57,7 @@ class BlockVector;
  * @ref GlossBlockLA "Block (linear algebra)"
  */
 template <typename Number>
-class BlockSparseMatrixEZ : public Subscriptor
+class BlockSparseMatrixEZ : public EnableObserverPointer
 {
 public:
   /**

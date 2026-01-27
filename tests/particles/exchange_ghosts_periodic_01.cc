@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2022 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -68,7 +68,7 @@ test()
     Point<spacedim> position;
     Point<dim>      reference_position;
 
-    if (Utilities::MPI::this_mpi_process(tr.get_communicator()) == 0)
+    if (Utilities::MPI::this_mpi_process(tr.get_mpi_communicator()) == 0)
       position[0] = 0.001;
     else
       position[0] = 0.999;
@@ -76,7 +76,7 @@ test()
     Particles::Particle<dim, spacedim> particle(
       position,
       reference_position,
-      Utilities::MPI::this_mpi_process(tr.get_communicator()));
+      Utilities::MPI::this_mpi_process(tr.get_mpi_communicator()));
 
     // We give a local random cell hint to check that sorting and
     // transferring ghost particles works.

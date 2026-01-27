@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2024 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,7 @@
 
 #include <deal.II/base/config.h>
 
-#include "deal.II/base/types.h"
+#include <deal.II/base/types.h>
 
 #include <deal.II/lac/trilinos_tpetra_types.h>
 
@@ -26,7 +26,6 @@
 
 #  include <deal.II/base/index_set.h>
 #  include <deal.II/base/mpi_stub.h>
-#  include <deal.II/base/subscriptor.h>
 
 #  include <deal.II/lac/read_vector.h>
 #  include <deal.II/lac/trilinos_tpetra_communication_pattern.h>
@@ -54,26 +53,26 @@ template <typename Number>
 struct is_tpetra_type : std::false_type
 {};
 
-#  ifdef HAVE_TPETRA_INST_FLOAT
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_FLOAT
 template <>
 struct is_tpetra_type<float> : std::true_type
 {};
 #  endif
 
-#  ifdef HAVE_TPETRA_INST_DOUBLE
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_DOUBLE
 template <>
 struct is_tpetra_type<double> : std::true_type
 {};
 #  endif
 
 #  ifdef DEAL_II_WITH_COMPLEX_VALUES
-#    ifdef HAVE_TPETRA_INST_COMPLEX_FLOAT
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_FLOAT
 template <>
 struct is_tpetra_type<std::complex<float>> : std::true_type
 {};
 #    endif
 
-#    ifdef HAVE_TPETRA_INST_COMPLEX_DOUBLE
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_DOUBLE
 template <>
 struct is_tpetra_type<std::complex<double>> : std::true_type
 {};
@@ -285,7 +284,7 @@ namespace LinearAlgebra
      * @ingroup Vectors
      */
     template <typename Number, typename MemorySpace = dealii::MemorySpace::Host>
-    class Vector : public ReadVector<Number>, public Subscriptor
+    class Vector : public ReadVector<Number>
     {
     public:
       /**
@@ -420,7 +419,7 @@ namespace LinearAlgebra
       virtual void
       extract_subvector_to(
         const ArrayView<const types::global_dof_index> &indices,
-        ArrayView<Number> &elements) const override;
+        const ArrayView<Number> &elements) const override;
 
       /**
        * Copy function. This function takes a Vector and copies all the
@@ -485,17 +484,6 @@ namespace LinearAlgebra
         const Teuchos::RCP<const Utilities::MPI::CommunicationPatternBase>
           &communication_pattern);
 
-      /**
-       * @deprecated Use Teuchos::RCP<> instead of std::shared_ptr<>.
-       */
-      DEAL_II_DEPRECATED
-      void
-      import_elements(
-        const ReadWriteVector<Number> &V,
-        VectorOperation::values        operation,
-        const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
-          &communication_pattern);
-
       /*
        * Imports all the elements present in the vector's IndexSet from the
        * input vector @p V. VectorOperation::values @p operation is used to decide if
@@ -505,19 +493,6 @@ namespace LinearAlgebra
       void
       import_elements(const ReadWriteVector<Number> &V,
                       VectorOperation::values        operation);
-
-      /**
-       * @deprecated Use import_elements() instead.
-       */
-      DEAL_II_DEPRECATED
-      void
-      import(const ReadWriteVector<Number> &V,
-             VectorOperation::values        operation,
-             std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
-               communication_pattern = {})
-      {
-        import_elements(V, operation, communication_pattern);
-      }
 
       /** @} */
 
@@ -1060,10 +1035,15 @@ namespace LinearAlgebra
       dealii::IndexSet source_stored_elements;
 
       /**
+       * IndexSet of the nonlocal_entries that are relevant for this vector.
+       */
+      dealii::IndexSet nonlocal_entries;
+
+      /**
        * CommunicationPattern for the communication between the
        * source_stored_elements IndexSet and the current vector.
        */
-      Teuchos::RCP<const TpetraWrappers::CommunicationPattern>
+      Teuchos::RCP<const TpetraWrappers::CommunicationPattern<MemorySpace>>
         tpetra_comm_pattern;
 
       // Make the reference class a friend.
@@ -1130,14 +1110,8 @@ namespace LinearAlgebra
       // writing to this vector at all.
       Assert(!has_ghost_elements(), ExcGhostsPresent());
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto vector_2d_local = vector->template getLocalView<Kokkos::HostSpace>(
-        Tpetra::Access::ReadWrite);
-#  else
-      vector->template sync<Kokkos::HostSpace>();
-
-      auto vector_2d_local = vector->template getLocalView<Kokkos::HostSpace>();
-#  endif
+        Tpetra::Access::ReadWriteStruct{});
 
       // Having extracted a view into the multivectors above, now also
       // extract a view into the one vector we actually store. We can
@@ -1167,6 +1141,12 @@ namespace LinearAlgebra
               local_row != Teuchos::OrdinalTraits<int>::invalid())
             {
               vector_1d_local(local_row) += values[i];
+
+              // Set the compressed state to false only if there is nonlocal
+              // part in this distributed vector, otherwise it's always
+              // compressed.
+              if (nonlocal_vector.get() != nullptr)
+                compressed = false;
             }
           else
             {
@@ -1203,7 +1183,7 @@ namespace LinearAlgebra
 #  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
                   auto vector_2d_nonlocal =
                     nonlocal_vector->template getLocalView<Kokkos::HostSpace>(
-                      Tpetra::Access::ReadWrite);
+                      Tpetra::Access::ReadWriteStruct{});
 #  else
                   auto vector_2d_nonlocal =
                     nonlocal_vector->template getLocalView<Kokkos::HostSpace>();
@@ -1250,7 +1230,7 @@ namespace LinearAlgebra
 
 #  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto vector_2d_local = vector->template getLocalView<Kokkos::HostSpace>(
-        Tpetra::Access::ReadWrite);
+        Tpetra::Access::ReadWriteStruct{});
 #  else
       vector->template sync<Kokkos::HostSpace>();
 
@@ -1285,6 +1265,12 @@ namespace LinearAlgebra
               local_row != Teuchos::OrdinalTraits<int>::invalid())
             {
               vector_1d_local(local_row) = values[i];
+
+              // Set the compressed state to false only if there is nonlocal
+              // part in this distributed vector, otherwise it's always
+              // compressed.
+              if (nonlocal_vector.get() != nullptr)
+                compressed = false;
             }
           else
             {
@@ -1321,7 +1307,7 @@ namespace LinearAlgebra
 #  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
                   auto vector_2d_nonlocal =
                     nonlocal_vector->template getLocalView<Kokkos::HostSpace>(
-                      Tpetra::Access::ReadWrite);
+                      Tpetra::Access::ReadWriteStruct{});
 #  else
                   auto vector_2d_nonlocal =
                     nonlocal_vector->template getLocalView<Kokkos::HostSpace>();
@@ -1425,7 +1411,10 @@ namespace LinearAlgebra
       inline const VectorReference<Number, MemorySpace> &
       VectorReference<Number, MemorySpace>::operator=(const Number &value) const
       {
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
         vector.set(1, &index, &value);
+
         return *this;
       }
 
@@ -1436,7 +1425,10 @@ namespace LinearAlgebra
       VectorReference<Number, MemorySpace>::operator+=(
         const Number &value) const
       {
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
         vector.add(1, &index, &value);
+
         return *this;
       }
 
@@ -1447,8 +1439,11 @@ namespace LinearAlgebra
       VectorReference<Number, MemorySpace>::operator-=(
         const Number &value) const
       {
-        Number new_value = -value;
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+        const Number new_value = -value;
         vector.add(1, &index, &new_value);
+
         return *this;
       }
 
@@ -1459,8 +1454,11 @@ namespace LinearAlgebra
       VectorReference<Number, MemorySpace>::operator*=(
         const Number &value) const
       {
-        Number new_value = static_cast<Number>(*this) * value;
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+        const Number new_value = static_cast<Number>(*this) * value;
         vector.set(1, &index, &new_value);
+
         return *this;
       }
 
@@ -1471,8 +1469,11 @@ namespace LinearAlgebra
       VectorReference<Number, MemorySpace>::operator/=(
         const Number &value) const
       {
-        Number new_value = static_cast<Number>(*this) / value;
+        Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+        const Number new_value = static_cast<Number>(*this) / value;
         vector.set(1, &index, &new_value);
+
         return *this;
       }
     } // namespace internal
@@ -1484,6 +1485,7 @@ namespace LinearAlgebra
   /** @} */
 
 } // namespace LinearAlgebra
+
 
 
 namespace internal
@@ -1538,6 +1540,14 @@ struct is_serial_vector<
   LinearAlgebra::TpetraWrappers::Vector<Number, MemorySpace>> : std::false_type
 {};
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

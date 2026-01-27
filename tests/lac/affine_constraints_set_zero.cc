@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,8 +16,6 @@
 
 // check AffineConstraints<double>::set_zero(Vector) for parallel distributed
 // vectors
-
-#include <deal.II/base/cuda_size.h>
 
 #include <deal.II/dofs/dof_tools.h>
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -174,10 +174,7 @@ namespace NonMatching
    * will also be positive.
    *
    * A detailed description of the underlying algorithm can be found in
-   * "High-Order %Quadrature Methods for Implicitly Defined Surfaces and
-   * Volumes in Hyperrectangles, R. I. Saye, SIAM J. Sci. Comput., 37(2), <a
-   * href="http://www.dx.doi.org/10.1137/140966290">
-   * doi:10.1137/140966290</a>". This implementation has some modifications
+   * @cite saye_2015. This implementation has some modifications
    * compared to the algorithm description in the paper. In particular, it
    * builds the three different types of quadratures (inside, outside and
    * surface) simultaneously. Further, the so-called "pruning" step is not yet
@@ -543,11 +540,11 @@ namespace NonMatching
      * class. The hp::QCollection<1> and AdditionalData is passed to the
      * QuadratureGenerator class.
      */
-    template <typename VectorType>
+    template <typename Number>
     DiscreteQuadratureGenerator(
       const hp::QCollection<1> &quadratures1D,
       const DoFHandler<dim>    &dof_handler,
-      const VectorType         &level_set,
+      const ReadVector<Number> &level_set,
       const AdditionalData     &additional_data = AdditionalData());
 
     /**
@@ -605,11 +602,11 @@ namespace NonMatching
      * class. The hp::QCollection<1> and AdditionalData is passed to the
      * QuadratureGenerator class.
      */
-    template <typename VectorType>
+    template <typename Number>
     DiscreteFaceQuadratureGenerator(
       const hp::QCollection<1> &quadratures1D,
       const DoFHandler<dim>    &dof_handler,
-      const VectorType         &level_set,
+      const ReadVector<Number> &level_set,
       const AdditionalData     &additional_data = AdditionalData());
 
     /**
@@ -946,7 +943,7 @@ namespace NonMatching
          * One dimensional quadrature rules used to create the immersed
          * quadratures.
          */
-        const SmartPointer<const hp::QCollection<1>> q_collection1D;
+        const ObserverPointer<const hp::QCollection<1>> q_collection1D;
 
         /**
          * Stores options/settings for the algorithm.
@@ -966,7 +963,7 @@ namespace NonMatching
         std::vector<Functions::PointRestriction<dim - 1>> point_restrictions;
 
         /**
-         * Class used to find the roots of the above 1d-restictions.
+         * Class used to find the roots of the above 1d-restrictions.
          */
         RootFinder root_finder;
 
@@ -1057,7 +1054,7 @@ namespace NonMatching
          * Index of the quadrature in q_collection1d that should use to
          * generate the immersed quadrature rules.
          */
-        const SmartPointer<const hp::QCollection<1>> q_collection1D;
+        const ObserverPointer<const hp::QCollection<1>> q_collection1D;
 
         /**
          * Quadratures that the derived classes create.

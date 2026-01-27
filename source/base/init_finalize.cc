@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------
 //
-// Copyright (C) 2023 - 2024 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,7 +28,9 @@
 #    include <deal.II/lac/trilinos_parallel_block_vector.h>
 #    include <deal.II/lac/trilinos_vector.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #    include <Epetra_MpiComm.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 #  endif
 #endif
 
@@ -53,6 +55,14 @@
 #  include <zoltan_cpp.h>
 #endif
 
+#ifdef DEAL_II_WITH_PSBLAS
+#  include <psb_c_base.h>
+#endif
+
+#include <set>
+#include <string>
+
+
 DEAL_II_NAMESPACE_OPEN
 
 
@@ -60,20 +70,19 @@ DEAL_II_NAMESPACE_OPEN
 InitFinalize::Signals InitFinalize::signals = InitFinalize::Signals();
 
 
-InitFinalize::InitFinalize(int                     &argc,
-                           char                  **&argv,
+InitFinalize::InitFinalize([[maybe_unused]] int    &argc,
+                           [[maybe_unused]] char **&argv,
                            const InitializeLibrary &libraries,
                            const unsigned int       max_num_threads)
   : libraries(libraries)
 {
   static bool constructor_has_already_run = false;
-  (void)constructor_has_already_run;
   Assert(constructor_has_already_run == false,
          ExcMessage("You can only create a single object of this class "
                     "in a program since it initializes the MPI system."));
 
 
-  int ierr = 0;
+  [[maybe_unused]] int ierr = 0;
 #ifdef DEAL_II_WITH_MPI
   if (static_cast<bool>(libraries & InitializeLibrary::MPI))
     {
@@ -100,11 +109,6 @@ InitFinalize::InitFinalize(int                     &argc,
       //    ExcMessage("MPI reports that we are not allowed to use multiple
       //    threads."));
     }
-#else
-  // make sure the compiler doesn't warn about these variables
-  (void)argc;
-  (void)argv;
-  (void)ierr;
 #endif
 
     // we are allowed to call MPI_Init ourselves and PETScInitialize will
@@ -160,6 +164,19 @@ InitFinalize::InitFinalize(int                     &argc,
       sc_init(MPI_COMM_WORLD, 0, 0, nullptr, SC_LP_SILENT);
 #  endif
       p4est_init(nullptr, SC_LP_SILENT);
+    }
+#endif
+
+    // Initialize PSBLAS
+#ifdef DEAL_II_WITH_PSBLAS
+  if (static_cast<bool>(libraries & InitializeLibrary::PSBLAS))
+    {
+      cctxt = psb_c_new_ctxt();
+      Assert(cctxt != nullptr,
+             ExcMessage(
+               "Failed to create PSBLAS context during MPI initialization."));
+      psb_c_init(cctxt);
+      psb_c_set_index_base(0); // Set index base to 0 (PSBLAS default is 1)
     }
 #endif
 
@@ -279,11 +296,11 @@ InitFinalize::InitFinalize(int                     &argc,
       // flag.
       std::vector<char *> argv_new;
       for (auto *const arg : make_array_view(&argv[0], &argv[0] + argc))
-        if (strcmp(arg, "--help") != 0)
+        if (std::strcmp(arg, "--help") != 0)
           argv_new.push_back(arg);
 
       std::stringstream threads_flag;
-#if KOKKOS_VERSION >= 30700
+#if DEAL_II_KOKKOS_VERSION_GTE(3, 7, 0)
       threads_flag << "--kokkos-num-threads=" << MultithreadInfo::n_threads();
 #else
       threads_flag << "--kokkos-threads=" << MultithreadInfo::n_threads();
@@ -328,7 +345,17 @@ InitFinalize::unregister_request(MPI_Request &request)
 
 std::set<MPI_Request *> InitFinalize::requests;
 
+#ifdef DEAL_II_WITH_PSBLAS
 
+psb_c_ctxt *InitFinalize::cctxt;
+
+psb_c_ctxt *
+InitFinalize::get_psblas_context()
+{
+  Assert(cctxt != nullptr, ExcMessage("PSBLAS context was not initialized."));
+  return cctxt;
+}
+#endif
 
 void
 InitFinalize::finalize()
@@ -408,6 +435,14 @@ InitFinalize::finalize()
         sc_finalize();
 #endif
 
+#ifdef DEAL_II_WITH_PSBLAS
+      if (static_cast<bool>(libraries & InitializeLibrary::PSBLAS))
+        {
+          psb_c_exit_ctxt(*cctxt);
+          free(cctxt);
+        }
+#endif
+
 
       // Finalize Kokkos
       if (static_cast<bool>(libraries & InitializeLibrary::Kokkos))
@@ -423,19 +458,13 @@ InitFinalize::finalize()
       if (static_cast<bool>(libraries & InitializeLibrary::MPI) &&
           (MPI_has_been_started))
         {
-#  if __cpp_lib_uncaught_exceptions >= 201411
-          // std::uncaught_exception() is deprecated in c++17
           if (std::uncaught_exceptions() > 0)
-#  else
-          if (std::uncaught_exception() == true)
-#  endif
             {
               // do not try to call MPI_Finalize to avoid a deadlock.
             }
           else
             {
               const int ierr = MPI_Finalize();
-              (void)ierr;
               AssertNothrow(ierr == MPI_SUCCESS, dealii::ExcMPI(ierr));
             }
         }

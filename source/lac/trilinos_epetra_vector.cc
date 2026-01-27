@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2024 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -81,24 +81,21 @@ namespace LinearAlgebra
 #  endif
 
     Vector::Vector()
-      : Subscriptor()
-      , vector(new Epetra_FEVector(
+      : vector(new Epetra_FEVector(
           Epetra_Map(0, 0, 0, Utilities::Trilinos::comm_self())))
     {}
 
 
 
     Vector::Vector(const Vector &V)
-      : Subscriptor()
-      , vector(new Epetra_FEVector(V.trilinos_vector()))
+      : vector(new Epetra_FEVector(V.trilinos_vector()))
     {}
 
 
 
     Vector::Vector(const IndexSet &parallel_partitioner,
                    const MPI_Comm  communicator)
-      : Subscriptor()
-      , vector(new Epetra_FEVector(
+      : vector(new Epetra_FEVector(
           parallel_partitioner.make_trilinos_map(communicator, false)))
     {}
 
@@ -117,7 +114,6 @@ namespace LinearAlgebra
         {
           const int ierr = vector->PutScalar(0.);
           Assert(ierr == 0, ExcTrilinosError(ierr));
-          (void)ierr;
         }
     }
 
@@ -136,7 +132,7 @@ namespace LinearAlgebra
     void
     Vector::extract_subvector_to(
       const ArrayView<const types::global_dof_index> &indices,
-      ArrayView<double>                              &elements) const
+      const ArrayView<double>                        &elements) const
     {
       AssertDimension(indices.size(), elements.size());
       const auto &vector = trilinos_vector();
@@ -172,7 +168,6 @@ namespace LinearAlgebra
               const int ierr =
                 vector->Import(V.trilinos_vector(), data_exchange, Insert);
               Assert(ierr == 0, ExcTrilinosError(ierr));
-              (void)ierr;
             }
           else
             vector = std::make_unique<Epetra_FEVector>(V.trilinos_vector());
@@ -186,11 +181,13 @@ namespace LinearAlgebra
     Vector &
     Vector::operator=(const double s)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       Assert(s == 0., ExcMessage("Only 0 can be assigned to a vector."));
 
       const int ierr = vector->PutScalar(s);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
 
       return *this;
     }
@@ -227,9 +224,8 @@ namespace LinearAlgebra
               communication_pattern);
           AssertThrow(
             epetra_comm_pattern != nullptr,
-            ExcMessage(
-              std::string("The communication pattern is not of type ") +
-              "LinearAlgebra::EpetraWrappers::CommunicationPattern."));
+            ExcMessage("The communication pattern is not of type "
+                       "LinearAlgebra::EpetraWrappers::CommunicationPattern."));
         }
 
       Epetra_Import import_map(epetra_comm_pattern->get_epetra_import());
@@ -256,7 +252,11 @@ namespace LinearAlgebra
     Vector &
     Vector::operator*=(const double factor)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(factor);
+
       vector->Scale(factor);
 
       return *this;
@@ -267,8 +267,12 @@ namespace LinearAlgebra
     Vector &
     Vector::operator/=(const double factor)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(factor);
       Assert(factor != 0., ExcZero());
+
       *this *= 1. / factor;
 
       return *this;
@@ -279,39 +283,26 @@ namespace LinearAlgebra
     Vector &
     Vector::operator+=(const Vector &V)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       // If the maps are the same we can Update right away.
       if (vector->Map().SameAs(V.trilinos_vector().Map()))
         {
           const int ierr = vector->Update(1., V.trilinos_vector(), 1.);
           Assert(ierr == 0, ExcTrilinosError(ierr));
-          (void)ierr;
         }
       else
         {
           Assert(this->size() == V.size(),
                  ExcDimensionMismatch(this->size(), V.size()));
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(11, 11, 0)
           Epetra_Import data_exchange(vector->Map(), V.trilinos_vector().Map());
           const int     ierr = vector->Import(V.trilinos_vector(),
                                           data_exchange,
                                           Epetra_AddLocalAlso);
           Assert(ierr == 0, ExcTrilinosError(ierr));
-          (void)ierr;
-#  else
-          // In versions older than 11.11 the Import function is broken for
-          // adding Hence, we provide a workaround in this case
-
-          Epetra_MultiVector dummy(vector->Map(), 1, false);
-          Epetra_Import data_exchange(dummy.Map(), V.trilinos_vector().Map());
-
-          int ierr = dummy.Import(V.trilinos_vector(), data_exchange, Insert);
-          Assert(ierr == 0, ExcTrilinosError(ierr));
-
-          ierr = vector->Update(1.0, dummy, 1.0);
-          Assert(ierr == 0, ExcTrilinosError(ierr));
-          (void)ierr;
-#  endif
         }
 
       return *this;
@@ -322,6 +313,10 @@ namespace LinearAlgebra
     Vector &
     Vector::operator-=(const Vector &V)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       this->add(-1., V);
 
       return *this;
@@ -340,7 +335,6 @@ namespace LinearAlgebra
       double    result(0.);
       const int ierr = vector->Dot(V.trilinos_vector(), &result);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
 
       return result;
     }
@@ -350,7 +344,11 @@ namespace LinearAlgebra
     void
     Vector::add(const double a)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(a);
+
       const unsigned local_size(vector->MyLength());
       for (unsigned int i = 0; i < local_size; ++i)
         (*vector)[0][i] += a;
@@ -361,13 +359,15 @@ namespace LinearAlgebra
     void
     Vector::add(const double a, const Vector &V)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(a);
       Assert(vector->Map().SameAs(V.trilinos_vector().Map()),
              ExcDifferentParallelPartitioning());
 
       const int ierr = vector->Update(a, V.trilinos_vector(), 1.);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
     }
 
 
@@ -378,6 +378,9 @@ namespace LinearAlgebra
                 const double  b,
                 const Vector &W)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       Assert(vector->Map().SameAs(V.trilinos_vector().Map()),
              ExcDifferentParallelPartitioning());
       Assert(vector->Map().SameAs(W.trilinos_vector().Map()),
@@ -388,7 +391,6 @@ namespace LinearAlgebra
       const int ierr =
         vector->Update(a, V.trilinos_vector(), b, W.trilinos_vector(), 1.);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
     }
 
 
@@ -396,6 +398,10 @@ namespace LinearAlgebra
     void
     Vector::sadd(const double s, const double a, const Vector &V)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       *this *= s;
       Vector tmp(V);
       tmp *= a;
@@ -407,13 +413,15 @@ namespace LinearAlgebra
     void
     Vector::scale(const Vector &scaling_factors)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       Assert(vector->Map().SameAs(scaling_factors.trilinos_vector().Map()),
              ExcDifferentParallelPartitioning());
 
       const int ierr =
         vector->Multiply(1.0, scaling_factors.trilinos_vector(), *vector, 0.0);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
     }
 
 
@@ -421,6 +429,10 @@ namespace LinearAlgebra
     void
     Vector::equ(const double a, const Vector &V)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       // If we don't have the same map, copy.
       if (vector->Map().SameAs(V.trilinos_vector().Map()) == false)
         this->sadd(0., a, V);
@@ -429,7 +441,6 @@ namespace LinearAlgebra
           // Otherwise, just update
           int ierr = vector->Update(a, V.trilinos_vector(), 0.);
           Assert(ierr == 0, ExcTrilinosError(ierr));
-          (void)ierr;
         }
     }
 
@@ -438,28 +449,14 @@ namespace LinearAlgebra
     bool
     Vector::all_zero() const
     {
-      // get a representation of the vector and
-      // loop over all the elements
-      double       *start_ptr = (*vector)[0];
-      const double *ptr = start_ptr, *eptr = start_ptr + vector->MyLength();
-      unsigned int  flag = 0;
-      while (ptr != eptr)
-        {
-          if (*ptr != 0)
-            {
-              flag = 1;
-              break;
-            }
-          ++ptr;
-        }
+      const double *start_ptr = (*vector)[0];
 
-      // Check that the vector is zero on _all_ processors.
-      const Epetra_MpiComm *mpi_comm =
-        dynamic_cast<const Epetra_MpiComm *>(&vector->Map().Comm());
-      Assert(mpi_comm != nullptr, ExcInternalError());
-      unsigned int num_nonzero = Utilities::MPI::sum(flag, mpi_comm->Comm());
+      const bool local_all_zero = std::all_of(start_ptr,
+                                              start_ptr + locally_owned_size(),
+                                              numbers::value_is_zero<double>);
 
-      return num_nonzero == 0;
+      return Utilities::MPI::logical_and(local_all_zero,
+                                         get_mpi_communicator());
     }
 
 
@@ -467,11 +464,12 @@ namespace LinearAlgebra
     double
     Vector::mean_value() const
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       double mean_value(0.);
 
       int ierr = vector->MeanValue(&mean_value);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
 
       return mean_value;
     }
@@ -481,10 +479,11 @@ namespace LinearAlgebra
     double
     Vector::l1_norm() const
     {
-      double norm(0.);
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
+      double norm = 0;
       int    ierr = vector->Norm1(&norm);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
 
       return norm;
     }
@@ -494,10 +493,11 @@ namespace LinearAlgebra
     double
     Vector::l2_norm() const
     {
-      double norm(0.);
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
+      double norm = 0;
       int    ierr = vector->Norm2(&norm);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
 
       return norm;
     }
@@ -507,10 +507,9 @@ namespace LinearAlgebra
     double
     Vector::linfty_norm() const
     {
-      double norm(0.);
+      double norm = 0;
       int    ierr = vector->NormInf(&norm);
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
 
       return norm;
     }
@@ -520,6 +519,8 @@ namespace LinearAlgebra
     double
     Vector::add_and_dot(const double a, const Vector &V, const Vector &W)
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       this->add(a, V);
 
       return *this * W;
@@ -629,7 +630,6 @@ namespace LinearAlgebra
       int     ierr = vector->ExtractView(&val, &leading_dimension);
 
       Assert(ierr == 0, ExcTrilinosError(ierr));
-      (void)ierr;
       out.precision(precision);
       if (scientific)
         out.setf(std::ios::scientific, std::ios::floatfield);

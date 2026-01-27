@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2024 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,6 @@
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/numbers.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/lac/block_indices.h>
 #include <deal.II/lac/exceptions.h>
@@ -438,8 +437,7 @@ namespace internal
  * @ref GlossBlockLA "Block (linear algebra)"
  */
 template <typename VectorType>
-class BlockVectorBase : public Subscriptor,
-                        public ReadVector<typename VectorType::value_type>
+class BlockVectorBase : public ReadVector<typename VectorType::value_type>
 {
 public:
   /**
@@ -611,7 +609,7 @@ public:
   operator()(const size_type i) const;
 
   /**
-   * Access components, returns U(i) as a writeable reference.
+   * Access components, returns U(i) as a writable reference.
    */
   reference
   operator()(const size_type i);
@@ -625,7 +623,7 @@ public:
   operator[](const size_type i) const;
 
   /**
-   * Access components, returns U(i) as a writeable reference.
+   * Access components, returns U(i) as a writable reference.
    *
    * Exactly the same as operator().
    */
@@ -654,7 +652,7 @@ public:
 
   virtual void
   extract_subvector_to(const ArrayView<const types::global_dof_index> &indices,
-                       ArrayView<value_type> &entries) const override;
+                       const ArrayView<value_type> &entries) const override;
 
   /**
    * Instead of getting individual elements of a vector via operator(),
@@ -950,6 +948,14 @@ public:
   update_ghost_values() const;
 
   /**
+   * This function returns the MPI communicator of the vector in the
+   * underlying blocks or, if the vector has not been initialized, the empty
+   * MPI_COMM_SELF.
+   */
+  MPI_Comm
+  get_mpi_communicator() const;
+
+  /**
    * Determine an estimate for the memory consumption (in bytes) of this
    * object.
    */
@@ -1040,17 +1046,8 @@ namespace internal
 
     template <typename BlockVectorType, bool Constness>
     inline Iterator<BlockVectorType, Constness> &
-    Iterator<BlockVectorType, Constness>::operator=(const Iterator &c)
-    {
-      parent              = c.parent;
-      global_index        = c.global_index;
-      index_within_block  = c.index_within_block;
-      current_block       = c.current_block;
-      next_break_forward  = c.next_break_forward;
-      next_break_backward = c.next_break_backward;
-
-      return *this;
-    }
+    Iterator<BlockVectorType, Constness>::operator=(const Iterator &c) =
+      default;
 
 
 
@@ -1596,11 +1593,9 @@ template <typename VectorType>
 bool
 BlockVectorBase<VectorType>::all_zero() const
 {
-  for (size_type i = 0; i < n_blocks(); ++i)
-    if (components[i].all_zero() == false)
-      return false;
-
-  return true;
+  return std::all_of(components.begin(), components.end(), [](const auto &v) {
+    return v.all_zero();
+  });
 }
 
 
@@ -1995,6 +1990,18 @@ BlockVectorBase<VectorType>::update_ghost_values() const
 
 
 template <typename VectorType>
+MPI_Comm
+BlockVectorBase<VectorType>::get_mpi_communicator() const
+{
+  if (n_blocks() > 0)
+    return block(0).get_mpi_communicator();
+  else
+    return MPI_COMM_SELF;
+}
+
+
+
+template <typename VectorType>
 BlockVectorBase<VectorType> &
 BlockVectorBase<VectorType>::operator=(const value_type s)
 {
@@ -2155,7 +2162,7 @@ template <typename VectorType>
 inline void
 BlockVectorBase<VectorType>::extract_subvector_to(
   const ArrayView<const types::global_dof_index> &indices,
-  ArrayView<value_type>                          &entries) const
+  const ArrayView<value_type>                    &entries) const
 {
   AssertDimension(indices.size(), entries.size());
   for (unsigned int i = 0; i < indices.size(); ++i)

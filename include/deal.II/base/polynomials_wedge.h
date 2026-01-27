@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -32,7 +32,7 @@ namespace internal
    * to access the right shape function within the triangle and within
    * the line.
    */
-  static const constexpr dealii::ndarray<unsigned int, 6, 2> wedge_table_1{
+  constexpr dealii::ndarray<unsigned int, 6, 2> wedge_table_1{
     {{{0, 0}}, {{1, 0}}, {{2, 0}}, {{0, 1}}, {{1, 1}}, {{2, 1}}}};
 
   /**
@@ -40,25 +40,24 @@ namespace internal
    * to access the right shape function within the triangle and within
    * the line.
    */
-  static const constexpr dealii::ndarray<unsigned int, 18, 2> wedge_table_2{
-    {{{0, 0}},
-     {{1, 0}},
-     {{2, 0}},
-     {{0, 1}},
-     {{1, 1}},
-     {{2, 1}},
-     {{3, 0}},
-     {{4, 0}},
-     {{5, 0}},
-     {{3, 1}},
-     {{4, 1}},
-     {{5, 1}},
-     {{0, 2}},
-     {{1, 2}},
-     {{2, 2}},
-     {{3, 2}},
-     {{4, 2}},
-     {{5, 2}}}};
+  constexpr dealii::ndarray<unsigned int, 18, 2> wedge_table_2{{{{0, 0}},
+                                                                {{1, 0}},
+                                                                {{2, 0}},
+                                                                {{0, 1}},
+                                                                {{1, 1}},
+                                                                {{2, 1}},
+                                                                {{3, 0}},
+                                                                {{4, 0}},
+                                                                {{5, 0}},
+                                                                {{3, 1}},
+                                                                {{4, 1}},
+                                                                {{5, 1}},
+                                                                {{0, 2}},
+                                                                {{1, 2}},
+                                                                {{2, 2}},
+                                                                {{3, 2}},
+                                                                {{4, 2}},
+                                                                {{5, 2}}}};
 } // namespace internal
 
 

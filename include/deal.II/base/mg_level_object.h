@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
 
 #include <memory>
 #include <vector>
@@ -45,7 +45,7 @@ DEAL_II_NAMESPACE_OPEN
  * @ingroup data
  */
 template <class Object>
-class MGLevelObject : public Subscriptor
+class MGLevelObject : public EnableObserverPointer
 {
 public:
   /**

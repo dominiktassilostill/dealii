@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2024 by the deal.II authors
+// Copyright (C) 2024 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -199,11 +199,12 @@ namespace LinearAlgebra
     BlockVector<Number, MemorySpace>::has_ghost_elements() const
     {
       bool ghosted = this->block(0).has_ghost_elements();
-#  ifdef DEBUG
-      for (unsigned int i = 0; i < this->n_blocks(); ++i)
-        Assert(this->block(i).has_ghost_elements() == ghosted,
-               ExcInternalError());
-#  endif
+      if constexpr (running_in_debug_mode())
+        {
+          for (unsigned int i = 0; i < this->n_blocks(); ++i)
+            Assert(this->block(i).has_ghost_elements() == ghosted,
+                   ExcInternalError());
+        }
       return ghosted;
     }
 
@@ -229,6 +230,14 @@ namespace LinearAlgebra
   } // namespace TpetraWrappers
 } // namespace LinearAlgebra
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_TRILINOS_WITH_TPETRA

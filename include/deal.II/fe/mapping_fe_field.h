@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2024 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,11 +29,70 @@
 
 #include <deal.II/lac/vector.h>
 
+#include <boost/container/small_vector.hpp>
+
 #include <array>
 
 
 DEAL_II_NAMESPACE_OPEN
 
+namespace internal
+{
+  /**
+   * Per-component enumeration of a FiniteElement suitable for use with
+   * MappingFEField's DoFs.
+   *
+   * MappingFEField can use both primitive finite elements (i.e., elements which
+   * are nonzero in exactly one component) as well as a ComponentMask to select
+   * components from a FiniteElement with more than `spacedim` components. This
+   * class computes, from both the FiniteElement and ComponentMask, the nonzero
+   * DoFs for each selected component.
+   *
+   * @note this class is not an internal class of MappingFEField to make it
+   * easier to use in maybe_update_Jacobians() etc.
+   */
+  template <int dim, int spacedim = dim>
+  class ComponentDoFs
+  {
+  public:
+    /**
+     * Constructor. @p mask should select `spacedim` components of @p fe used
+     * with the current MappingFEField.
+     */
+    ComponentDoFs(const FiniteElement<dim, spacedim> &fe,
+                  const ComponentMask                &mask);
+
+    /**
+     * Return whether or not all selected components of the original
+     * FiniteElement are primitive.
+     */
+    bool
+    all_components_are_primitive() const;
+
+    /**
+     * Return an ArrayView for the DoFs which are nonzero for a particular
+     * component.
+     */
+    ArrayView<const unsigned int>
+    operator[](const unsigned int component) const;
+
+  private:
+    /**
+     * Whether or not all the selected base FiniteElement objects are primitive.
+     */
+    bool all_components_primitive;
+
+    /**
+     * Offsets into component_dofs. See operator[]'s definition.
+     */
+    std::array<unsigned int, spacedim + 1> offsets;
+
+    /**
+     * DoFs which are nonzero for each component.
+     */
+    std::vector<unsigned int> component_dofs;
+  };
+} // namespace internal
 
 /**
  * @addtogroup mapping
@@ -170,7 +229,12 @@ public:
    * that was passed at construction time.
    */
   virtual boost::container::small_vector<Point<spacedim>,
-                                         GeometryInfo<dim>::vertices_per_cell>
+#ifndef _MSC_VER
+                                         ReferenceCells::max_n_vertices<dim>()
+#else
+                                         GeometryInfo<dim>::vertices_per_cell
+#endif
+                                         >
   get_vertices(const typename Triangulation<dim, spacedim>::cell_iterator &cell)
     const override;
 
@@ -367,7 +431,7 @@ public:
     /**
      * A pointer to the underlying finite element.
      */
-    SmartPointer<const FiniteElement<dim, spacedim>> fe;
+    ObserverPointer<const FiniteElement<dim, spacedim>> fe;
 
     /**
      * Values of shape functions. Access by function @p shape.
@@ -570,15 +634,15 @@ protected:
   /**
    * Reference to the vector of shifts.
    */
-  std::vector<
-    SmartPointer<const VectorType, MappingFEField<dim, spacedim, VectorType>>>
+  std::vector<ObserverPointer<const VectorType,
+                              MappingFEField<dim, spacedim, VectorType>>>
     euler_vector;
 
   /**
    * Pointer to the DoFHandler to which the mapping vector is associated.
    */
-  SmartPointer<const DoFHandler<dim, spacedim>,
-               MappingFEField<dim, spacedim, VectorType>>
+  ObserverPointer<const DoFHandler<dim, spacedim>,
+                  MappingFEField<dim, spacedim, VectorType>>
     euler_dof_handler;
 
 private:
@@ -636,15 +700,9 @@ private:
   const ComponentMask fe_mask;
 
   /**
-   * Mapping between indices in the FE space and the real space. This vector
-   * contains one index for each component of the finite element space. If the
-   * index is one for which the ComponentMask which is used to construct this
-   * element is false, then numbers::invalid_unsigned_int is returned,
-   * otherwise the component in real space is returned. For example, if we
-   * construct the mapping using ComponentMask(spacedim, true), then this
-   * vector contains {0,1,2} in spacedim = 3.
+   * Enumeration of the nonzero DoFs per selected component.
    */
-  std::vector<unsigned int> fe_to_real;
+  internal::ComponentDoFs<dim, spacedim> component_dofs;
 
   /**
    * FEValues object used to query the given finite element field at the
@@ -653,7 +711,15 @@ private:
   mutable FEValues<dim, spacedim> fe_values;
 
   /**
-   * A variable to guard access to the fe_values variable.
+   * DoF indices of the current cell.
+   */
+  mutable std::vector<types::global_dof_index> dof_indices;
+
+  /**
+   * A variable to guard access to fe_values and dof_indices.
+   *
+   * @note These three variables are only used in get_vertices(): all other
+   * functions use InternalData to store temporary values.
    */
   mutable Threads::Mutex fe_values_mutex;
 

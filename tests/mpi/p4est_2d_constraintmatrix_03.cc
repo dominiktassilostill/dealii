@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -49,7 +49,7 @@
 
 template <int dim>
 void
-test()
+test(const bool use_manifold_for_normal, const Mapping<dim> &mapping)
 {
   unsigned int myid = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
 
@@ -97,7 +97,7 @@ test()
   TrilinosWrappers::MPI::Vector x_rel;
   x_rel.reinit(relevant_set, MPI_COMM_WORLD);
 
-  AffineConstraints<double> cm(relevant_set);
+  AffineConstraints<double> cm(owned_set, relevant_set);
   DoFTools::make_hanging_node_constraints(dofh, cm);
   ComponentMask velocity_mask(dim + 1, true);
 
@@ -110,10 +110,8 @@ test()
   no_normal_flux_boundaries.insert(1);
 
 
-  VectorTools::compute_no_normal_flux_constraints(dofh,
-                                                  0,
-                                                  no_normal_flux_boundaries,
-                                                  cm);
+  VectorTools::compute_no_normal_flux_constraints(
+    dofh, 0, no_normal_flux_boundaries, cm, mapping, use_manifold_for_normal);
 
   cm.close();
 
@@ -138,5 +136,10 @@ main(int argc, char *argv[])
   Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
 
   mpi_initlog();
-  test<2>();
+  deallog << "Normal with manifold:" << std::endl;
+  test<2>(true, MappingQ1<2>());
+  deallog << std::endl;
+
+  deallog << "Normal with mapping:" << std::endl;
+  test<2>(false, MappingQ<2>(3));
 }

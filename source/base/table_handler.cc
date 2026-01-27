@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -12,6 +12,7 @@
 //
 // ------------------------------------------------------------------------
 
+#include <deal.II/base/exceptions.h>
 #include <deal.II/base/table_handler.h>
 
 #include <boost/io/ios_state.hpp>
@@ -20,6 +21,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <variant>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -90,7 +92,10 @@ namespace internal
     else
       ss.setf(std::ios::fixed, std::ios::floatfield);
 
-    std::visit([&ss](const auto &v) { ss << v; }, value);
+    if (scientific)
+      ss << get_numeric_value();
+    else
+      std::visit([&ss](const auto &v) { ss << v; }, value);
 
     cached_value = ss.str();
     if (cached_value.empty())
@@ -397,7 +402,7 @@ TableHandler::write_text(std::ostream &out, const TextOutputFormat format) const
   std::vector<unsigned int>   column_widths(n_cols, 0);
   for (unsigned int j = 0; j < n_cols; ++j)
     {
-      std::string                                         key = sel_columns[j];
+      const std::string                                  &key = sel_columns[j];
       const std::map<std::string, Column>::const_iterator col_iter =
         columns.find(key);
       Assert(col_iter != columns.end(), ExcInternalError());
@@ -475,7 +480,7 @@ TableHandler::write_text(std::ostream &out, const TextOutputFormat format) const
           // header for each column. enumerate columns starting with 1
           for (unsigned int j = 0; j < n_cols; ++j)
             {
-              std::string key = sel_columns[j];
+              const std::string &key = sel_columns[j];
               out << "# " << j + 1 << ": " << key << '\n';
             }
           break;
@@ -686,7 +691,7 @@ TableHandler::write_tex(std::ostream &out, const bool with_header) const
 
       for (unsigned int j = 0; j < n_cols; ++j)
         {
-          std::string key = sel_columns[j];
+          const std::string &key = sel_columns[j];
           // avoid `column[key]'
           const std::map<std::string, Column>::const_iterator col_iter =
             columns.find(key);
@@ -748,13 +753,16 @@ TableHandler::n_rows() const
   std::map<std::string, Column>::const_iterator col_iter = columns.begin();
   unsigned int n = col_iter->second.entries.size();
 
-#ifdef DEBUG
-  std::string first_name = col_iter->first;
-  for (++col_iter; col_iter != columns.end(); ++col_iter)
-    Assert(col_iter->second.entries.size() == n,
-           ExcWrongNumberOfDataEntries(
-             col_iter->first, col_iter->second.entries.size(), first_name, n));
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      std::string first_name = col_iter->first;
+      for (++col_iter; col_iter != columns.end(); ++col_iter)
+        Assert(col_iter->second.entries.size() == n,
+               ExcWrongNumberOfDataEntries(col_iter->first,
+                                           col_iter->second.entries.size(),
+                                           first_name,
+                                           n));
+    }
 
   return n;
 }

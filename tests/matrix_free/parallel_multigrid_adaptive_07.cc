@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2023 by the deal.II authors
+// Copyright (C) 2015 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -68,14 +68,14 @@ template <int dim,
           int n_q_points_1d,
           typename BlockVectorType =
             LinearAlgebra::distributed::BlockVector<double>>
-class BlockLaplace : public Subscriptor
+class BlockLaplace : public EnableObserverPointer
 {
 public:
   using value_type = typename BlockVectorType::value_type;
   using size_type  = typename BlockVectorType::size_type;
 
   BlockLaplace()
-    : Subscriptor()
+    : EnableObserverPointer()
   {}
 
   void
@@ -252,7 +252,8 @@ do_test(const std::vector<const DoFHandler<dim> *> &dof)
   std::vector<const AffineConstraints<double> *> constraints_ptrs(dof.size());
   for (unsigned int i = 0; i < dof.size(); ++i)
     {
-      constraints[i].reinit(locally_relevant_dofs[i]);
+      constraints[i].reinit(dof[i]->locally_owned_dofs(),
+                            locally_relevant_dofs[i]);
       DoFTools::make_hanging_node_constraints(*dof[i], constraints[i]);
       VectorTools::interpolate_boundary_values(*dof[i],
                                                dirichlet_boundary,
@@ -284,15 +285,9 @@ do_test(const std::vector<const DoFHandler<dim> *> &dof)
   fine_matrix.initialize(fine_level_data);
   fine_matrix.compute_diagonal();
 
-  LinearAlgebra::distributed::BlockVector<number> in(nb), sol(nb);
-  for (unsigned int b = 0; b < nb; ++b)
-    {
-      fine_level_data->initialize_dof_vector(in.block(b), b);
-      fine_level_data->initialize_dof_vector(sol.block(b), b);
-    }
-
-  in.collect_sizes();
-  sol.collect_sizes();
+  LinearAlgebra::distributed::BlockVector<number> in, sol;
+  fine_level_data->initialize_dof_vector(in);
+  fine_level_data->initialize_dof_vector(sol);
 
   // set constant rhs vector
   {
@@ -301,7 +296,8 @@ do_test(const std::vector<const DoFHandler<dim> *> &dof)
         // this is to make it consistent with parallel_multigrid_adaptive.cc
         AffineConstraints<double> hanging_node_constraints;
 
-        hanging_node_constraints.reinit(locally_relevant_dofs[b]);
+        hanging_node_constraints.reinit(dof[b]->locally_owned_dofs(),
+                                        locally_relevant_dofs[b]);
         DoFTools::make_hanging_node_constraints(*dof[b],
                                                 hanging_node_constraints);
         hanging_node_constraints.close();
@@ -350,7 +346,8 @@ do_test(const std::vector<const DoFHandler<dim> *> &dof)
         {
           const IndexSet relevant_dofs =
             DoFTools::extract_locally_relevant_level_dofs(*dof[i], level);
-          level_constraints[i].reinit(relevant_dofs);
+          level_constraints[i].reinit(dof[i]->locally_owned_mg_dofs(level),
+                                      relevant_dofs);
           level_constraints[i].add_lines(
             mg_constrained_dofs[i].get_boundary_indices(level));
           level_constraints[i].close();

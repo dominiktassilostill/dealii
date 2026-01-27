@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2013 - 2023 by the deal.II authors
+## Copyright (C) 2013 - 2024 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -118,4 +118,3 @@ if (CMAKE_BUILD_TYPE MATCHES "Debug")
   # generate some debug info:
   enable_if_supported(DEAL_II_CXX_FLAGS_DEBUG "/Zi /MDd /Od")
 endif()
-

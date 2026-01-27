@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,8 @@
 #include <deal.II/fe/fe.h>
 
 #include <deal.II/grid/tria_iterator.h>
-#include <deal.II/grid/tria_iterator.templates.h>
+
+#include <boost/container/small_vector.hpp>
 
 #include <vector>
 
@@ -260,8 +261,8 @@ namespace internal
     void
     get_cell_dof_indices(
       const dealii::DoFCellAccessor<dim, spacedim, level_dof_access> &accessor,
-      boost::container::small_vector<types::global_dof_index, 27> &dof_indices,
-      const unsigned int                                           fe_index)
+      Implementation::dof_index_vector_type &dof_indices,
+      const unsigned int                     fe_index)
     {
       Implementation::process_dof_indices(
         accessor,
@@ -321,6 +322,6 @@ DoFCellAccessor<dimension_, space_dimension_, level_dof_access>::
 
 // --------------------------------------------------------------------------
 // explicit instantiations
-#include "dof_accessor.inst"
+#include "dofs/dof_accessor.inst"
 
 DEAL_II_NAMESPACE_CLOSE

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,9 +18,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/point.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/fe/mapping.h>
 
@@ -35,6 +35,7 @@
 
 #include <atomic>
 #include <cmath>
+#include <set>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -63,7 +64,7 @@ namespace GridTools
    * method mark_for_update() manually.
    */
   template <int dim, int spacedim = dim>
-  class Cache : public Subscriptor
+  class Cache : public EnableObserverPointer
   {
   public:
     /**
@@ -241,12 +242,13 @@ namespace GridTools
     /**
      * A pointer to the Triangulation.
      */
-    SmartPointer<const Triangulation<dim, spacedim>, Cache<dim, spacedim>> tria;
+    ObserverPointer<const Triangulation<dim, spacedim>, Cache<dim, spacedim>>
+      tria;
 
     /**
      * Mapping to use when computing on the Triangulation.
      */
-    SmartPointer<const Mapping<dim, spacedim>, Cache<dim, spacedim>> mapping;
+    ObserverPointer<const Mapping<dim, spacedim>, Cache<dim, spacedim>> mapping;
 
 
     /**

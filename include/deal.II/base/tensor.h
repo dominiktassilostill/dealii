@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,22 +24,14 @@
 #include <deal.II/base/template_constraints.h>
 #include <deal.II/base/tensor_accessors.h>
 
+#include <Kokkos_Array.hpp>
+
 #ifdef DEAL_II_WITH_ADOLC
 #  include <adolc/adouble.h> // Taped double
 #endif
 
-// boost::serialization::make_array used to be in array.hpp, but was
-// moved to a different file in BOOST 1.64
-#include <boost/version.hpp>
-#if BOOST_VERSION >= 106400
-#  include <boost/serialization/array_wrapper.hpp>
-#else
-#  include <boost/serialization/array.hpp>
-#endif
-
-
-#include <array>
 #include <cmath>
+#include <complex>
 #include <ostream>
 #include <type_traits>
 
@@ -629,28 +621,28 @@ public:
   /**
    * Return a pointer to the first element of the underlying storage.
    */
-  DEAL_II_DEPRECATED_EARLY
+  DEAL_II_DEPRECATED
   Number *
   begin_raw();
 
   /**
    * Return a const pointer to the first element of the underlying storage.
    */
-  DEAL_II_DEPRECATED_EARLY
+  DEAL_II_DEPRECATED
   const Number *
   begin_raw() const;
 
   /**
    * Return a pointer to the element past the end of the underlying storage.
    */
-  DEAL_II_DEPRECATED_EARLY
+  DEAL_II_DEPRECATED
   Number *
   end_raw();
 
   /**
    * Return a pointer to the element past the end of the underlying storage.
    */
-  DEAL_II_DEPRECATED_EARLY
+  DEAL_II_DEPRECATED
   const Number *
   end_raw() const;
 
@@ -792,20 +784,6 @@ public:
     norm_square() const;
 
   /**
-   * Fill a vector with all tensor elements.
-   *
-   * This function unrolls all tensor entries into a single, linearly numbered
-   * vector. As usual in C++, the rightmost index of the tensor marches
-   * fastest.
-   *
-   * @deprecated Use the more general function that takes a pair of iterators
-   * instead.
-   */
-  template <typename OtherNumber>
-  DEAL_II_DEPRECATED void
-  unroll(Vector<OtherNumber> &result) const;
-
-  /**
    * Fill a range with all tensor elements.
    *
    * This function unrolls all tensor entries into a single, linearly numbered
@@ -862,9 +840,15 @@ private:
    * a rank-1 tensor, then we simply need an array of scalars.
    * Otherwise, it is an array of tensors one rank lower.
    */
+#if DEAL_II_KOKKOS_VERSION_GTE(3, 7, 0)
+  std::conditional_t<rank_ == 1,
+                     Kokkos::Array<Number, dim>,
+                     Kokkos::Array<Tensor<rank_ - 1, dim, Number>, dim>>
+#else
   std::conditional_t<rank_ == 1,
                      std::array<Number, dim>,
                      std::array<Tensor<rank_ - 1, dim, Number>, dim>>
+#endif
     values;
 
   /**
@@ -1121,7 +1105,7 @@ namespace internal
     constexpr DEAL_II_HOST_DEVICE_ALWAYS_INLINE void
     multiply_assign_scalar(std::complex<Number> &val, const OtherNumber &s)
     {
-#  if KOKKOS_VERSION >= 30600
+#  if DEAL_II_KOKKOS_VERSION_GTE(3, 6, 0)
       KOKKOS_IF_ON_HOST((val *= s;))
       KOKKOS_IF_ON_DEVICE(({
         (void)val;
@@ -1130,14 +1114,8 @@ namespace internal
           "This function is not implemented for std::complex<Number>!\n");
       }))
 #  else
-#    ifdef KOKKOS_ACTIVE_EXECUTION_MEMORY_SPACE_HOST
+      // We do not support device code for Kokkos < 3.7:
       val *= s;
-#    else
-      (void)val;
-      (void)s;
-      Kokkos::abort(
-        "This function is not implemented for std::complex<Number>!\n");
-#    endif
 #  endif
     }
   } // namespace ComplexWorkaround
@@ -1211,7 +1189,6 @@ template <class Iterator>
 inline void
 Tensor<0, dim, Number>::unroll(const Iterator begin, const Iterator end) const
 {
-  (void)end;
   AssertDimension(std::distance(begin, end), n_independent_components);
   Assert(dim != 0,
          ExcMessage("Cannot unroll an object of type Tensor<0,0,Number>"));
@@ -1270,23 +1247,23 @@ Tensor<rank_, dim, Number>::Tensor(const ArrayLike &initializer,
 }
 
 
-#  ifdef DEAL_II_HAVE_CXX20
+#  if defined(DEAL_II_HAVE_CXX20) && !defined(__NVCC__)
 
 template <int rank_, int dim, typename Number>
 constexpr DEAL_II_HOST_DEVICE_ALWAYS_INLINE
 Tensor<rank_, dim, Number>::Tensor()
   : values(
-      // In order to initialize the std::array<Number,dim>, we would need a
+      // In order to initialize the Kokkos::Array<Number,dim>, we would need a
       // brace-enclosed list of length 'dim'. There is no way in C++ to create
       // such a list in-place, but we can come up with a lambda function that
       // expands such a list via template-pack expansion, and then uses this
-      // list to initialize a std::array which it then returns.
+      // list to initialize a Kokkos::Array which it then returns.
       //
       // The trick to come up with such a lambda function is to have a function
       // that takes an argument that depends on a template-pack of integers.
       // We will call the function with an integer list of length 'dim', and
       // in the function itself expand that pack in a way that it serves as
-      // a brace-enclosed list of initializers for a std::array.
+      // a brace-enclosed list of initializers for a Kokkos::Array.
       //
       // Of course, we do not want to initialize the array with the integers,
       // but with  zeros. (Or, more correctly, a zero of the element type.)
@@ -1309,7 +1286,11 @@ Tensor<rank_, dim, Number>::Tensor()
       // returning a zero instead.
       []<std::size_t... I>(
         const std::index_sequence<I...> &) constexpr -> decltype(values) {
-        if constexpr (rank_ == 1)
+        if constexpr (dim == 0)
+          {
+            return {};
+          }
+        else if constexpr (rank_ == 1)
           {
             auto get_zero_and_ignore_argument = [](int) {
               return internal::NumberType<Number>::value(0.0);
@@ -1342,7 +1323,11 @@ namespace internal
   namespace TensorInitialization
   {
     template <int rank, int dim, typename Number, std::size_t... I>
+#    if DEAL_II_KOKKOS_VERSION_GTE(3, 7, 0)
+    constexpr Kokkos::Array<typename Tensor<rank, dim, Number>::value_type, dim>
+#    else
     constexpr std::array<typename Tensor<rank, dim, Number>::value_type, dim>
+#    endif
     make_zero_array(const std::index_sequence<I...> &)
     {
       static_assert(sizeof...(I) == dim, "This is bad.");
@@ -1435,7 +1420,7 @@ constexpr DEAL_II_ALWAYS_INLINE Tensor<rank_, dim, Number>::
 operator Tensor<1, dim, Tensor<rank_ - 1, dim, OtherNumber>>() const
 {
   Tensor<1, dim, Tensor<rank_ - 1, dim, OtherNumber>> x;
-  std::copy(values.begin(), values.end(), x.values.begin());
+  std::copy(values.data(), values.data() + values.size(), x.values.data());
   return x;
 }
 
@@ -1588,7 +1573,6 @@ constexpr DEAL_II_HOST_DEVICE inline DEAL_II_ALWAYS_INLINE
   Tensor<rank_, dim, Number>::operator=(const Number &d) &
 {
   Assert(numbers::value_is_zero(d), ExcScalarAssignmentOnlyForZeroValue());
-  (void)d;
 
   for (unsigned int i = 0; i < dim; ++i)
     values[i] = internal::NumberType<Number>::value(0.0);
@@ -1710,8 +1694,8 @@ constexpr inline DEAL_II_ALWAYS_INLINE
   DEAL_II_HOST_DEVICE Tensor<rank_, dim, Number> &
   Tensor<rank_, dim, Number>::operator/=(const OtherNumber &s)
 {
-  if constexpr (std::is_integral<
-                  typename ProductType<Number, OtherNumber>::type>::value ||
+  if constexpr (std::is_integral_v<
+                  typename ProductType<Number, OtherNumber>::type> ||
                 std::is_same_v<Number, Differentiation::SD::Expression>)
     {
       // recurse over the base objects
@@ -1808,16 +1792,6 @@ constexpr DEAL_II_HOST_DEVICE_ALWAYS_INLINE
 
 
 template <int rank_, int dim, typename Number>
-template <typename OtherNumber>
-inline void
-Tensor<rank_, dim, Number>::unroll(Vector<OtherNumber> &result) const
-{
-  unroll(result.begin(), result.end());
-}
-
-
-
-template <int rank_, int dim, typename Number>
 template <class Iterator>
 inline void
 Tensor<rank_, dim, Number>::unroll(const Iterator begin,
@@ -1838,12 +1812,11 @@ Tensor<rank_, dim, Number>::unroll(const Iterator begin,
     {
       // For rank-1 tensors, we can simply copy the current elements from
       // our linear array into the output range:
-      (void)end;
       Assert(std::distance(begin, end) >= dim,
              ExcMessage(
                "The provided iterator range must contain at least 'dim' "
                "elements."));
-      std::copy(std::begin(values), std::end(values), begin);
+      std::copy(values.data(), values.data() + values.size(), begin);
     }
 }
 
@@ -1870,7 +1843,6 @@ Tensor<rank_, dim, Number>::unrolled_to_component_indices(const unsigned int i)
   // Work-around nvcc warning
   unsigned int dummy = n_independent_components;
   AssertIndexRange(i, dummy);
-  (void)dummy;
 
   if constexpr (dim == 0)
     {
@@ -1919,10 +1891,10 @@ template <class Archive>
 inline void
 Tensor<rank_, dim, Number>::serialize(Archive &ar, const unsigned int)
 {
-  if constexpr (rank_ > 1)
-    ar &values;
-  else
-    ar &boost::serialization::make_array(&values[0], dim);
+  for (int i = 0; i < dim; ++i)
+    {
+      ar &values[i];
+    }
 }
 
 
@@ -2698,14 +2670,12 @@ constexpr inline DEAL_II_ALWAYS_INLINE
 
   Tensor<1, dim, typename ProductType<Number1, Number2>::type> result;
 
-  // avoid compiler warnings
-  constexpr int s0 = 0 % dim;
-  constexpr int s1 = 1 % dim;
-  constexpr int s2 = 2 % dim;
-
-  result[s0] = src1[s1] * src2[s2] - src1[s2] * src2[s1];
-  result[s1] = src1[s2] * src2[s0] - src1[s0] * src2[s2];
-  result[s2] = src1[s0] * src2[s1] - src1[s1] * src2[s0];
+  if constexpr (dim == 3)
+    {
+      result[0] = src1[1] * src2[2] - src1[2] * src2[1];
+      result[1] = src1[2] * src2[0] - src1[0] * src2[2];
+      result[2] = src1[0] * src2[1] - src1[1] * src2[0];
+    }
 
   return result;
 }

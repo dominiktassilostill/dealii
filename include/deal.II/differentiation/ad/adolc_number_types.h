@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2023 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,23 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/exceptions.h>
+#include <deal.II/base/numbers.h>
+
+#include <deal.II/differentiation/ad/ad_number_traits.h>
+#include <deal.II/differentiation/ad/ad_number_types.h>
+
+#ifdef DEAL_II_WITH_ADOLC
+#  include <adolc/adouble.h> // Taped double
+#  include <adolc/adtl.h>    // Tapeless double
+#  include <adolc/internal/adolc_settings.h>
+#  include <adolc/internal/adubfunc.h> // Taped double math functions
+#endif
+
+#include <complex>
+#include <limits>
 #include <type_traits>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -58,26 +74,8 @@ namespace Differentiation
 } // namespace Differentiation
 
 
-DEAL_II_NAMESPACE_CLOSE
-
 
 #ifdef DEAL_II_WITH_ADOLC
-
-#  include <deal.II/base/exceptions.h>
-#  include <deal.II/base/numbers.h>
-
-#  include <deal.II/differentiation/ad/ad_number_traits.h>
-#  include <deal.II/differentiation/ad/ad_number_types.h>
-
-#  include <adolc/adouble.h> // Taped double
-#  include <adolc/adtl.h>    // Tapeless double
-#  include <adolc/internal/adolc_settings.h>
-#  include <adolc/internal/adubfunc.h> // Taped double math functions
-
-#  include <complex>
-#  include <limits>
-
-DEAL_II_NAMESPACE_OPEN
 
 /**
  * An exception which states that a function has been disabled due to the
@@ -334,7 +332,7 @@ namespace Differentiation
     {
       static_assert(std::is_same_v<ad_type, adouble>,
                     "Incorrect template type selected for taped ad_type");
-      static_assert(is_taped == true, "Incorrect setting for taping");
+      static_assert(is_taped, "Incorrect setting for taping");
     };
 
 
@@ -356,7 +354,7 @@ namespace Differentiation
     {
       static_assert(std::is_same_v<ad_type, std::complex<adouble>>,
                     "Incorrect template type selected for taped ad_type");
-      static_assert(is_taped == true, "Incorrect setting for taping");
+      static_assert(is_taped, "Incorrect setting for taping");
     };
 
 
@@ -377,7 +375,7 @@ namespace Differentiation
     {
       static_assert(std::is_same_v<ad_type, adtl::adouble>,
                     "Incorrect template type selected for tapeless ad_type");
-      static_assert(is_tapeless == true, "Incorrect setting for taping");
+      static_assert(is_tapeless, "Incorrect setting for taping");
     };
 
 
@@ -400,7 +398,7 @@ namespace Differentiation
     {
       static_assert(std::is_same_v<ad_type, std::complex<adtl::adouble>>,
                     "Incorrect template type selected for tapeless ad_type");
-      static_assert(is_tapeless == true, "Incorrect setting for taping");
+      static_assert(is_tapeless, "Incorrect setting for taping");
     };
 
 
@@ -495,9 +493,9 @@ namespace Differentiation
 #  endif // DOXYGEN
 
 
+#endif // DEAL_II_WITH_ADOLC
+
 DEAL_II_NAMESPACE_CLOSE
 
-
-#endif // DEAL_II_WITH_ADOLC
 
 #endif

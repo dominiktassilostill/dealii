@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -265,7 +265,7 @@ namespace Functions
           delta_t = delta_c / std::sqrt(a * a + b * b - x * x - y * y);
           t += delta_t;
           // make sure the angle stays in first quadrant
-          t = std::min(numbers::PI_2, std::max(0.0, t));
+          t = std::clamp(t, 0.0, numbers::PI_2);
           x = a * std::cos(t);
           y = b * std::sin(t);
           ++iter;
@@ -416,6 +416,6 @@ namespace Functions
   } // namespace SignedDistance
 } // namespace Functions
 
-#include "function_signed_distance.inst"
+#include "base/function_signed_distance.inst"
 
 DEAL_II_NAMESPACE_CLOSE

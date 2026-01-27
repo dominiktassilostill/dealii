@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,20 @@
 
 #include <deal.II/base/point.h>
 
-namespace boost
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
+#include <boost/geometry/core/coordinate_dimension.hpp>
+#include <boost/geometry/core/coordinate_system.hpp>
+#include <boost/geometry/core/coordinate_type.hpp>
+#include <boost/geometry/core/cs.hpp>
+#include <boost/geometry/core/tag.hpp>
+#include <boost/geometry/strategies/strategies.hpp>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
+
+
+DEAL_II_NAMESPACE_OPEN
+DEAL_II_NAMESPACE_CLOSE // Do not convert for module purposes
+
+  namespace boost
 {
   namespace geometry
   {
@@ -85,6 +98,8 @@ namespace boost
   }   // namespace geometry
 } // namespace boost
 
+DEAL_II_NAMESPACE_OPEN // Do not convert for module purposes
+  DEAL_II_NAMESPACE_CLOSE
 
 
 #endif

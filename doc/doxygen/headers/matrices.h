@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2015 by the deal.II authors
+// Copyright (C) 2006 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,7 +26,7 @@
  * write iterative linear solvers (see @ref Solvers), but also element-wise
  * access to read from and write to a matrix.
  *
- * This module is split into different parts. @ref Matrix1 "Basic matrices"
+ * This documentation topic is split into different parts. @ref Matrix1 "Basic matrices"
  * contains all the matrix classes actually storing entries. @ref Matrix2
  * "Derived matrices", on the other hand, only use basic matrices, but
  * implement certain operations on them. For example, TransposeMatrix provides

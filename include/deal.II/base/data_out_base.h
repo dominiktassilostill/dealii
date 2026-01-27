@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,6 +20,7 @@
 
 #include <deal.II/base/geometry_info.h>
 #include <deal.II/base/mpi_stub.h>
+#include <deal.II/base/numbers.h>
 #include <deal.II/base/point.h>
 #include <deal.II/base/table.h>
 
@@ -1145,7 +1146,7 @@ namespace DataOutBase
      * the instructions provided in
      * http://www.visitusers.org/index.php?title=Time_and_Cycle_in_VTK_files
      * unless it is at its default value of
-     * @verbatim std::numeric_limits<unsigned int>::min() @endverbatim.
+     * @verbatim numbers::invalid_unsigned_int @endverbatim.
      */
     unsigned int cycle;
 
@@ -1156,24 +1157,6 @@ namespace DataOutBase
      * Default is <tt>true</tt>.
      */
     bool print_date_and_time;
-
-    /**
-     * A data type providing the different possible zlib compression
-     * levels. These map directly to constants defined by zlib.
-     *
-     * @deprecated Use DataOutBase::CompressionLevel instead.
-     */
-    using ZlibCompressionLevel DEAL_II_DEPRECATED =
-      DataOutBase::CompressionLevel;
-
-    DEAL_II_DEPRECATED static const DataOutBase::CompressionLevel
-      no_compression = DataOutBase::CompressionLevel::no_compression;
-    DEAL_II_DEPRECATED static const DataOutBase::CompressionLevel
-      best_compression = DataOutBase::CompressionLevel::best_compression;
-    DEAL_II_DEPRECATED static const DataOutBase::CompressionLevel best_speed =
-      DataOutBase::CompressionLevel::best_speed;
-    DEAL_II_DEPRECATED static const DataOutBase::CompressionLevel
-      default_compression = DataOutBase::CompressionLevel::default_compression;
 
     /**
      * Flag determining the compression level at which zlib, if available, is
@@ -1228,8 +1211,8 @@ namespace DataOutBase
      * to the argument names of this function.
      */
     explicit VtkFlags(
-      const double           time  = std::numeric_limits<double>::min(),
-      const unsigned int     cycle = std::numeric_limits<unsigned int>::min(),
+      const double           time  = std::numeric_limits<double>::lowest(),
+      const unsigned int     cycle = numbers::invalid_unsigned_int,
       const bool             print_date_and_time = true,
       const CompressionLevel compression_level   = CompressionLevel::best_speed,
       const bool             write_higher_order_cells          = false,
@@ -2201,7 +2184,7 @@ namespace DataOutBase
    * This function is documented in the "Creating a master file for parallel"
    * section (section 5.7) of the "Getting data into VisIt" report that can be
    * found here:
-   * https://wci.llnl.gov/codes/visit/2.0.0/GettingDataIntoVisIt2.0.0.pdf
+   * https://visit-dav.github.io/visit-website/pdfs/GettingDataIntoVisIt2.0.0.pdf
    */
   void
   write_visit_record(std::ostream                   &out,
@@ -2232,7 +2215,7 @@ namespace DataOutBase
    * This function is documented in the "Creating a master file for parallel"
    * section (section 5.7) of the "Getting data into VisIt" report that can be
    * found here:
-   * https://wci.llnl.gov/codes/visit/2.0.0/GettingDataIntoVisIt2.0.0.pdf
+   * https://visit-dav.github.io/visit-website/pdfs/GettingDataIntoVisIt2.0.0.pdf
    */
   void
   write_visit_record(std::ostream                                &out,
@@ -2268,7 +2251,7 @@ namespace DataOutBase
    * This function is documented in the "Creating a master file for parallel"
    * section (section 5.7) of the "Getting data into VisIt" report that can be
    * found here:
-   * https://wci.llnl.gov/codes/visit/2.0.0/GettingDataIntoVisIt2.0.0.pdf
+   * https://visit-dav.github.io/visit-website/pdfs/GettingDataIntoVisIt2.0.0.pdf
    */
   void
   write_visit_record(
@@ -2540,11 +2523,15 @@ namespace DataOutBase
  *
  * This class is thought as a base class to classes actually generating data
  * for output. It has two abstract virtual functions, get_patches() and
- * get_dataset_names() produce the data which is actually needed. These are
- * the only functions that need to be overloaded by a derived class. In
- * addition to that, it has a function for each output format supported by
- * the underlying base class which gets the output data using these two
- * virtual functions and passes them to the raw output functions.
+ * get_dataset_names() that produce the data to be visualized and have to be
+ * overridden by a derived class. Additionally, to generate data where certain
+ * data sets are to be interpreted as vectors or tensors, the function
+ * get_nonscalar_data_ranges() can be overridden to provide this information.
+ *
+ * The user of a derived class of DataOutInterface typically interacts with
+ * the <tt>write_*</tt> functions. They exist for each output format
+ * supported by DataOutBase and pass the patches generated by get_patches()
+ * to the corresponding raw output functions in the DataOutBase namespace.
  *
  * The purpose of this class is mainly two-fold: to support storing flags by
  * which the output in the different output formats are controlled, and means
@@ -3403,29 +3390,6 @@ public:
             const ReferenceCell &cell_type);
 
   /**
-   * Deprecated constructor.
-   *
-   * @deprecated Use the constructor that additionally takes a ReferenceCell.
-   */
-  XDMFEntry(const std::string  &filename,
-            const double        time,
-            const std::uint64_t nodes,
-            const std::uint64_t cells,
-            const unsigned int  dim);
-
-  /**
-   * Deprecated constructor.
-   *
-   * @deprecated Use the constructor that additionally takes a ReferenceCell.
-   */
-  XDMFEntry(const std::string  &mesh_filename,
-            const std::string  &solution_filename,
-            const double        time,
-            const std::uint64_t nodes,
-            const std::uint64_t cells,
-            const unsigned int  dim);
-
-  /**
    * Simplified constructor that calls the complete constructor for
    * cases where <code>dim==spacedim</code>.
    */
@@ -3436,20 +3400,6 @@ public:
             const std::uint64_t  cells,
             const unsigned int   dim,
             const ReferenceCell &cell_type);
-
-  /**
-   * Deprecated constructor.
-   *
-   * @deprecated Use the constructor that additionally takes a ReferenceCell.
-   */
-  DEAL_II_DEPRECATED
-  XDMFEntry(const std::string  &mesh_filename,
-            const std::string  &solution_filename,
-            const double        time,
-            const std::uint64_t nodes,
-            const std::uint64_t cells,
-            const unsigned int  dim,
-            const unsigned int  spacedim);
 
   /**
    * Constructor that sets all members to provided parameters.
@@ -3488,17 +3438,6 @@ public:
    */
   std::string
   get_xdmf_content(const unsigned int indent_level) const;
-
-  /**
-   * Get the XDMF content associated with this entry.
-   * If the entry is not valid, this returns an empty string.
-   *
-   * @deprecated Use the other function instead.
-   */
-  DEAL_II_DEPRECATED
-  std::string
-  get_xdmf_content(const unsigned int   indent_level,
-                   const ReferenceCell &reference_cell) const;
 
 private:
   /**

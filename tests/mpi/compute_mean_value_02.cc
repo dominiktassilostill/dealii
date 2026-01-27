@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -94,10 +94,11 @@ test()
   }
 
   const IndexSet relevant_set = DoFTools::extract_locally_relevant_dofs(dofh);
-  TrilinosWrappers::MPI::Vector x_rel(relevant_set, dofh.get_communicator());
+  TrilinosWrappers::MPI::Vector x_rel(relevant_set,
+                                      dofh.get_mpi_communicator());
   {
     TrilinosWrappers::MPI::Vector interpolated(dofh.locally_owned_dofs(),
-                                               dofh.get_communicator());
+                                               dofh.get_mpi_communicator());
     VectorTools::interpolate(dofh, LinearFunction<dim>(), interpolated);
     x_rel = interpolated;
   }

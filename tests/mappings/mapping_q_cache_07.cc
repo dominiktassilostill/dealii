@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2022 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -65,10 +65,10 @@ test(const bool         vector_describes_relative_displacement,
 
   if (vector_describes_relative_displacement)
     {
-      Vector<double> absolut_vector(dof_handler_dim.n_dofs());
-      VectorTools::get_position_vector(dof_handler_dim, absolut_vector);
+      Vector<double> absolute_vector(dof_handler_dim.n_dofs());
+      VectorTools::get_position_vector(dof_handler_dim, absolute_vector);
 
-      euler_vector -= absolut_vector;
+      euler_vector -= absolute_vector;
     }
 
   // output mesh with with MappingFEField based on a vector constructed

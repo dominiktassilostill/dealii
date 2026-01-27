@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,8 +43,6 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-// Shorthand notation for KINSOL error codes.
-#  define AssertKINSOL(code) Assert(code >= 0, ExcKINSOLError(code))
 
 namespace SUNDIALS
 {
@@ -529,7 +527,7 @@ namespace SUNDIALS
      * function is never called.
      *
      * The setup_jacobian() function may call a user-supplied function, or a
-     * function within the linear solver module, to compute Jacobian-related
+     * function within the linear solver group, to compute Jacobian-related
      * data that is required by the linear solver. It may also preprocess that
      * data as needed for solve_with_jacobian(), which may involve calling a
      * generic function (such as for LU factorization) or, more generally,
@@ -704,15 +702,6 @@ namespace SUNDIALS
      */
     std::function<void(void *kinsol_mem)> custom_setup;
 
-    /**
-     * Handle KINSOL exceptions.
-     */
-    DeclException1(ExcKINSOLError,
-                   int,
-                   << "One of the SUNDIALS KINSOL internal functions "
-                   << "returned a negative error code: " << arg1
-                   << ". Please consult SUNDIALS manual.");
-
   private:
     /**
      * Throw an exception when a function with the given name is not
@@ -767,9 +756,26 @@ namespace SUNDIALS
     mutable std::exception_ptr pending_exception;
   };
 
+  /**
+   * Handle KINSOL exceptions.
+   */
+  DeclException1(ExcKINSOLError,
+                 int,
+                 << "One of the SUNDIALS KINSOL internal functions "
+                 << "returned a negative error code: " << arg1
+                 << ". Please consult SUNDIALS manual.");
+
 } // namespace SUNDIALS
 
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

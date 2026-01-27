@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2024 by the deal.II authors
+// Copyright (C) 2024 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,8 +19,8 @@
 
 #ifdef DEAL_II_TRILINOS_WITH_TPETRA
 
+#  include <deal.II/base/enable_observer_pointer.h>
 #  include <deal.II/base/index_set.h>
-#  include <deal.II/base/subscriptor.h>
 #  include <deal.II/base/trilinos_utilities.h>
 
 #  include <deal.II/lac/sparse_matrix.h>
@@ -107,7 +107,7 @@ namespace LinearAlgebra
      * the matrix, you must call SparseMatrix::compress() again.
      */
     template <typename Number, typename MemorySpace = dealii::MemorySpace::Host>
-    class SparseMatrix : public Subscriptor
+    class SparseMatrix : public EnableObserverPointer
     {
     public:
       /**
@@ -1670,9 +1670,9 @@ namespace LinearAlgebra
 } // namespace LinearAlgebra
 
 
-DEAL_II_NAMESPACE_CLOSE
+DEAL_II_NAMESPACE_CLOSE // Do not convert for module purposes
 
-namespace std
+  namespace std
 {
   template <typename Number, typename MemorySpace, bool Constness>
   struct iterator_traits<
@@ -1692,11 +1692,10 @@ namespace std
 /* ------------------------- Inline functions ---------------------- */
 
 
-DEAL_II_NAMESPACE_OPEN
+DEAL_II_NAMESPACE_OPEN // Do not convert for module purposes
 
-namespace LinearAlgebra
+  namespace LinearAlgebra
 {
-
   namespace TpetraWrappers
   {
     template <typename Number, typename MemorySpace>
@@ -2045,17 +2044,12 @@ namespace LinearAlgebra
             colnum_cache->resize(colnums);
           }
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
         typename TpetraTypes::MatrixType<Number, MemorySpace>::
           nonconst_global_inds_host_view_type col_indices(colnum_cache->data(),
                                                           colnums);
         typename TpetraTypes::MatrixType<Number, MemorySpace>::
           nonconst_values_host_view_type values(value_cache->data(), colnums);
-#  else
-        Teuchos::ArrayView<dealii::types::signed_global_dof_index> col_indices(
-          *colnum_cache);
-        Teuchos::ArrayView<Number> values(*value_cache);
-#  endif
+
         matrix->trilinos_matrix().getGlobalRowCopy(this->a_row,
                                                    col_indices,
                                                    values,
@@ -2338,6 +2332,14 @@ namespace LinearAlgebra
 
 } // namespace LinearAlgebra
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_TRILINOS_WITH_TPETRA

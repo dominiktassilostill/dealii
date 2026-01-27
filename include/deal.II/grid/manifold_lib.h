@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2024 by the deal.II authors
+// Copyright (C) 2014 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,6 +22,9 @@
 #include <deal.II/base/function_parser.h>
 
 #include <deal.II/grid/manifold.h>
+
+#include <boost/signals2/connection.hpp>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -145,7 +148,7 @@ public:
    *
    * @deprecated Use get_center() instead.
    */
-  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT(
+  DEAL_II_DEPRECATED_WITH_COMMENT(
     "Access the center with get_center() instead.")
   const Point<spacedim> center;
 
@@ -351,7 +354,7 @@ public:
    *
    * @deprecated Use get_center() instead.
    */
-  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT(
+  DEAL_II_DEPRECATED_WITH_COMMENT(
     "Access the center with get_center() instead.")
   const Point<spacedim> center;
 
@@ -790,15 +793,15 @@ private:
   /**
    * Pointer to the push_forward function.
    */
-  SmartPointer<const Function<chartdim>,
-               FunctionManifold<dim, spacedim, chartdim>>
+  ObserverPointer<const Function<chartdim>,
+                  FunctionManifold<dim, spacedim, chartdim>>
     push_forward_function;
 
   /**
    * Pointer to the pull_back function.
    */
-  SmartPointer<const Function<spacedim>,
-               FunctionManifold<dim, spacedim, chartdim>>
+  ObserverPointer<const Function<spacedim>,
+                  FunctionManifold<dim, spacedim, chartdim>>
     pull_back_function;
 
   /**
@@ -1265,7 +1268,7 @@ template <int dim, int spacedim>
 inline const Point<spacedim> &
 SphericalManifold<dim, spacedim>::get_center() const
 {
-  return center;
+  return p_center;
 }
 
 

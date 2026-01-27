@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2013 - 2023 by the deal.II authors
+## Copyright (C) 2013 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -21,7 +21,7 @@ my $cmake_source_dir = shift(@ARGV);
 
 my $gallery = shift(@ARGV);
 my $gallery_underscore = $gallery;
-$gallery_underscore    =~ s/-/_/;
+$gallery_underscore    =~ s/-/_/g;
 
 my $gallery_dir = shift(@ARGV);
 
@@ -149,7 +149,7 @@ foreach my $file (@src_files)
             }
 
             # update markdown links of the form "[text](./filename)"
-            $line =~ s/(\[.*\])\(.\//\1\(..\/code-gallery\/$gallery\//g;
+            $line =~ s/(\[.*?\])\(.\//\1\(..\/code-gallery\/$gallery\//g;
             print "$line";
         }
 

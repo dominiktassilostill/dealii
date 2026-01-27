@@ -47,7 +47,7 @@ initialize_dof_vector(LinearAlgebra::distributed::Vector<Number> &vec,
       &(dof_handler.get_triangulation()));
 
   MPI_Comm comm =
-    dist_tria != nullptr ? dist_tria->get_communicator() : MPI_COMM_SELF;
+    dist_tria != nullptr ? dist_tria->get_mpi_communicator() : MPI_COMM_SELF;
 
   vec.reinit(level == numbers::invalid_unsigned_int ?
                dof_handler.locally_owned_dofs() :
@@ -62,6 +62,19 @@ print(const LinearAlgebra::distributed::Vector<Number> &vec)
 {
   for (const auto &v : vec)
     deallog << v << " ";
+  deallog << std::endl;
+}
+
+template <typename Number>
+void
+print_if_non_zero(const LinearAlgebra::distributed::Vector<Number> &vec,
+                  const Number                                      tolerance)
+{
+  for (const auto &v : vec)
+    if (std::abs(v) > tolerance)
+      deallog << v << " ";
+    else
+      deallog << 0.0 << " ";
   deallog << std::endl;
 }
 
@@ -179,7 +192,7 @@ test_transfer_operator(
 template <int dim, typename Number, typename MeshType>
 void
 test_non_nested_transfer(
-  const MGTwoLevelTransferBase<LinearAlgebra::distributed::Vector<Number>>
+  const MGTwoLevelTransferBase<dim, LinearAlgebra::distributed::Vector<Number>>
                               &transfer,
   const MeshType              &dof_handler_fine,
   const MeshType              &dof_handler_coarse,

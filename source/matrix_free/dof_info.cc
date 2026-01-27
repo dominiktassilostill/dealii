@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,6 +16,8 @@
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/vectorization.h>
+
+#include <deal.II/dofs/dof_handler.h>
 
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/sparsity_pattern.h>
@@ -162,10 +164,11 @@ namespace internal
       const unsigned int n_owned  = (vector_partitioner->local_range().second -
                                     vector_partitioner->local_range().first);
       const std::size_t  n_ghosts = ghost_dofs.size();
-#ifdef DEBUG
-      for (const auto dof_index : dof_indices)
-        AssertIndexRange(dof_index, n_owned + n_ghosts);
-#endif
+      if constexpr (running_in_debug_mode())
+        {
+          for (const auto dof_index : dof_indices)
+            AssertIndexRange(dof_index, n_owned + n_ghosts);
+        }
 
       const unsigned int        n_components = start_components.back();
       std::vector<unsigned int> ghost_numbering(n_ghosts);
@@ -301,8 +304,6 @@ namespace internal
       const std::vector<unsigned int>  &constraint_pool_row_index,
       const std::vector<unsigned char> &irregular_cells)
     {
-      (void)constraint_pool_row_index;
-
       // first reorder the active FE index.
       const bool have_hp = dofs_per_cell.size() > 1;
       if (cell_active_fe_index.size() > 0)
@@ -472,54 +473,59 @@ namespace internal
       new_rowstart_plain.swap(row_starts_plain_indices);
       new_hanging_node_constraint_masks.swap(hanging_node_constraint_masks);
 
-#ifdef DEBUG
-      // sanity check 1: all indices should be smaller than the number of dofs
-      // locally owned plus the number of ghosts
-      const unsigned int index_range =
-        (vector_partitioner->local_range().second -
-         vector_partitioner->local_range().first) +
-        vector_partitioner->ghost_indices().n_elements();
-      for (const auto dof_index : dof_indices)
-        AssertIndexRange(dof_index, index_range);
-
-      // sanity check 2: for the constraint indicators, the first index should
-      // be smaller than the number of indices in the row, and the second
-      // index should be smaller than the number of constraints in the
-      // constraint pool.
-      for (unsigned int row = 0; row < task_info.cell_partition_data.back();
-           ++row)
+      if constexpr (running_in_debug_mode())
         {
-          const unsigned int row_length_ind =
-            row_starts[(row * vectorization_length + 1) * n_components].first -
-            row_starts[row * vectorization_length * n_components].first;
-          AssertIndexRange(
-            row_starts[(row * vectorization_length + 1) * n_components].second,
-            constraint_indicator.size() + 1);
-          const std::pair<unsigned short, unsigned short> *
-            con_it =
-             constraint_indicator.data() +
-             row_starts[row * vectorization_length * n_components].second,
-           *end_con =
-             constraint_indicator.data() +
-             row_starts[(row * vectorization_length + 1) * n_components].second;
-          for (; con_it != end_con; ++con_it)
-            {
-              AssertIndexRange(con_it->first, row_length_ind + 1);
-              AssertIndexRange(con_it->second,
-                               constraint_pool_row_index.size() - 1);
-            }
-        }
+          // sanity check 1: all indices should be smaller than the number of
+          // dofs locally owned plus the number of ghosts
+          const unsigned int index_range =
+            (vector_partitioner->local_range().second -
+             vector_partitioner->local_range().first) +
+            vector_partitioner->ghost_indices().n_elements();
+          for (const auto dof_index : dof_indices)
+            AssertIndexRange(dof_index, index_range);
 
-      // sanity check 3: check the number of cells once again
-      unsigned int n_active_cells = 0;
-      for (unsigned int c = 0; c < *(task_info.cell_partition_data.end() - 2);
-           ++c)
-        if (irregular_cells[c] > 0)
-          n_active_cells += irregular_cells[c];
-        else
-          n_active_cells += vectorization_length;
-      AssertDimension(n_active_cells, task_info.n_active_cells);
-#endif
+          // sanity check 2: for the constraint indicators, the first index
+          // should be smaller than the number of indices in the row, and the
+          // second index should be smaller than the number of constraints in
+          // the constraint pool.
+          for (unsigned int row = 0; row < task_info.cell_partition_data.back();
+               ++row)
+            {
+              const unsigned int row_length_ind =
+                row_starts[(row * vectorization_length + 1) * n_components]
+                  .first -
+                row_starts[row * vectorization_length * n_components].first;
+              AssertIndexRange(
+                row_starts[(row * vectorization_length + 1) * n_components]
+                  .second,
+                constraint_indicator.size() + 1);
+              const std::pair<unsigned short, unsigned short>
+                *con_it =
+                  constraint_indicator.data() +
+                  row_starts[row * vectorization_length * n_components].second,
+                *end_con =
+                  constraint_indicator.data() +
+                  row_starts[(row * vectorization_length + 1) * n_components]
+                    .second;
+              for (; con_it != end_con; ++con_it)
+                {
+                  AssertIndexRange(con_it->first, row_length_ind + 1);
+                  AssertIndexRange(con_it->second,
+                                   constraint_pool_row_index.size() - 1);
+                }
+            }
+
+          // sanity check 3: check the number of cells once again
+          unsigned int n_active_cells = 0;
+          for (unsigned int c = 0;
+               c < *(task_info.cell_partition_data.end() - 2);
+               ++c)
+            if (irregular_cells[c] > 0)
+              n_active_cells += irregular_cells[c];
+            else
+              n_active_cells += vectorization_length;
+          AssertDimension(n_active_cells, task_info.n_active_cells);
+        }
 
       compute_cell_index_compression(irregular_cells);
     }
@@ -934,10 +940,9 @@ namespace internal
         compressed_set.add_indices(ghost_indices.begin(), ghost_indices.end());
         compressed_set.subtract_set(part.locally_owned_range());
         const bool all_ghosts_equal =
-          Utilities::MPI::min<int>(static_cast<int>(
-                                     compressed_set.n_elements() ==
-                                     part.ghost_indices().n_elements()),
-                                   part.get_mpi_communicator()) != 0;
+          Utilities::MPI::logical_and(compressed_set.n_elements() ==
+                                        part.ghost_indices().n_elements(),
+                                      part.get_mpi_communicator());
 
         std::shared_ptr<const Utilities::MPI::Partitioner> temp_0;
 
@@ -1076,9 +1081,8 @@ namespace internal
                   has_noncontiguous_cell = true;
               });
               has_noncontiguous_cell =
-                Utilities::MPI::min<int>(static_cast<int>(
-                                           has_noncontiguous_cell),
-                                         part.get_mpi_communicator()) != 0;
+                Utilities::MPI::logical_and(has_noncontiguous_cell,
+                                            part.get_mpi_communicator());
 
               std::sort(ghost_indices.begin(), ghost_indices.end());
               IndexSet compressed_set(part.size());
@@ -1086,10 +1090,9 @@ namespace internal
                                          ghost_indices.end());
               compressed_set.subtract_set(part.locally_owned_range());
               const bool all_ghosts_equal =
-                Utilities::MPI::min<int>(static_cast<int>(
-                                           compressed_set.n_elements() ==
-                                           part.ghost_indices().n_elements()),
-                                         part.get_mpi_communicator()) != 0;
+                Utilities::MPI::logical_and(compressed_set.n_elements() ==
+                                              part.ghost_indices().n_elements(),
+                                            part.get_mpi_communicator());
               if (all_ghosts_equal || has_noncontiguous_cell)
                 vector_partitioner_values = vector_partitioner;
               else
@@ -1160,10 +1163,9 @@ namespace internal
                                          ghost_indices.end());
               compressed_set.subtract_set(part.locally_owned_range());
               const bool all_ghosts_equal =
-                Utilities::MPI::min<int>(static_cast<int>(
-                                           compressed_set.n_elements() ==
-                                           part.ghost_indices().n_elements()),
-                                         part.get_mpi_communicator()) != 0;
+                Utilities::MPI::logical_and(compressed_set.n_elements() ==
+                                              part.ghost_indices().n_elements(),
+                                            part.get_mpi_communicator());
               if (all_ghosts_equal)
                 vector_partitioner_gradients = vector_partitioner;
               else
@@ -1527,15 +1529,45 @@ namespace internal
     DoFInfo::memory_consumption() const
     {
       std::size_t memory = sizeof(*this);
+      for (const auto &storage : index_storage_variants)
+        memory += storage.capacity() * sizeof(storage[0]);
       memory +=
         (row_starts.capacity() * sizeof(std::pair<unsigned int, unsigned int>));
       memory += MemoryConsumption::memory_consumption(dof_indices);
+      memory += MemoryConsumption::memory_consumption(dof_indices_interleaved);
+      memory += MemoryConsumption::memory_consumption(dof_indices_contiguous);
+      memory +=
+        MemoryConsumption::memory_consumption(dof_indices_contiguous_sm);
+      memory +=
+        MemoryConsumption::memory_consumption(dof_indices_interleave_strides);
+      memory +=
+        MemoryConsumption::memory_consumption(n_vectorization_lanes_filled);
+      memory += MemoryConsumption::memory_consumption(
+        hanging_node_constraint_masks_comp);
       memory +=
         MemoryConsumption::memory_consumption(hanging_node_constraint_masks);
+      memory += MemoryConsumption::memory_consumption(constrained_dofs);
       memory += MemoryConsumption::memory_consumption(row_starts_plain_indices);
       memory += MemoryConsumption::memory_consumption(plain_dof_indices);
       memory += MemoryConsumption::memory_consumption(constraint_indicator);
       memory += MemoryConsumption::memory_consumption(*vector_partitioner);
+      memory += MemoryConsumption::memory_consumption(n_components);
+      memory += MemoryConsumption::memory_consumption(start_components);
+      memory += MemoryConsumption::memory_consumption(component_to_base_index);
+      memory +=
+        MemoryConsumption::memory_consumption(component_dof_indices_offset);
+      memory += MemoryConsumption::memory_consumption(dofs_per_cell);
+      memory += MemoryConsumption::memory_consumption(dofs_per_face);
+      memory += MemoryConsumption::memory_consumption(cell_active_fe_index);
+      memory += MemoryConsumption::memory_consumption(fe_index_conversion);
+      memory +=
+        MemoryConsumption::memory_consumption(vector_zero_range_list_index);
+      memory += MemoryConsumption::memory_consumption(vector_zero_range_list);
+      memory += MemoryConsumption::memory_consumption(cell_loop_pre_list_index);
+      memory += MemoryConsumption::memory_consumption(cell_loop_pre_list);
+      memory +=
+        MemoryConsumption::memory_consumption(cell_loop_post_list_index);
+      memory += MemoryConsumption::memory_consumption(cell_loop_post_list);
       return memory;
     }
   } // namespace MatrixFreeFunctions
@@ -1589,19 +1621,24 @@ namespace internal
 
     template void
     DoFInfo::compute_face_index_compression<1>(
-      const std::vector<FaceToCellTopology<1>> &);
+      const std::vector<FaceToCellTopology<1>> &,
+      bool);
     template void
     DoFInfo::compute_face_index_compression<2>(
-      const std::vector<FaceToCellTopology<2>> &);
+      const std::vector<FaceToCellTopology<2>> &,
+      bool);
     template void
     DoFInfo::compute_face_index_compression<4>(
-      const std::vector<FaceToCellTopology<4>> &);
+      const std::vector<FaceToCellTopology<4>> &,
+      bool);
     template void
     DoFInfo::compute_face_index_compression<8>(
-      const std::vector<FaceToCellTopology<8>> &);
+      const std::vector<FaceToCellTopology<8>> &,
+      bool);
     template void
     DoFInfo::compute_face_index_compression<16>(
-      const std::vector<FaceToCellTopology<16>> &);
+      const std::vector<FaceToCellTopology<16>> &,
+      bool);
 
     template void
     DoFInfo::compute_vector_zero_access_pattern<1>(

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -2171,12 +2171,18 @@ namespace Differentiation
 
 
 /* --- Explicit instantiations --- */
-#  include "ad_drivers.inst"
-#  ifdef DEAL_II_WITH_ADOLC
-#    include "ad_drivers.inst1"
-#  endif
-#  ifdef DEAL_II_TRILINOS_WITH_SACADO
-#    include "ad_drivers.inst2"
+// We don't build the .inst files if deal.II isn't configured with the
+// external dependencies, but doxygen doesn't know that and tries to
+// find that file anyway for parsing -- which then of course it fails
+// on. So exclude the following from doxygen consideration.
+#  ifndef DOXYGEN
+#    include "differentiation/ad/ad_drivers.inst"
+#    ifdef DEAL_II_WITH_ADOLC
+#      include "differentiation/ad/ad_drivers.inst1"
+#    endif
+#    ifdef DEAL_II_TRILINOS_WITH_SACADO
+#      include "differentiation/ad/ad_drivers.inst2"
+#    endif
 #  endif
 
 

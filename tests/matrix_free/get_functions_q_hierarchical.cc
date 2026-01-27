@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2021 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,8 +20,6 @@
 // (no symmetry in transformation). The test case includes hanging node
 // constraints, but no constraints from boundary conditions
 
-#include <deal.II/base/function.h>
-
 #include <deal.II/fe/fe_q_hierarchical.h>
 #include <deal.II/fe/mapping_q.h>
 
@@ -38,16 +36,8 @@ void
 test()
 {
   using number = double;
-  const SphericalManifold<dim> manifold;
-  Triangulation<dim>           tria;
+  Triangulation<dim> tria;
   GridGenerator::hyper_ball(tria);
-  typename Triangulation<dim>::active_cell_iterator cell = tria.begin_active(),
-                                                    endc = tria.end();
-  for (; cell != endc; ++cell)
-    for (const unsigned int f : GeometryInfo<dim>::face_indices())
-      if (cell->at_boundary(f))
-        cell->face(f)->set_all_manifold_ids(0);
-  tria.set_manifold(0, manifold);
 
   // refine first and last cell
   tria.begin(tria.n_levels() - 1)->set_refine_flag();

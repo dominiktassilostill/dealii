@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2024 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -143,6 +143,18 @@ namespace internal
   template <typename T>
   constexpr bool has_exchange_on_subset =
     has_begin<T> && has_local_element<T> && has_partitioners_are_compatible<T>;
+
+
+
+  // a helper type-trait that leverage SFINAE to figure out if type T has
+  // T & T::operator=(const T::value_type) const
+  template <typename T>
+  using assignment_operator_t =
+    decltype(std::declval<T>().operator=(typename T::value_type()));
+
+  template <typename T>
+  constexpr bool has_assignment_operator =
+    is_supported_operation<assignment_operator_t, T>;
 
 
 

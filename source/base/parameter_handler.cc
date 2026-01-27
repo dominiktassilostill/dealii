@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,7 +16,6 @@
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/parameter_handler.h>
-#include <deal.II/base/path_search.h>
 #include <deal.II/base/utilities.h>
 
 #define BOOST_BIND_GLOBAL_PLACEHOLDERS
@@ -35,6 +34,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <set>
 #include <sstream>
 
 
@@ -449,6 +449,9 @@ ParameterHandler::parse_input(std::istream      &input,
   unsigned int current_line_n         = 0;
   unsigned int current_logical_line_n = 0;
 
+  // Keep a list of deprecation messages if we encounter deprecated entries.
+  std::string deprecation_messages;
+
   // define an action that tries to scan a line.
   //
   // if that fails, i.e., if scan_line throws
@@ -461,23 +464,30 @@ ParameterHandler::parse_input(std::istream      &input,
   // unknown state.
   //
   // after unwinding the subsection stack, just re-throw the exception
-  auto scan_line_or_cleanup = [this,
-                               &skip_undefined,
-                               &saved_path](const std::string &line,
-                                            const std::string &filename,
-                                            const unsigned int line_number) {
-    try
-      {
-        scan_line(line, filename, line_number, skip_undefined);
-      }
-    catch (...)
-      {
-        while ((saved_path != subsection_path) && (subsection_path.size() > 0))
-          leave_subsection();
+  auto scan_line_or_cleanup =
+    [this,
+     &skip_undefined,
+     &saved_path,
+     &deprecation_messages](const std::string &line,
+                            const std::string &filename,
+                            const unsigned int line_number) {
+      try
+        {
+          scan_line(line, filename, line_number, skip_undefined);
+        }
+      catch (ExcEntryIsDeprecated &e)
+        {
+          deprecation_messages += e.what();
+        }
+      catch (...)
+        {
+          while ((saved_path != subsection_path) &&
+                 (subsection_path.size() > 0))
+            leave_subsection();
 
-        throw;
-      }
-  };
+          throw;
+        }
+    };
 
 
   while (std::getline(input, input_line))
@@ -558,6 +568,11 @@ ParameterHandler::parse_input(std::istream      &input,
       AssertThrow(false,
                   ExcUnbalancedSubsections(filename, paths_message.str()));
     }
+
+  // if we encountered deprecated entries, throw an exception
+  // that contains all the deprecation messages
+  AssertThrow(deprecation_messages.empty(),
+              ExcEncounteredDeprecatedEntries(deprecation_messages));
 }
 
 
@@ -569,7 +584,7 @@ ParameterHandler::parse_input(const std::string &filename,
                               const bool assert_mandatory_entries_are_found)
 {
   std::ifstream is(filename);
-  AssertThrow(is, PathSearch::ExcFileNotFound(filename, "ParameterHandler"));
+  AssertThrow(is, ExcFileNotOpen(filename));
 
   std::string file_ending = filename.substr(filename.find_last_of('.') + 1);
   boost::algorithm::to_lower(file_ending);
@@ -598,7 +613,10 @@ ParameterHandler::parse_input_from_string(const std::string &s,
                                           const bool         skip_undefined)
 {
   std::istringstream input_stream(s);
-  parse_input(input_stream, "input string", last_line, skip_undefined);
+  parse_input(input_stream,
+              /* filename is unknown: */ "",
+              last_line,
+              skip_undefined);
 }
 
 
@@ -625,37 +643,30 @@ namespace
         if (p.second.empty())
           {
             // set the found parameter in the destination argument
-            if (skip_undefined)
+            try
               {
-                try
-                  {
-                    prm.set(demangle(p.first), p.second.data());
-                  }
-                catch (const ParameterHandler::ExcEntryUndeclared &)
-                  {
-                    // ignore undeclared entry assert
-                  }
+                prm.set(demangle(p.first), p.second.data());
               }
-            else
-              prm.set(demangle(p.first), p.second.data());
+            catch (const ParameterHandler::ExcEntryUndeclared &entry_string)
+              {
+                // ignore undeclared entry assert
+                AssertThrow(skip_undefined,
+                            ParameterHandler::ExcEntryUndeclared(entry_string));
+              }
           }
         else if (p.second.get_optional<std::string>("value"))
           {
             // set the found parameter in the destination argument
-            if (skip_undefined)
+            try
               {
-                try
-                  {
-                    prm.set(demangle(p.first),
-                            p.second.get<std::string>("value"));
-                  }
-                catch (const ParameterHandler::ExcEntryUndeclared &)
-                  {
-                    // ignore undeclared entry assert
-                  }
+                prm.set(demangle(p.first), p.second.get<std::string>("value"));
               }
-            else
-              prm.set(demangle(p.first), p.second.get<std::string>("value"));
+            catch (const ParameterHandler::ExcEntryUndeclared &entry_string)
+              {
+                // ignore undeclared entry assert
+                AssertThrow(skip_undefined,
+                            ParameterHandler::ExcEntryUndeclared(entry_string));
+              }
 
             // this node might have sub-nodes in addition to "value", such as
             // "default_value", "documentation", etc. we might at some point
@@ -685,9 +696,11 @@ namespace
                                      prm);
                 prm.leave_subsection();
               }
-            catch (const ParameterHandler::ExcEntryUndeclared &)
+            catch (const ParameterHandler::ExcEntryUndeclared &entry_string)
               {
                 // ignore undeclared entry assert
+                AssertThrow(skip_undefined,
+                            ParameterHandler::ExcEntryUndeclared(entry_string));
               }
           }
       }
@@ -734,6 +747,38 @@ namespace
           {
             // it must be a subsection
             recursively_compress_tree(p.second);
+          }
+      }
+  }
+
+  void
+  recursively_keep_non_default(const boost::property_tree::ptree &tree_in,
+                               boost::property_tree::ptree       &tree_out)
+  {
+    for (const auto &p : tree_in)
+      {
+        if (is_parameter_node(p.second))
+          {
+            const std::string value = p.second.get<std::string>("value");
+
+            if (value != p.second.get<std::string>("default_value"))
+              tree_out.put_child(p.first, p.second);
+          }
+        else if (is_alias_node(p.second))
+          {
+            // nothing to do
+          }
+        else
+          {
+            boost::property_tree::ptree temp;
+
+            if (const auto val = p.second.get_value_optional<std::string>())
+              temp.put_value<std::string>(*val);
+
+            recursively_keep_non_default(p.second, temp);
+
+            if (temp.size() > 0)
+              tree_out.put_child(p.first, temp);
           }
       }
   }
@@ -821,7 +866,7 @@ ParameterHandler::parse_input_from_json(std::istream &in,
     }
 
   // The xml function is reused to read in the xml into the parameter file.
-  // This function can only read mangled files. Therefore, we create a mangeled
+  // This function can only read mangled files. Therefore, we create a mangled
   // tree first.
   boost::property_tree::ptree node_tree_mangled;
   recursively_mangle_or_demangle(node_tree,
@@ -980,9 +1025,39 @@ ParameterHandler::declare_alias(const std::string &existing_entry_name,
 
   entries->put(get_current_full_path(alias_name) + path_separator + "alias",
                existing_entry_name);
-  entries->put(get_current_full_path(alias_name) + path_separator +
+
+  if (alias_is_deprecated)
+    mark_as_deprecated(alias_name);
+  else
+    mark_as_deprecated(alias_name, false);
+}
+
+
+
+void
+ParameterHandler::mark_as_deprecated(const std::string &existing_entry_name,
+                                     const bool         is_deprecated)
+{
+  // assert that the entry exists
+  Assert(entries->get_optional<std::string>(
+           get_current_full_path(existing_entry_name)),
+         ExcMessage("You are trying to mark the entry <" + existing_entry_name +
+                    "> as deprecated, but the entry does not exist."));
+
+  // then also make sure that what is being referred to is in
+  // fact a parameter or alias (not a subsection)
+  Assert(
+    entries->get_optional<std::string>(
+      get_current_full_path(existing_entry_name) + path_separator + "value") ||
+      entries->get_optional<std::string>(
+        get_current_full_path(existing_entry_name) + path_separator + "alias"),
+    ExcMessage("You are trying to mark the entry <" + existing_entry_name +
+               "> as deprecated, but the entry does not seem to be a "
+               "parameter declaration or a parameter alias."));
+
+  entries->put(get_current_full_path(existing_entry_name) + path_separator +
                  "deprecation_status",
-               (alias_is_deprecated ? "true" : "false"));
+               is_deprecated ? "true" : "false");
 }
 
 
@@ -1331,6 +1406,14 @@ ParameterHandler::print_parameters(std::ostream     &out,
                                   current_entries);
     }
 
+  if ((style & KeepOnlyChanged) != 0)
+    {
+      boost::property_tree::ptree current_entries_without_default;
+      recursively_keep_non_default(current_entries,
+                                   current_entries_without_default);
+      current_entries = current_entries_without_default;
+    }
+
   // we'll have to print some text that is padded with spaces;
   // set the appropriate fill character, but also make sure that
   // we will restore the previous setting (and all other stream
@@ -1364,7 +1447,12 @@ ParameterHandler::print_parameters(std::ostream     &out,
       boost::property_tree::ptree single_node_tree;
       single_node_tree.add_child("ParameterHandler", current_entries);
 
-      write_xml(out, single_node_tree);
+      // set indentation character and indentation length
+      boost::property_tree::xml_writer_settings<
+        boost::property_tree::ptree::key_type>
+        settings(' ', 2);
+
+      write_xml(out, single_node_tree, settings);
       return out;
     }
 
@@ -1379,11 +1467,11 @@ ParameterHandler::print_parameters(std::ostream     &out,
     }
 
   // for all of the other formats, print a preamble:
-  if (((style & Short) != 0) && ((style & Text) != 0))
+  if (((style & Short) != 0) && ((style & PRM) != 0))
     {
       // nothing to do
     }
-  else if ((style & Text) != 0)
+  else if ((style & PRM) != 0)
     {
       out << "# Listing of Parameters" << std::endl
           << "# ---------------------" << std::endl;
@@ -1461,7 +1549,7 @@ ParameterHandler::recursively_print_parameters(
 
   const bool is_short = (style & Short) != 0;
 
-  if ((style & Text) != 0)
+  if ((style & PRM) != 0)
     {
       // first find out the longest entry name to be able to align the
       // equal signs to do this loop over all nodes of the current
@@ -1506,15 +1594,26 @@ ParameterHandler::recursively_print_parameters(
                     78 - overall_indent_level * 2 - 2);
 
                 for (const auto &doc_line : doc_lines)
-                  out << std::setw(overall_indent_level * 2) << ""
-                      << "# " << doc_line << '\n';
+                  {
+                    // Start with the comment start ('#'), padded with
+                    // overall_indent_level*2 spaces at the front.
+                    out << std::setw(overall_indent_level * 2) << "" << '#';
+
+                    if (!doc_line.empty())
+                      out << ' ' << doc_line;
+
+                    out << '\n';
+                  }
               }
 
-            // print name and value of this entry
+            // Print the name and (if set) value of this entry. Ensure proper
+            // padding with overall_indent_level*2 spaces at the front.
             out << std::setw(overall_indent_level * 2) << ""
                 << "set " << demangle(p.first)
-                << std::setw(longest_name - demangle(p.first).size() + 1) << " "
-                << "= " << value;
+                << std::setw(longest_name - demangle(p.first).size() + 1) << ' '
+                << '=';
+            if (!value.empty())
+              out << ' ' << value;
 
             // finally print the default value, but only if it differs
             // from the actual value
@@ -1599,7 +1698,13 @@ ParameterHandler::recursively_print_parameters(
                 if (!is_short &&
                     !p.second.get<std::string>("documentation").empty())
                   out << "{\\it Description:} "
-                      << p.second.get<std::string>("documentation") << "\n\n"
+                      << p.second.get<std::string>("documentation")
+                      << ((p.second.get_optional<std::string>(
+                             "deprecation_status") &&
+                           p.second.get<std::string>("deprecation_status") ==
+                             "true") ?
+                            " This parameter is deprecated.\n\n" :
+                            "\n\n")
                       << '\n';
                 if (!is_short)
                   {
@@ -1727,9 +1832,8 @@ ParameterHandler::recursively_print_parameters(
       else if (is_alias_node(p.second) == false)
         ++n_sections;
 
-    if (((style & Description) == 0) &&
-        (!(((style & Text) != 0) && is_short)) && (n_parameters != 0) &&
-        (n_sections != 0))
+    if (((style & Description) == 0) && (!(((style & PRM) != 0) && is_short)) &&
+        (n_parameters != 0) && (n_sections != 0))
       out << "\n\n";
   }
 
@@ -1739,7 +1843,7 @@ ParameterHandler::recursively_print_parameters(
         (is_alias_node(p.second) == false))
       {
         // first print the subsection header
-        if (((style & Text) != 0) || ((style & Description) != 0))
+        if (((style & PRM) != 0) || ((style & Description) != 0))
           {
             out << std::setw(overall_indent_level * 2) << ""
                 << "subsection " << demangle(p.first) << '\n';
@@ -1781,13 +1885,13 @@ ParameterHandler::recursively_print_parameters(
         recursively_print_parameters(
           tree, directory_path, style, overall_indent_level + 1, out);
 
-        if (is_short && ((style & Text) != 0))
+        if (is_short && ((style & PRM) != 0))
           {
             // write end of subsection.
             out << std::setw(overall_indent_level * 2) << ""
                 << "end" << '\n';
           }
-        else if ((style & Text) != 0)
+        else if ((style & PRM) != 0)
           {
             // write end of subsection. one blank line after each
             // subsection
@@ -1964,9 +2068,11 @@ ParameterHandler::scan_line(std::string        line,
           if (entries->get<std::string>(path + path_separator +
                                         "deprecation_status") == "true")
             {
-              std::cerr << "Warning in line <" << current_line_n
-                        << "> of file <" << input_filename
-                        << ">: You are using the deprecated spelling <"
+              std::cerr << "Warning in line <" << current_line_n << ">"
+                        << (input_filename.empty() ?
+                              "" :
+                              (" of file <" + input_filename + ">"))
+                        << ": You are using the deprecated spelling <"
                         << entry_name << "> of the parameter <"
                         << entries->get<std::string>(path + path_separator +
                                                      "alias")
@@ -2016,6 +2122,7 @@ ParameterHandler::scan_line(std::string        line,
           // finally write the new value into the database
           entries->put(path + path_separator + "value", entry_value);
 
+          // record that the entry has been set manually
           auto map_iter = entries_set_status.find(path);
           if (map_iter != entries_set_status.end())
             map_iter->second =
@@ -2024,15 +2131,34 @@ ParameterHandler::scan_line(std::string        line,
             AssertThrow(false,
                         ExcMessage("Could not find parameter " + path +
                                    " in map entries_set_status."));
+
+          // Check if the entry (or the resolved alias) is deprecated,
+          // throw an exception if it is
+          if (entries->get_optional<std::string>(path + path_separator +
+                                                 "deprecation_status") &&
+              entries->get<std::string>(path + path_separator +
+                                        "deprecation_status") == "true")
+            {
+              AssertThrow(false,
+                          ExcEntryIsDeprecated(current_line_n,
+                                               input_filename,
+                                               entry_name));
+            }
         }
       else
         {
-          AssertThrow(
-            skip_undefined,
-            ExcCannotParseLine(current_line_n,
-                               input_filename,
-                               ("No entry with name <" + entry_name +
-                                "> was declared in the current subsection.")));
+          AssertThrow(skip_undefined,
+                      ExcCannotParseLine(
+                        current_line_n,
+                        input_filename,
+                        ("You are trying to set a value for parameter <" +
+                         entry_name +
+                         ">, but no such parameter was declared in the "
+                         "current subsection. Did you mis-spell the name "
+                         "of the parameter, or are trying to set a parameter "
+                         "that has been removed in a previous version of the "
+                         "program? Or does the parameter belong to a different "
+                         "subsection?")));
         }
     }
   // an include statement?

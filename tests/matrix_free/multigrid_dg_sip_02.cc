@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,6 @@
 // interior penalty + Nitsche). As opposed to multigrid_dg_sip_01, this test
 // computes the diagonal using the alternative reinit(cell_index, face_number)
 
-#include <deal.II/base/function.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/utilities.h>
 
@@ -55,7 +54,7 @@
 
 
 template <int dim, typename number = double>
-class LaplaceOperator : public Subscriptor
+class LaplaceOperator : public EnableObserverPointer
 {
 public:
   using value_type = number;

@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2023 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -19,6 +19,7 @@ set(_src
   quadrature_generator.cc
   coupling.cc
   immersed_surface_quadrature.cc
+  closest_surface_point.cc
   )
 
   set(_inst
@@ -27,11 +28,14 @@ set(_src
   mesh_classifier.inst.in
   quadrature_generator.inst.in
   coupling.inst.in
+  closest_surface_point.inst.in
   )
 
-file(GLOB _header
+file(GLOB _header CONFIGURE_DEPENDS
   ${CMAKE_SOURCE_DIR}/include/deal.II/non_matching/*.h
   )
 
 define_object_library(object_non_matching OBJECT ${_src} ${_header} ${_inst})
 expand_instantiations(object_non_matching "${_inst}")
+
+collect_source_and_header_files("${_src}" "${_header}")

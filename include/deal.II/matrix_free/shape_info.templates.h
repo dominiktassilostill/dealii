@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2024 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,7 @@
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/polynomial.h>
 #include <deal.II/base/polynomials_piecewise.h>
-#include <deal.II/base/polynomials_raviart_thomas.h>
+#include <deal.II/base/polynomials_vector_anisotropic.h>
 #include <deal.II/base/qprojector.h>
 #include <deal.II/base/tensor_product_polynomials.h>
 #include <deal.II/base/utilities.h>
@@ -29,6 +29,7 @@
 #include <deal.II/fe/fe.h>
 #include <deal.II/fe/fe_dgp.h>
 #include <deal.II/fe/fe_dgq.h>
+#include <deal.II/fe/fe_nedelec.h>
 #include <deal.II/fe/fe_nothing.h>
 #include <deal.II/fe/fe_poly.h>
 #include <deal.II/fe/fe_pyramid_p.h>
@@ -269,8 +270,8 @@ namespace internal
           const unsigned int dofs_per_face_normal = fe_in.n_dofs_per_face();
 
           lexicographic_numbering =
-            PolynomialsRaviartThomas<dim>::get_lexicographic_numbering(
-              fe_in.degree, fe_in.degree - 1);
+            FE_RaviartThomas<dim>::get_lexicographic_numbering(fe_in.degree -
+                                                               1);
 
           // To get the right shape_values of the RT element
           std::vector<unsigned int> lex_normal, lex_tangent;
@@ -308,6 +309,18 @@ namespace internal
           if (dim == 3)
             face_orientations_quad = compute_orientation_table(n_q_points_1d);
 
+          return;
+        }
+      else if (const FE_NedelecNodal<dim> *fe_nedelec =
+                 dynamic_cast<const FE_NedelecNodal<dim> *>(
+                   &fe_in.base_element(base_element_number)))
+        {
+          const auto quad = quad_in.get_tensor_basis()[0];
+          fe_nedelec->fill_shape_info(this, quad_in);
+
+          const unsigned int n_q_points_1d = quad.size();
+          if (dim == 3)
+            face_orientations_quad = compute_orientation_table(n_q_points_1d);
           return;
         }
       else if (quad_in.is_tensor_product() == false ||
@@ -433,24 +446,18 @@ namespace internal
                 for (unsigned int f = 0; f < n_faces; ++f)
                   {
                     const unsigned int n_face_orientations =
-                      dim == 2 ?
-                        2 :
-                        (2 *
-                         reference_cell.face_reference_cell(f).n_vertices());
+                      reference_cell.n_face_orientations(f);
 
                     const unsigned int n_q_points_face =
                       quad_face[quad_face.size() == 1 ? 0 : f].size();
 
-                    for (unsigned int o = 0; o < n_face_orientations; ++o)
+                    for (types::geometric_orientation orientation = 0;
+                         orientation < n_face_orientations;
+                         ++orientation)
                       {
                         const auto offset =
                           QProjector<dim>::DataSetDescriptor::face(
-                            reference_cell,
-                            f,
-                            (o ^ 1) & 1,  // face_orientation
-                            (o >> 1) & 1, // face_flip
-                            (o >> 2) & 1, // face_rotation
-                            quad_face);
+                            reference_cell, f, orientation, quad_face);
 
                         for (unsigned int i = 0; i < n_dofs; ++i)
                           for (unsigned int q = 0; q < n_q_points_face; ++q)
@@ -458,14 +465,16 @@ namespace internal
                               const auto &point =
                                 projected_quad_face.point(q + offset);
 
-                              shape_values_face(f, o, i * n_q_points_face + q) =
+                              shape_values_face(f,
+                                                orientation,
+                                                i * n_q_points_face + q) =
                                 fe.shape_value(i, point);
 
                               const auto grad = fe.shape_grad(i, point);
 
                               for (unsigned int d = 0; d < dim; ++d)
                                 shape_gradients_face(f,
-                                                     o,
+                                                     orientation,
                                                      i * dim * n_q_points_face +
                                                        q * dim + d) = grad[d];
                             }
@@ -516,14 +525,18 @@ namespace internal
                   unsigned int d = 0;
                   for (; d < dim; ++d)
                     face_to_cell_index_nodal[face][d] =
-                      reference_cell.face_to_cell_vertices(face, d, 1);
+                      reference_cell.face_to_cell_vertices(
+                        face, d, numbers::default_geometric_orientation);
 
                   // now fill the rest of the indices, start with the lines
                   if (fe.degree == 2)
                     for (; d < dofs_per_component_on_face; ++d)
                       face_to_cell_index_nodal[face][d] =
                         reference_cell.n_vertices() +
-                        reference_cell.face_to_cell_lines(face, d - dim, 1);
+                        reference_cell.face_to_cell_lines(
+                          face,
+                          d - dim,
+                          numbers::default_geometric_orientation);
 
                   // in the cubic case it is more complicated as more DoFs are
                   // on the lines
@@ -534,15 +547,19 @@ namespace internal
                            ++line, d += 2)
                         {
                           const unsigned int face_to_cell_lines =
-                            reference_cell.face_to_cell_lines(face, line, 1);
+                            reference_cell.face_to_cell_lines(
+                              face,
+                              line,
+                              numbers::default_geometric_orientation);
                           // check the direction of the line
                           // is it 0 -> 1 or 1 -> 0
                           // as DoFs on the line are ordered differently
                           if (reference_cell.line_to_cell_vertices(
                                 face_to_cell_lines, 0) ==
-                              reference_cell.face_to_cell_vertices(face,
-                                                                   line,
-                                                                   1))
+                              reference_cell.face_to_cell_vertices(
+                                face,
+                                line,
+                                numbers::default_geometric_orientation))
                             {
                               face_to_cell_index_nodal[face][d] =
                                 reference_cell.n_vertices() +
@@ -1291,21 +1308,21 @@ namespace internal
       for (unsigned int j = 0, i = 0; j < n; ++j)
         for (unsigned int k = 0; k < n; ++k, ++i)
           {
-            // face_orientation=true,  face_flip=false, face_rotation=false
+            // face_orientation=true,  face_rotation=false, face_flip=false
             face_orientations[0][i] = i;
-            // face_orientation=false, face_flip=false, face_rotation=false
+            // face_orientation=false, face_rotation=false, face_flip=false
             face_orientations[1][i] = j + k * n;
-            // face_orientation=true,  face_flip=true, face_rotation=false
-            face_orientations[2][i] = (n - 1 - k) + (n - 1 - j) * n;
-            // face_orientation=false, face_flip=true, face_rotation=false
-            face_orientations[3][i] = (n - 1 - j) + (n - 1 - k) * n;
-            // face_orientation=true,  face_flip=false, face_rotation=true
-            face_orientations[4][i] = j + (n - 1 - k) * n;
-            // face_orientation=false, face_flip=false, face_rotation=true
-            face_orientations[5][i] = k + (n - 1 - j) * n;
-            // face_orientation=true,  face_flip=true, face_rotation=true
+            // face_orientation=true,  face_rotation=true, face_flip=false
+            face_orientations[2][i] = j + (n - 1 - k) * n;
+            // face_orientation=false, face_rotation=true, face_flip=false
+            face_orientations[3][i] = k + (n - 1 - j) * n;
+            // face_orientation=true,  face_rotation=false, face_flip=true
+            face_orientations[4][i] = (n - 1 - k) + (n - 1 - j) * n;
+            // face_orientation=false, face_rotation=false, face_flip=true
+            face_orientations[5][i] = (n - 1 - j) + (n - 1 - k) * n;
+            // face_orientation=true,  face_rotation=true, face_flip=true
             face_orientations[6][i] = (n - 1 - j) + k * n;
-            // face_orientation=false, face_flip=true, face_rotation=true
+            // face_orientation=false, face_rotation=true, face_flip=true
             face_orientations[7][i] = (n - 1 - k) + j * n;
           }
       return face_orientations;

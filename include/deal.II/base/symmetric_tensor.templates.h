@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2023 by the deal.II authors
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -848,8 +848,7 @@ namespace internal
 
 
 template <int dim, typename Number>
-std::array<std::pair<Number, Tensor<1, dim, Number>>,
-           std::integral_constant<int, dim>::value>
+std::array<std::pair<Number, Tensor<1, dim, Number>>, dim>
 eigenvectors(const SymmetricTensor<2, dim, Number> &T,
              const SymmetricTensorEigenvectorMethod method)
 {
@@ -1055,18 +1054,18 @@ eigenvalues(const SymmetricTensor<2, 3, adouble> & /*T*/);
 
 template <>
 std::array<std::pair<adouble, Tensor<1, 1, adouble>>, 1>
-eigenvectors(const SymmetricTensor<2, 1, adouble> & /*T*/,
-             const SymmetricTensorEigenvectorMethod /*method*/);
+eigenvectors<1, adouble>(const SymmetricTensor<2, 1, adouble> & /*T*/,
+                         const SymmetricTensorEigenvectorMethod /*method*/);
 
 template <>
 std::array<std::pair<adouble, Tensor<1, 2, adouble>>, 2>
-eigenvectors(const SymmetricTensor<2, 2, adouble> & /*T*/,
-             const SymmetricTensorEigenvectorMethod /*method*/);
+eigenvectors<2, adouble>(const SymmetricTensor<2, 2, adouble> & /*T*/,
+                         const SymmetricTensorEigenvectorMethod /*method*/);
 
 template <>
 std::array<std::pair<adouble, Tensor<1, 3, adouble>>, 3>
-eigenvectors(const SymmetricTensor<2, 3, adouble> & /*T*/,
-             const SymmetricTensorEigenvectorMethod /*method*/);
+eigenvectors<3, adouble>(const SymmetricTensor<2, 3, adouble> & /*T*/,
+                         const SymmetricTensorEigenvectorMethod /*method*/);
 #endif
 
 DEAL_II_NAMESPACE_CLOSE

@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2021 - 2024 by the deal.II authors
+ * Copyright (C) 2021 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -752,7 +752,7 @@ namespace SAND
     system_rhs    = 0;
 
 
-    MappingQ<dim>         mapping(1);
+    const MappingQ<dim>   mapping(1);
     const QGauss<dim>     quadrature_formula(fe.degree + 1);
     const QGauss<dim - 1> face_quadrature_formula(fe.degree + 1);
     FEValues<dim>         fe_values(mapping,
@@ -1300,7 +1300,7 @@ namespace SAND
     BlockVector<double> test_rhs;
     test_rhs.reinit(system_rhs);
 
-    MappingQ<dim>         mapping(1);
+    const MappingQ<dim>   mapping(1);
     const QGauss<dim>     quadrature_formula(fe.degree + 1);
     const QGauss<dim - 1> face_quadrature_formula(fe.degree + 1);
     FEValues<dim>         fe_values(mapping,
@@ -1626,7 +1626,7 @@ namespace SAND
     // Start with computing the objective function:
     double objective_function_merit = 0;
     {
-      MappingQ<dim>         mapping(1);
+      const MappingQ<dim>   mapping(1);
       const QGauss<dim>     quadrature_formula(fe.degree + 1);
       const QGauss<dim - 1> face_quadrature_formula(fe.degree + 1);
       FEValues<dim>         fe_values(mapping,
@@ -2411,18 +2411,24 @@ namespace SAND
 
         // At the end of the outer loop, we have to update the
         // barrier parameter, for which we use the following
-        // formula. The rest of the function is then simply about
-        // checking the outer loop convergence condition, and if
+        // algorithm: First we reduce the barrier parameter
+        // to the smaller of two potential values (causing first a
+        // linear and later an exponential decrease), then
+        // we ensure we do not reduce the barrier parameter
+        // below a lower limit.
+        // Once we reach the lower limit for the barrier parameter
+        // the rest of the function is simply about
+        // checking the outer loop convergence condition, and when
         // we decide to terminate computations, about writing the
         // final "design" as an STL file for use in 3d printing,
         // and to output some timing information.
         const double barrier_size_multiplier = .8;
         const double barrier_size_exponent   = 1.2;
 
-        barrier_size =
-          std::max(std::min(barrier_size * barrier_size_multiplier,
-                            std::pow(barrier_size, barrier_size_exponent)),
-                   min_barrier_size);
+        barrier_size = std::min(barrier_size * barrier_size_multiplier,
+                                std::pow(barrier_size, barrier_size_exponent));
+
+        barrier_size = std::max(barrier_size, min_barrier_size);
 
         std::cout << std::endl;
       }

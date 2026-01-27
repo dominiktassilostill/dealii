@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,6 +22,7 @@
 #include <deal.II/fe/fe_simplex_p_bubbles.h>
 #include <deal.II/fe/fe_wedge_p.h>
 #include <deal.II/fe/mapping_fe.h>
+#include <deal.II/fe/mapping_p1.h>
 #include <deal.II/fe/mapping_q.h>
 #include <deal.II/fe/mapping_q1.h>
 
@@ -114,6 +115,333 @@ ReferenceCell::to_string() const
   return "Invalid";
 }
 
+namespace
+{
+  // Return vertex_no-th vertex of the child_no-ith child cell.
+  //
+  // @note This function is not yet implemented in 3d since it is only called on
+  // faces of cells.
+  template <int dim>
+  Point<dim>
+  child_vertex(const ReferenceCell       reference_cell,
+               const unsigned int        child_no,
+               const unsigned int        vertex_no,
+               const RefinementCase<dim> refinement_case)
+  {
+    AssertDimension(dim, reference_cell.get_dimension());
+    if (dim > 1)
+      AssertIndexRange(child_no, reference_cell.n_children(refinement_case));
+    AssertIndexRange(vertex_no, reference_cell.n_vertices());
+
+    constexpr Point<dim> V0;
+    // V isn't used for dim == 0
+    [[maybe_unused]] const auto V = [](const unsigned int d) {
+      return Point<dim>::unit_vector(d);
+    };
+
+    switch (reference_cell)
+      {
+        case ReferenceCells::Vertex:
+          return V0;
+        case ReferenceCells::Line:
+          {
+            Assert(refinement_case == RefinementCase<dim>::isotropic_refinement,
+                   ExcNotImplemented());
+            if constexpr (dim == 1)
+              {
+                static constexpr ndarray<Point<1>, 2, 2>
+                  isotropic_child_vertices = {{
+                    {{V0, 0.5 * V(0)}},
+                    {{0.5 * V(0), V(0)}},
+                  }};
+                return isotropic_child_vertices[child_no][vertex_no];
+              }
+            else
+              DEAL_II_ASSERT_UNREACHABLE();
+          }
+        case ReferenceCells::Triangle:
+          {
+            Assert(refinement_case == RefinementCase<dim>::isotropic_refinement,
+                   ExcNotImplemented());
+            if constexpr (dim == 2)
+              {
+                static constexpr ndarray<Point<2>, 4, 3>
+                  isotropic_child_vertices = {{
+                    {{V0, 0.5 * V(0), 0.5 * V(1)}},
+                    {{0.5 * V(0), V(0), 0.5 * (V(0) + V(1))}},
+                    {{0.5 * V(1), 0.5 * V(0) + 0.5 * V(1), V(1)}},
+                    {{0.5 * V(0), 0.5 * V(0) + 0.5 * V(1), 0.5 * V(1)}},
+                  }};
+                return isotropic_child_vertices[child_no][vertex_no];
+              }
+            else
+              DEAL_II_ASSERT_UNREACHABLE();
+          }
+        case ReferenceCells::Quadrilateral:
+          {
+            if constexpr (dim == 2)
+              {
+                static constexpr Point<2> M = 0.5 * (V(0) + V(1));
+
+                static constexpr ndarray<Point<2>, 2, 4> cut_x_child_vertices =
+                  {{
+                    {{V0, 0.5 * V(0), V(1), V(1) + 0.5 * V(0)}},
+                    {{0.5 * V(0), V(0), 0.5 * V(0) + V(1), V(0) + V(1)}},
+                  }};
+
+                static constexpr ndarray<Point<2>, 2, 4> cut_y_child_vertices =
+                  {{
+                    {{V0, V(0), 0.5 * V(1), V(0) + 0.5 * V(1)}},
+                    {{0.5 * V(1), V(0) + 0.5 * V(1), V(1), V(0) + V(1)}},
+                  }};
+
+                static constexpr ndarray<Point<2>, 4, 4>
+                  isotropic_child_vertices = {{
+                    {{V0, 0.5 * V(0), 0.5 * V(1), M}},
+                    {{0.5 * V(0), V(0), M, V(0) + 0.5 * V(1)}},
+                    {{0.5 * V(1), M, V(1), V(1) + 0.5 * V(0)}},
+                    {{M, V(0) + 0.5 * V(1), V(1) + 0.5 * V(0), V(0) + V(1)}},
+                  }};
+
+                switch (refinement_case)
+                  {
+                    case RefinementCase<2>::cut_x:
+                      return cut_x_child_vertices[child_no][vertex_no];
+                    case RefinementCase<2>::cut_y:
+                      return cut_y_child_vertices[child_no][vertex_no];
+                    case RefinementCase<2>::isotropic_refinement:
+                      return isotropic_child_vertices[child_no][vertex_no];
+                    default:
+                      DEAL_II_ASSERT_UNREACHABLE();
+                  }
+              }
+            else
+              DEAL_II_ASSERT_UNREACHABLE();
+          }
+        case ReferenceCells::Tetrahedron:
+        case ReferenceCells::Pyramid:
+        case ReferenceCells::Wedge:
+        case ReferenceCells::Hexahedron:
+          DEAL_II_NOT_IMPLEMENTED();
+          return {};
+        default:
+          DEAL_II_ASSERT_UNREACHABLE();
+          return {};
+      }
+  }
+} // namespace
+
+
+
+template <int dim>
+Point<dim>
+ReferenceCell::subface_vertex_location(
+  const unsigned int            face_no,
+  const unsigned int            subface_no,
+  const unsigned int            subface_vertex_no,
+  const RefinementCase<dim - 1> face_refinement_case) const
+{
+  AssertDimension(dim, get_dimension());
+  AssertIndexRange(face_no, n_faces());
+  if (dim > 1)
+    {
+      AssertIndexRange(subface_no,
+                       face_reference_cell(face_no).n_children(
+                         face_refinement_case));
+      Assert(face_refinement_case != RefinementCase<dim - 1>::no_refinement,
+             ExcMessage("This function may only be called for subfaces."));
+    }
+  AssertIndexRange(subface_vertex_no,
+                   face_reference_cell(face_no).n_vertices());
+
+  Point<dim> p;
+  for (const unsigned int vertex_no :
+       face_reference_cell(face_no).vertex_indices())
+    p += face_vertex_location<dim>(face_no, vertex_no) *
+         face_reference_cell(face_no).d_linear_shape_function(
+           child_vertex(face_reference_cell(face_no),
+                        subface_no,
+                        subface_vertex_no,
+                        face_refinement_case),
+           vertex_no);
+
+  return p;
+}
+
+
+
+template <int dim>
+std::pair<unsigned int, RefinementCase<dim - 1>>
+ReferenceCell::equivalent_refinement_case(
+  const types::geometric_orientation combined_face_orientation,
+  const internal::SubfaceCase<dim>   subface_case,
+  const unsigned int                 subface_no) const
+{
+  AssertDimension(dim, get_dimension());
+  // 1. in 1d subfaces don't exist, but we still support some subface code
+  //    (such as QProjector's functions) to enable dimension-independent
+  //    programming. To match the convention used by 3d this will always return
+  //    (0, isotropic_refinement).
+  //
+  // 2. historically we have permitted subface calculations in 2d for unrefined
+  //    faces. In that case we don't actually need the value of subface_case
+  //    since there is only one possible refinement - the returned value has to
+  //    be isotropic_refinement.
+  //
+  // 3. Similarly, in 3d we treat case_none as case_isotropic.
+  if constexpr (dim == 1)
+    {
+      (void)subface_case;
+      AssertIndexRange(combined_face_orientation, n_face_orientations(0));
+      AssertIndexRange(subface_no, 1);
+      return std::make_pair(0, RefinementCase<dim - 1>::isotropic_refinement);
+    }
+
+  if constexpr (dim == 2)
+    {
+      (void)subface_case;
+      AssertIndexRange(combined_face_orientation, n_face_orientations(0));
+      AssertIndexRange(subface_no,
+                       face_reference_cell(0).n_isotropic_children());
+      return std::make_pair(combined_face_orientation ==
+                                numbers::reverse_line_orientation ?
+                              1 - subface_no :
+                              subface_no,
+                            RefinementCase<dim - 1>::isotropic_refinement);
+    }
+  else if constexpr (dim == 3)
+    {
+      Assert(*this == ReferenceCells::Hexahedron, ExcNotImplemented());
+
+      static const RefinementCase<dim - 1>
+        equivalent_refine_case[internal::SubfaceCase<dim>::case_isotropic + 1]
+                              [GeometryInfo<3>::max_children_per_face] = {
+                                // case_none. there should be only
+                                // invalid values here. However, as
+                                // this function is also called (in
+                                // tests) for cells which have no
+                                // refined faces, use isotropic
+                                // refinement instead
+                                {RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy},
+                                // case_x
+                                {RefinementCase<dim - 1>::cut_x,
+                                 RefinementCase<dim - 1>::cut_x,
+                                 RefinementCase<dim - 1>::no_refinement,
+                                 RefinementCase<dim - 1>::no_refinement},
+                                // case_x1y
+                                {RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_x,
+                                 RefinementCase<dim - 1>::no_refinement},
+                                // case_x2y
+                                {RefinementCase<dim - 1>::cut_x,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::no_refinement},
+                                // case_x1y2y
+                                {RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy},
+                                // case_y
+                                {RefinementCase<dim - 1>::cut_y,
+                                 RefinementCase<dim - 1>::cut_y,
+                                 RefinementCase<dim - 1>::no_refinement,
+                                 RefinementCase<dim - 1>::no_refinement},
+                                // case_y1x
+                                {RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_y,
+                                 RefinementCase<dim - 1>::no_refinement},
+                                // case_y2x
+                                {RefinementCase<dim - 1>::cut_y,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::no_refinement},
+                                // case_y1x2x
+                                {RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy},
+                                // case_xy (case_isotropic)
+                                {RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy,
+                                 RefinementCase<dim - 1>::cut_xy}};
+
+      constexpr unsigned int X = numbers::invalid_unsigned_int;
+      static const unsigned int
+        equivalent_subface_number[internal::SubfaceCase<dim>::case_isotropic +
+                                  1][GeometryInfo<3>::max_children_per_face] = {
+          // case_none, see above
+          {0, 1, 2, 3},
+          // case_x
+          {0, 1, X, X},
+          // case_x1y
+          {0, 2, 1, X},
+          // case_x2y
+          {0, 1, 3, X},
+          // case_x1y2y
+          {0, 2, 1, 3},
+          // case_y
+          {0, 1, X, X},
+          // case_y1x
+          {0, 1, 1, X},
+          // case_y2x
+          {0, 2, 3, X},
+          // case_y1x2x
+          {0, 1, 2, 3},
+          // case_xy (case_isotropic)
+          {0, 1, 2, 3}};
+
+      static const RefinementCase<dim - 1> rotated_refinement_case[4] = {
+        RefinementCase<dim - 1>::no_refinement,
+        RefinementCase<dim - 1>::cut_y,
+        RefinementCase<dim - 1>::cut_x,
+        RefinementCase<dim - 1>::cut_xy};
+      const auto [face_orientation, face_rotation, face_flip] =
+        internal::split_face_orientation(combined_face_orientation);
+
+      const auto equivalent_refinement_case =
+        equivalent_refine_case[subface_case][subface_no];
+      const unsigned int equivalent_subface_no =
+        equivalent_subface_number[subface_case][subface_no];
+      // make sure, that we got a valid subface and RefineCase
+      Assert(equivalent_refinement_case != RefinementCase<dim>::no_refinement,
+             ExcInternalError());
+      Assert(equivalent_subface_no != X, ExcInternalError());
+      // now, finally respect non-standard faces
+      const RefinementCase<dim - 1> final_refinement_case =
+        (face_orientation == face_rotation ?
+           rotated_refinement_case[equivalent_refinement_case] :
+           equivalent_refinement_case);
+
+      const unsigned int final_subface_no =
+        GeometryInfo<dim>::child_cell_on_face(RefinementCase<dim>(
+                                                final_refinement_case),
+                                              /*face_no = */ 4,
+                                              equivalent_subface_no,
+                                              face_orientation,
+                                              face_flip,
+                                              face_rotation,
+                                              equivalent_refinement_case);
+
+      return std::make_pair(final_subface_no, final_refinement_case);
+    }
+  else
+    {
+      (void)combined_face_orientation;
+      (void)subface_case;
+      (void)subface_no;
+
+      DEAL_II_NOT_IMPLEMENTED();
+      return {};
+    }
+}
+
 
 
 template <int dim, int spacedim>
@@ -125,8 +453,11 @@ ReferenceCell::get_default_mapping(const unsigned int degree) const
   if (is_hyper_cube())
     return std::make_unique<MappingQ<dim, spacedim>>(degree);
   else if (is_simplex())
-    return std::make_unique<MappingFE<dim, spacedim>>(
-      FE_SimplexP<dim, spacedim>(degree));
+    if (degree == 1)
+      return std::make_unique<MappingP1<dim, spacedim>>();
+    else
+      return std::make_unique<MappingFE<dim, spacedim>>(
+        FE_SimplexP<dim, spacedim>(degree));
   else if (*this == ReferenceCells::Pyramid)
     return std::make_unique<MappingFE<dim, spacedim>>(
       FE_PyramidP<dim, spacedim>(degree));
@@ -155,8 +486,7 @@ ReferenceCell::get_default_linear_mapping() const
     }
   else if (is_simplex())
     {
-      static const MappingFE<dim, spacedim> mapping(
-        FE_SimplexP<dim, spacedim>(1));
+      static const MappingP1<dim, spacedim> mapping;
       return mapping;
     }
   else if (*this == ReferenceCells::Pyramid)
@@ -484,15 +814,30 @@ ReferenceCell::vtk_lexicographic_to_node_index<0>(
 
 
 
+/**
+ * Modified from
+ * https://github.com/Kitware/VTK/blob/265ca48a79a36538c95622c237da11133608bbe5/Common/DataModel/vtkLagrangeCurve.cxx#L478
+ */
 template <>
 unsigned int
 ReferenceCell::vtk_lexicographic_to_node_index<1>(
-  const std::array<unsigned, 1> &,
-  const std::array<unsigned, 1> &,
+  const std::array<unsigned, 1> &node_indices,
+  const std::array<unsigned, 1> &nodes_per_direction,
   const bool) const
 {
-  DEAL_II_NOT_IMPLEMENTED();
-  return 0;
+  const unsigned int i = node_indices[0];
+
+  const bool ibdy = (i == 0 || i == nodes_per_direction[0]);
+  // How many boundaries do we lie on at once?
+  const int nbdy = (ibdy ? 1 : 0);
+
+  if (nbdy == 1) // Vertex DOF
+    { // ijk is a corner node. Return the proper index (somewhere in [0,7]):
+      return i ? 1 : 0;
+    }
+
+  const int offset = 2;
+  return (i - 1) + offset;
 }
 
 
@@ -1017,7 +1362,7 @@ ReferenceCell::closest_point(const Point<dim> &p) const
           std::array<Point<dim>, 3> vertices;
           for (unsigned int vertex_no = 0; vertex_no < 3; ++vertex_no)
             vertices[vertex_no] = vertex<dim>(face_to_cell_vertices(
-              face_no, vertex_no, default_combined_face_orientation()));
+              face_no, vertex_no, numbers::default_geometric_orientation));
 
           auto pair = project_to_quad(vertices, p, face_cell);
           if (pair.second < min_distance_square)
@@ -1036,7 +1381,7 @@ ReferenceCell::closest_point(const Point<dim> &p) const
               const auto cell_line_no =
                 face_to_cell_lines(face_no,
                                    face_line_no,
-                                   default_combined_face_orientation());
+                                   numbers::default_geometric_orientation);
               const auto v0 =
                 vertex<dim>(line_to_cell_vertices(cell_line_no, 0));
               const auto v1 =
@@ -1176,6 +1521,6 @@ ReferenceCell::get_gauss_type_quadrature(const unsigned n_points_1D) const;
 template const Quadrature<0> &
 ReferenceCell::get_nodal_type_quadrature() const;
 
-#include "reference_cell.inst"
+#include "grid/reference_cell.inst"
 
 DEAL_II_NAMESPACE_CLOSE

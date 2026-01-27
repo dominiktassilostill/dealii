@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -45,7 +45,7 @@ namespace RepartitioningPolicyTools
    * See the description of RepartitioningPolicyTools for more information.
    */
   template <int dim, int spacedim = dim>
-  class Base : public Subscriptor
+  class Base : public EnableObserverPointer
   {
   public:
     /**

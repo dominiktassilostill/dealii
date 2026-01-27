@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2024 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -27,6 +27,7 @@
 #  include <petscis.h>
 #  include <petscistypes.h>
 
+#  include <cstddef>
 #  include <vector>
 
 DEAL_II_NAMESPACE_OPEN
@@ -221,13 +222,13 @@ namespace PETScWrappers
     /**
      * Return the number of rows of this matrix.
      */
-    size_t
+    std::size_t
     m() const;
 
     /**
      * Return the number of columns of this matrix.
      */
-    size_t
+    std::size_t
     n() const;
 
     /**
@@ -662,6 +663,14 @@ namespace PETScWrappers
   } // namespace MPI
 } // namespace PETScWrappers
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

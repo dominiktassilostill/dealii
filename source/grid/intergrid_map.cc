@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2023 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,7 +13,7 @@
 // ------------------------------------------------------------------------
 
 #include <deal.II/base/memory_consumption.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/distributed/fully_distributed_tria.h>
 #include <deal.II/distributed/shared_tria.h>
@@ -212,6 +212,6 @@ std::size_t InterGridMap<MeshType>::memory_consumption() const
 
 
 // explicit instantiations
-#include "intergrid_map.inst"
+#include "grid/intergrid_map.inst"
 
 DEAL_II_NAMESPACE_CLOSE

@@ -26,7 +26,6 @@
 #include <deal.II/grid/grid_generator.h>
 
 #include <deal.II/lac/affine_constraints.h>
-#include <deal.II/lac/cuda_vector.h>
 
 #include <deal.II/matrix_free/portable_matrix_free.h>
 
@@ -35,10 +34,9 @@
 #include "../tests.h"
 
 
-template <typename Number>
+template <typename Number, typename MemorySpaceType>
 void
-check(const LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
-                                        &vector,
+check(const LinearAlgebra::distributed::Vector<Number, MemorySpaceType> &vector,
       const Utilities::MPI::Partitioner &reference_partitioner)
 {
   Assert(vector.get_partitioner()->locally_owned_range() ==
@@ -48,16 +46,6 @@ check(const LinearAlgebra::distributed::Vector<Number, MemorySpace::Default>
            reference_partitioner.ghost_indices(),
          ExcInternalError());
 }
-
-#ifdef DEAL_II_WITH_CUDA
-template <typename Number>
-void
-check(const LinearAlgebra::CUDAWrappers::Vector<Number> &vector,
-      const Utilities::MPI::Partitioner                 &reference_partitioner)
-{
-  AssertDimension(vector.size(), reference_partitioner.size());
-}
-#endif
 
 template <int dim, int fe_degree, typename VectorType>
 void
@@ -82,7 +70,7 @@ test()
   deallog << "locally relevant dofs :" << std::endl;
   relevant_set.print(deallog.get_file_stream());
 
-  AffineConstraints<double> constraints(relevant_set);
+  AffineConstraints<double> constraints(owned_set, relevant_set);
   constraints.close();
 
   MappingQ<dim>                     mapping(fe_degree);
@@ -114,13 +102,11 @@ main(int argc, char **argv)
 
   MPILogInitAll mpi_inilog;
 
+  test<2, 1, LinearAlgebra::distributed::Vector<double, MemorySpace::Host>>();
+
   test<2,
        1,
        LinearAlgebra::distributed::Vector<double, MemorySpace::Default>>();
 
-#ifdef DEAL_II_WITH_CUDA
-  if (Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) == 1)
-    test<2, 1, LinearAlgebra::CUDAWrappers::Vector<double>>();
-#endif
   return 0;
 }

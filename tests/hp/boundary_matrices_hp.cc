@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2020 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,7 +15,7 @@
 
 
 // Same as hp/boundary_matrices, but with different FE objects. Tests
-// the boundary mass matrces for vector-valued (non-primiteve) hp-
+// the boundary mass matrices for vector-valued (non-primiteve) hp-
 // FE objects.
 
 

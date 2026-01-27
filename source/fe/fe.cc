@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -564,9 +564,9 @@ FiniteElement<dim, spacedim>::block_mask(
 template <int dim, int spacedim>
 unsigned int
 FiniteElement<dim, spacedim>::face_to_cell_index(
-  const unsigned int  face_index,
-  const unsigned int  face,
-  const unsigned char combined_orientation) const
+  const unsigned int                 face_index,
+  const unsigned int                 face,
+  const types::geometric_orientation combined_orientation) const
 {
   AssertIndexRange(face_index, this->n_dofs_per_face(face));
   AssertIndexRange(face, this->reference_cell().n_faces());
@@ -575,8 +575,7 @@ FiniteElement<dim, spacedim>::face_to_cell_index(
   // assertion -- in essence, derived classes have to implement
   // an overloaded version of this function if we are to use any
   // other than default (standard) orientation
-  if (combined_orientation !=
-      ReferenceCell::default_combined_face_orientation())
+  if (combined_orientation != numbers::default_geometric_orientation)
     Assert((this->n_dofs_per_line() <= 1) && (this->n_dofs_per_quad(face) <= 1),
            ExcMessage(
              "The function in this base class can not handle this case. "
@@ -638,9 +637,9 @@ FiniteElement<dim, spacedim>::face_to_cell_index(
 template <int dim, int spacedim>
 unsigned int
 FiniteElement<dim, spacedim>::adjust_quad_dof_index_for_face_orientation(
-  const unsigned int  index,
-  const unsigned int  face,
-  const unsigned char combined_orientation) const
+  const unsigned int                 index,
+  const unsigned int                 face,
+  const types::geometric_orientation combined_orientation) const
 {
   // general template for 1d and 2d: not
   // implemented. in fact, the function
@@ -675,21 +674,18 @@ FiniteElement<dim, spacedim>::adjust_quad_dof_index_for_face_orientation(
 template <int dim, int spacedim>
 unsigned int
 FiniteElement<dim, spacedim>::adjust_line_dof_index_for_line_orientation(
-  const unsigned int  index,
-  const unsigned char combined_orientation) const
+  const unsigned int                 index,
+  const types::geometric_orientation combined_orientation) const
 {
-  Assert(combined_orientation ==
-             ReferenceCell::default_combined_face_orientation() ||
-           combined_orientation ==
-             ReferenceCell::reversed_combined_line_orientation(),
+  Assert(combined_orientation == numbers::default_geometric_orientation ||
+           combined_orientation == numbers::reverse_line_orientation,
          ExcInternalError());
 
   AssertIndexRange(index, this->n_dofs_per_line());
   Assert(adjust_line_dof_index_for_line_orientation_table.size() ==
            this->n_dofs_per_line(),
          ExcInternalError());
-  if (combined_orientation ==
-      ReferenceCell::default_combined_face_orientation())
+  if (combined_orientation == numbers::default_geometric_orientation)
     return index;
   else
     return index + adjust_line_dof_index_for_line_orientation_table[index];
@@ -851,9 +847,7 @@ FiniteElement<dim, spacedim>::constraints(
   // same number of dofs
   AssertDimension(this->n_unique_faces(), 1);
   const unsigned int face_no = 0;
-  (void)face_no;
 
-  (void)subface_case;
   Assert(subface_case == internal::SubfaceCase<dim>::case_isotropic,
          ExcMessage("Constraints for this element are only implemented "
                     "for the case that faces are refined isotropically "
@@ -889,13 +883,38 @@ FiniteElement<dim, spacedim>::interface_constraints_size() const
     {
       case 1:
         return {0U, 0U};
+
       case 2:
+        // We have to interpolate from the DoFs in the interior of the
+        // the two child faces (=lines) and the one central vertex
+        // to the DoFs of the parent face:
         return {this->n_dofs_per_vertex() + 2 * this->n_dofs_per_line(),
                 this->n_dofs_per_face(face_no)};
+
       case 3:
-        return {5 * this->n_dofs_per_vertex() + 12 * this->n_dofs_per_line() +
-                  4 * this->n_dofs_per_quad(face_no),
-                this->n_dofs_per_face(face_no)};
+        // We have to interpolate from the DoFs in the interior of the
+        // the child faces (=quads or tris) and the vertices that are
+        // not part of the parent face, to the DoFs of the parent face:
+        if (this->reference_cell().face_reference_cell(face_no) ==
+            ReferenceCells::Quadrilateral)
+          return {
+            5 * this->n_dofs_per_vertex() +  // 4 vertices at mid-edge points
+                                             // + 1 at cell center
+              12 * this->n_dofs_per_line() + // 4*2 children of the old edges
+                                             // + 2*2 edges in the cell interior
+              4 * this->n_dofs_per_quad(face_no), // 4 child faces
+            this->n_dofs_per_face(face_no)};
+        else if (this->reference_cell().face_reference_cell(face_no) ==
+                 ReferenceCells::Triangle)
+          return {
+            3 * this->n_dofs_per_vertex() + // 3 vertices at mid-edge points
+              9 * this->n_dofs_per_line() + // 3*2 children of the old edges
+                                            // + 3 edges in the cell interior
+              4 * this->n_dofs_per_quad(face_no), // 4 child faces
+            this->n_dofs_per_face(face_no)};
+        else
+          DEAL_II_ASSERT_UNREACHABLE();
+
       default:
         DEAL_II_NOT_IMPLEMENTED();
     }
@@ -1046,7 +1065,18 @@ template <int dim, int spacedim>
 bool
 FiniteElement<dim, spacedim>::has_support_points() const
 {
-  return (unit_support_points.size() != 0);
+  if (this->dofs_per_cell > 0)
+    return (unit_support_points.size() != 0);
+  else
+    {
+      // If the FE has no DoFs, we shouldn't expect the array
+      // size to be anything other than zero:
+      AssertDimension(unit_support_points.size(), 0);
+
+      // A finite element without DoFs *has* support points
+      // (which is then an empty array)
+      return true;
+    }
 }
 
 
@@ -1067,7 +1097,17 @@ template <int dim, int spacedim>
 bool
 FiniteElement<dim, spacedim>::has_generalized_support_points() const
 {
-  return (get_generalized_support_points().size() != 0);
+  if (this->dofs_per_cell > 0)
+    return (get_generalized_support_points().size() != 0);
+  else
+    {
+      // If the FE has no DoFs, the array size should be zero:
+      AssertDimension(get_generalized_support_points().size(), 0);
+
+      // A finite element without DoFs *has* generalized support points
+      // (which is then an empty array)
+      return true;
+    }
 }
 
 
@@ -1108,8 +1148,18 @@ bool
 FiniteElement<dim, spacedim>::has_face_support_points(
   const unsigned int face_no) const
 {
-  return (unit_face_support_points[this->n_unique_faces() == 1 ? 0 : face_no]
-            .size() != 0);
+  const unsigned int face_index = this->n_unique_faces() == 1 ? 0 : face_no;
+  if (this->n_dofs_per_face(face_index) > 0)
+    return (unit_face_support_points[face_index].size() != 0);
+  else
+    {
+      // If the FE has no DoFs on face, the array size should be zero
+      AssertDimension(unit_face_support_points[face_index].size(), 0);
+
+      // A finite element without DoFs *has* face support points
+      // (which is then an empty array)
+      return true;
+    }
 }
 
 
@@ -1158,15 +1208,16 @@ FiniteElement<dim, spacedim>::get_sub_fe(const ComponentMask &mask) const
   const unsigned int first_selected =
     mask.first_selected_component(n_total_components);
 
-#  ifdef DEBUG
-  // check that it is contiguous:
-  for (unsigned int c = 0; c < n_total_components; ++c)
-    Assert((c < first_selected && (!mask[c])) ||
-             (c >= first_selected && c < first_selected + n_selected &&
-              mask[c]) ||
-             (c >= first_selected + n_selected && !mask[c]),
-           ExcMessage("Error: the given ComponentMask is not contiguous!"));
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      // check that it is contiguous:
+      for (unsigned int c = 0; c < n_total_components; ++c)
+        Assert((c < first_selected && (!mask[c])) ||
+                 (c >= first_selected && c < first_selected + n_selected &&
+                  mask[c]) ||
+                 (c >= first_selected + n_selected && !mask[c]),
+               ExcMessage("Error: the given ComponentMask is not contiguous!"));
+    }
 
   return get_sub_fe(first_selected, n_selected);
 }
@@ -1185,8 +1236,6 @@ FiniteElement<dim, spacedim>::get_sub_fe(
          ExcMessage(
            "You can only select a whole FiniteElement, not a part of one."));
 
-  (void)first_component;
-  (void)n_selected_components;
   return *this;
 }
 
@@ -1329,29 +1378,23 @@ FiniteElement<dim, spacedim>::fill_fe_face_values(
 template <int dim, int spacedim>
 inline void
 FiniteElement<dim, spacedim>::fill_fe_face_values(
-  const typename Triangulation<dim, spacedim>::cell_iterator &cell,
-  const unsigned int                                          face_no,
-  const Quadrature<dim - 1>                                  &quadrature,
-  const Mapping<dim, spacedim>                               &mapping,
-  const typename Mapping<dim, spacedim>::InternalDataBase    &mapping_internal,
+  const typename Triangulation<dim, spacedim>::cell_iterator & /* cell */,
+  const unsigned int /* face_no */,
+  const Quadrature<dim - 1> & /* quadrature */,
+  const Mapping<dim, spacedim> & /* mapping */,
+  const typename Mapping<dim, spacedim>::InternalDataBase
+    & /* mapping_internal */,
   const internal::FEValuesImplementation::MappingRelatedData<dim, spacedim>
-                                                                &mapping_data,
-  const typename FiniteElement<dim, spacedim>::InternalDataBase &fe_internal,
+    & /* mapping_data */,
+  const typename FiniteElement<dim, spacedim>::InternalDataBase
+    & /* fe_internal */,
   dealii::internal::FEValuesImplementation::FiniteElementRelatedData<dim,
                                                                      spacedim>
-    &output_data) const
+    & /* output_data */) const
 {
   Assert(false,
          ExcMessage("Use of a deprecated interface, please implement "
                     "fill_fe_face_values taking a hp::QCollection argument"));
-  (void)cell;
-  (void)face_no;
-  (void)quadrature;
-  (void)mapping;
-  (void)mapping_internal;
-  (void)mapping_data;
-  (void)fe_internal;
-  (void)output_data;
 }
 #  endif
 
@@ -1380,7 +1423,6 @@ template <int dim, int spacedim>
 const FiniteElement<dim, spacedim> &
 FiniteElement<dim, spacedim>::base_element(const unsigned int index) const
 {
-  (void)index;
   AssertIndexRange(index, 1);
   // This function should not be
   // called for a system element
@@ -1391,7 +1433,7 @@ FiniteElement<dim, spacedim>::base_element(const unsigned int index) const
 
 #endif
 /*------------------------------- Explicit Instantiations -------------*/
-#include "fe.inst"
+#include "fe/fe.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

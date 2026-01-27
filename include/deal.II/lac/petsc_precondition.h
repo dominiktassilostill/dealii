@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2023 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,8 +18,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/mpi_stub.h>
 #include <deal.II/base/point.h>
-#include <deal.II/base/subscriptor.h>
 
 #ifdef DEAL_II_WITH_PETSC
 
@@ -56,7 +57,7 @@ namespace PETScWrappers
    *
    * @ingroup PETScWrappers
    */
-  class PreconditionBase : public Subscriptor
+  class PreconditionBase : public EnableObserverPointer
   {
   public:
     /**
@@ -97,7 +98,10 @@ namespace PETScWrappers
     /**
      * Explicitly call setup. This is usually not needed since PETSc will
      * automatically call the setup function when needed.
+     *
+     * @deprecated setup() is now explicitly called during initialize().
      */
+    DEAL_II_DEPRECATED_EARLY
     void
     setup();
 
@@ -612,8 +616,14 @@ namespace PETScWrappers
    * multigrid preconditioner from the HYPRE suite. Note that PETSc has to be
    * configured with HYPRE (e.g. with \--download-hypre=1).
    *
-   * The preconditioner does support parallel distributed computations. See
+   * This preconditioner does support parallel distributed computations. See
    * step-40 for an example.
+   *
+   * This class can be used as a preconditioner for linear solvers. It
+   * also provides a `vmult()` function (implemented in the
+   * PreconditionBase base class) that, when called, performs one
+   * multigrid cycle. By default, this is a V-cycle, but the
+   * AdditionalData class allows to also select a W-cycle.
    *
    * @ingroup PETScWrappers
    */
@@ -1163,6 +1173,14 @@ namespace PETScWrappers
 
 DEAL_II_NAMESPACE_CLOSE
 
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
+DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC
 

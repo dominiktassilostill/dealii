@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -45,9 +45,6 @@
 
 #include "../tests.h"
 
-#undef DEBUG
-
-#ifdef DEBUG
 // used only for debugging
 template <int dim>
 void
@@ -162,7 +159,6 @@ plot_shape_function(DoFHandler<dim> &dof_handler, unsigned int patches = 5)
 
   deallog << "...finished plotting shape functions" << std::endl;
 }
-#endif
 
 
 
@@ -280,9 +276,7 @@ main(int argc, char **argv)
 
   constraints.print(deallog.get_file_stream());
 
-#ifdef DEBUG
-  plot_shape_function(dof_handler);
-#endif
+  //  plot_shape_function(dof_handler);
 
   dof_handler.clear();
   return 0;

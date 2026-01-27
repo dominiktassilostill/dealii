@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2024 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -75,7 +75,7 @@ if(DEAL_II_DOXYGEN_USE_MATHJAX)
     set(_mathjax_relpath ${MATHJAX_PATH})
     message(STATUS "Using local MathJax: " ${MATHJAX_PATH})
   else()
-    set(_mathjax_relpath "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/")
+    set(_mathjax_relpath "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/")
     message(STATUS "Using web-based MathJax: " ${_mathjax_relpath})
   endif()
 else()
@@ -83,26 +83,20 @@ else()
 endif()
 
 
-# Collect where the build system will write the .inst files after
+# Note where the build system will write the .inst files after
 # expansion from the .inst.in files. We need this because we let
 # doxygen read the .cc files and they #include the .inst files.
 #
-# To get at this, find all of the .inst.in files, strip all but the
-# directory name under $CMAKE_SOURCE_DIR/source, and then prepend
-# the build directory to it
+# The .cc files #include the .inst files with the directory name
+# relative to the /source directory under the build directory, so the
+# correct include path is <build dir>/source
 #
-# See options.dox.in where ${_inst_in_dirs} is later added to INCLUDE_PATH.
-file(GLOB _inst_in_files
-     "${CMAKE_SOURCE_DIR}/source/*/*.inst.in")
-string(REPLACE "${CMAKE_SOURCE_DIR}/source/" "" _inst_in_dirs_x "${_inst_in_files}")
-string(REGEX REPLACE "/[a-zA-Z0-9_\\.]*.inst.in" "/" _inst_in_dirs_y "${_inst_in_dirs_x}")
-list(REMOVE_DUPLICATES _inst_in_dirs_y)
-set(_inst_in_dirs "")
-foreach (_dir ${_inst_in_dirs_y})
-  set(_inst_in_dirs "${_inst_in_dirs} ${CMAKE_BINARY_DIR}/source/${_dir}")
-endforeach()
+# This variable is used in options.dox.in where ${_inst_in_dir} is
+# added to INCLUDE_PATH.
+set(_inst_in_dir "${CMAKE_BINARY_DIR}/source/")
 
-message(STATUS "Additional doxygen include paths: ${_inst_in_dirs}")
+
+message(STATUS "Additional doxygen include path: ${_inst_in_dir}")
 
 # make sure doxygen sees the extra.sty stylefile:
 set(_extra_packages "${CMAKE_CURRENT_SOURCE_DIR}/extra")
@@ -112,6 +106,23 @@ set(_extra_packages "${CMAKE_CURRENT_SOURCE_DIR}/extra")
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/options.dox.in
   ${CMAKE_CURRENT_BINARY_DIR}/options.dox
+  )
+
+#
+# Set up DoxygenLayout.xml. Note that the "Modules" tab has been renamed to
+# "Topics" in Doxygen 1.9.8 to avoid confusion with C++ modules.
+# Unfortunately, this requires us to play a little bit of a configuration
+# dance:
+#
+if(${DOXYGEN_VERSION} VERSION_LESS 1.9.8)
+  set(_topics_layout_flag "<tab type=\"modules\" visible=\"yes\" title=\"\" intro=\"\"/>")
+else()
+  set(_topics_layout_flag "<tab type=\"topics\" visible=\"yes\" title=\"\" intro=\"\"/>")
+endif()
+
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/DoxygenLayout.xml.in
+  ${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml
   )
 
 # Figure out the last copyright date of any of the deal.II source
@@ -158,7 +169,8 @@ add_custom_command(
          ${CMAKE_CURRENT_BINARY_DIR}/footer.html
   COMMAND ${CMAKE_COMMAND} -E touch header.html
   COMMAND ${CMAKE_COMMAND} -E touch footer.html
-  COMMAND ${DOXYGEN_EXECUTABLE} -w html header.html footer.html style.css options.dox
+  COMMAND ${DOXYGEN_EXECUTABLE} -w html header.html footer.html
+                                   style.css options.dox
   COMMAND ${PERL_EXECUTABLE} -pi ${CMAKE_CURRENT_BINARY_DIR}/scripts/mod_header.pl header.html
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/options.dox
@@ -319,7 +331,7 @@ add_custom_command(
     ${CMAKE_CURRENT_BINARY_DIR}/options.dox
     ${CMAKE_CURRENT_BINARY_DIR}/header.html
     ${CMAKE_CURRENT_BINARY_DIR}/footer.html
-    ${CMAKE_CURRENT_SOURCE_DIR}/DoxygenLayout.xml
+    ${CMAKE_CURRENT_BINARY_DIR}/DoxygenLayout.xml
     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/filter.pl
     ${_doxygen_depend}
     expand_all_instantiations

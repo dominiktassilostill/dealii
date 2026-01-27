@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 - 2024 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,6 +18,11 @@
 #include <deal.II/differentiation/ad.h>
 
 #include <deal.II/fe/fe_values_views_internal.h>
+
+#ifdef DEAL_II_WITH_ADOLC
+#  include <adolc/adouble.h>
+#  include <adolc/adtl.h>
+#endif
 
 #include <type_traits>
 
@@ -80,7 +85,7 @@ namespace FEValuesViews
         if (shape_function_data[shape_function]
               .is_nonzero_shape_function_component)
           {
-            const Number value = dof_values[shape_function];
+            const Number &value = dof_values[shape_function];
             // For auto-differentiable numbers, the fact that a DoF value is
             // zero does not imply that its derivatives are zero as well. So we
             // can't filter by value for these number types.
@@ -121,7 +126,7 @@ namespace FEValuesViews
         if (shape_function_data[shape_function]
               .is_nonzero_shape_function_component)
           {
-            const Number value = dof_values[shape_function];
+            const Number &value = dof_values[shape_function];
             // For auto-differentiable numbers, the fact that a DoF value is
             // zero does not imply that its derivatives are zero as well. So we
             // can't filter by value for these number types.
@@ -163,7 +168,7 @@ namespace FEValuesViews
         if (shape_function_data[shape_function]
               .is_nonzero_shape_function_component)
           {
-            const Number value = dof_values[shape_function];
+            const Number &value = dof_values[shape_function];
             // For auto-differentiable numbers, the fact that a DoF value is
             // zero does not imply that its derivatives are zero as well. So we
             // can't filter by value for these number types.
@@ -211,7 +216,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -273,7 +278,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -339,7 +344,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -411,7 +416,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -488,7 +493,7 @@ namespace FEValuesViews
                     // shape function is zero for the selected components
                     continue;
 
-                  const Number value = dof_values[shape_function];
+                  const Number &value = dof_values[shape_function];
                   // For auto-differentiable numbers, the fact that a DoF value
                   // is zero does not imply that its derivatives are zero as
                   // well. So we can't filter by value for these number types.
@@ -571,7 +576,7 @@ namespace FEValuesViews
                     // shape function is zero for the selected components
                     continue;
 
-                  const Number value = dof_values[shape_function];
+                  const Number &value = dof_values[shape_function];
                   // For auto-differentiable numbers, the fact that a DoF value
                   // is zero does not imply that its derivatives are zero as
                   // well. So we can't filter by value for these number types.
@@ -734,7 +739,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -804,7 +809,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -873,7 +878,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -981,7 +986,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -1051,7 +1056,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -1121,7 +1126,7 @@ namespace FEValuesViews
             // shape function is zero for the selected components
             continue;
 
-          const Number value = dof_values[shape_function];
+          const Number &value = dof_values[shape_function];
           // For auto-differentiable numbers, the fact that a DoF value is zero
           // does not imply that its derivatives are zero as well. So we
           // can't filter by value for these number types.
@@ -1166,6 +1171,6 @@ namespace FEValuesViews
 
 /*------------------------------- Explicit Instantiations -------------*/
 
-#include "fe_values_views_internal.inst"
+#include "fe/fe_values_views_internal.inst"
 
 DEAL_II_NAMESPACE_CLOSE

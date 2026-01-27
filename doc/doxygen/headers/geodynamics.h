@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2023 by the deal.II authors
+// Copyright (C) 2009 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -91,7 +91,7 @@ problems. In particular, they are aimed at the following goals:
   infrastructure code supporting AMR.
 
   Supporting this point is the fact that although there are
-  <a href="https://www.dealii.org/publications.html">more than 2,000
+  <a href="https://dealii.org/publications.html">more than 2,000
   publications</a> presenting results obtained with deal.II, we are aware of
   only a relatively small number of applications that have been built with deal.II from
   scratch; all others have started as modifications of one of the tutorial
@@ -125,7 +125,7 @@ problems. In particular, they are aimed at the following goals:
   applications both regarding computing times to solve as well as concerning
   the accuracy of numerical solutions.
 
-  The applications in this module will already have been benchmarked for
+  The applications in this group will already have been benchmarked for
   correctness. Existing tutorial programs typically employ simpler rather than
   more complicated solver schemes for exposition but frequently suggest more
   complicated schemes including hints on how they might be implemented in an

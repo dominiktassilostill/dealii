@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2023 by the deal.II authors
+// Copyright (C) 2014 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -102,14 +102,13 @@ test()
     const unsigned int solid_cells_x = 20;
     const unsigned int solid_cells_y = 1;
     const unsigned int v_space_cells = 5;
-    ;
-    const double cell_size_x = 0.1;
-    const double cell_size_y = 0.1;
-    const double length      = solid_cells_x * cell_size_x,
-                 height      = static_cast<double>(h_cells * cell_size_y),
-                 h_distance  = static_cast<double>(cell_size_x * inflow_cells),
-                 v_distance  = static_cast<double>(cell_size_y * v_space_cells),
-                 solid_top   = static_cast<double>(v_distance +
+    const double       cell_size_x   = 0.1;
+    const double       cell_size_y   = 0.1;
+    const double       length        = solid_cells_x * cell_size_x,
+                 height     = static_cast<double>(h_cells * cell_size_y),
+                 h_distance = static_cast<double>(cell_size_x * inflow_cells),
+                 v_distance = static_cast<double>(cell_size_y * v_space_cells),
+                 solid_top  = static_cast<double>(v_distance +
                                                  solid_cells_y * cell_size_y),
                  total_length =
                    (inflow_cells + solid_cells_x + outflow_cells) * cell_size_x;

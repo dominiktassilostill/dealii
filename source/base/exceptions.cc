@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #include <deal.II/base/mpi.h>
 #include <deal.II/base/utilities.h>
 
+#include <Kokkos_Core.hpp>
+
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -24,7 +26,9 @@
 #include <string>
 
 #ifdef DEAL_II_WITH_MPI
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <mpi.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 #endif
 
 #ifdef DEAL_II_TRILINOS_WITH_SEACAS
@@ -285,8 +289,9 @@ ExceptionBase::print_stack_trace(std::ostream &out) const
       std::string functionname =
         stacktrace_entry.substr(pos_start + 1, pos_end - pos_start - 1);
 
-      stacktrace_entry.resize(pos_start);
-      stacktrace_entry += ": ";
+      std::string demangled_stacktrace_entry =
+        stacktrace_entry.substr(0, pos_start);
+      demangled_stacktrace_entry += ": ";
 
       // demangle, and if successful replace old mangled string by
       // unmangled one (skipping address and offset). treat "main"
@@ -311,27 +316,27 @@ ExceptionBase::print_stack_trace(std::ostream &out) const
             realname.erase(realname.find(", boost::tuples::null_type>"),
                            std::string(", boost::tuples::null_type").size());
 
-          stacktrace_entry += realname;
+          demangled_stacktrace_entry += realname;
         }
       else
-        stacktrace_entry += functionname;
+        demangled_stacktrace_entry += functionname;
 
-      free(p);
+      std::free(p);
 
 #else
 
-      stacktrace_entry += functionname;
+      demangled_stacktrace_entry += functionname;
 #endif
 
       // then output what we have
-      out << stacktrace_entry << std::endl;
+      out << demangled_stacktrace_entry << std::endl;
 
       // stop if we're in main()
       if (functionname == "main")
         break;
     }
 
-  free(stacktrace); // free(nullptr) is allowed
+  std::free(stacktrace); // free(nullptr) is allowed
   stacktrace = nullptr;
 }
 
@@ -517,22 +522,11 @@ namespace deal_II_exceptions
         }
 #endif
 
-      // Let's abort the program here. On the host, we need to call std::abort,
-      // on devices we need to do something different. Kokkos::abort() does
-      // the right thing in all circumstances.
-      if constexpr (std::is_same_v<Kokkos::DefaultExecutionSpace,
-                                   Kokkos::DefaultHostExecutionSpace>)
-        {
-          // FIXME_KOKKOS Older Kokkos versions don't declare Kokkos::abort as
-          // [[noreturn]]. In case Kokkos is only configured with host backends,
-          // we can just use std::abort instead.
-          std::abort();
-        }
-      else
-        {
-          Kokkos::abort(
-            "Abort() was called during dealing with an assertion or exception.");
-        }
+      // Let's abort the program here. On the host, we need to call
+      // std::abort, on devices we need to do something different.
+      // Kokkos::abort() does the right thing in all circumstances.
+      Kokkos::abort(
+        "Abort() was called during dealing with an assertion or exception.");
     }
 
 
@@ -550,97 +544,6 @@ namespace deal_II_exceptions
           deallog << exc.what() << std::endl;
         }
     }
-
-
-
-#ifdef DEAL_II_WITH_CUDA
-    std::string
-    get_cusparse_error_string(const cusparseStatus_t error_code)
-    {
-      switch (error_code)
-        {
-          case CUSPARSE_STATUS_NOT_INITIALIZED:
-            {
-              return "The cuSPARSE library was not initialized";
-            }
-          case CUSPARSE_STATUS_ALLOC_FAILED:
-            {
-              return "Resource allocation failed inside the cuSPARSE library";
-            }
-          case CUSPARSE_STATUS_INVALID_VALUE:
-            {
-              return "An unsupported value of parameter was passed to the function";
-            }
-          case CUSPARSE_STATUS_ARCH_MISMATCH:
-            {
-              return "The function requires a feature absent from the device architecture";
-            }
-          case CUSPARSE_STATUS_MAPPING_ERROR:
-            {
-              return "An access to GPU memory space failed";
-            }
-          case CUSPARSE_STATUS_EXECUTION_FAILED:
-            {
-              return "The GPU program failed to execute";
-            }
-          case CUSPARSE_STATUS_INTERNAL_ERROR:
-            {
-              return "An internal cuSPARSE operation failed";
-            }
-          case CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED:
-            {
-              return "The matrix type is not supported by this function";
-            }
-          default:
-            {
-              return "Unknown error";
-            }
-        }
-    }
-
-
-
-    std::string
-    get_cusolver_error_string(cusolverStatus_t error_code)
-    {
-      std::string message;
-      switch (error_code)
-        {
-          case CUSOLVER_STATUS_NOT_INITIALIZED:
-            {
-              return "The cuSolver library was not initialized";
-            }
-          case CUSOLVER_STATUS_ALLOC_FAILED:
-            {
-              return "Resource allocation failed inside the cuSolver library";
-            }
-          case CUSOLVER_STATUS_INVALID_VALUE:
-            {
-              return "An unsupported value of a parameter was passed to the function";
-            }
-          case CUSOLVER_STATUS_ARCH_MISMATCH:
-            {
-              return "The function requires a feature absent from the device architecture";
-            }
-          case CUSOLVER_STATUS_EXECUTION_FAILED:
-            {
-              return "The GPU program failed to execute";
-            }
-          case CUSOLVER_STATUS_INTERNAL_ERROR:
-            {
-              return "An internal cuSolver operation failed";
-            }
-          case CUSOLVER_STATUS_MATRIX_TYPE_NOT_SUPPORTED:
-            {
-              return "The matrix type is not supported by this function";
-            }
-          default:
-            {
-              return "Unknown error";
-            }
-        }
-    }
-#endif
 
   } /*namespace internals*/
 } /*namespace deal_II_exceptions*/

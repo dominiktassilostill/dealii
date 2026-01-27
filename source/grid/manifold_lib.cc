@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2024 by the deal.II authors
+// Copyright (C) 2014 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -123,6 +123,7 @@ namespace internal
 // PolarManifold
 // ============================================================
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 template <int dim, int spacedim>
 PolarManifold<dim, spacedim>::PolarManifold(const Point<spacedim> center)
   : ChartManifold<dim, spacedim, spacedim>(
@@ -130,6 +131,7 @@ PolarManifold<dim, spacedim>::PolarManifold(const Point<spacedim> center)
   , center(center)
   , p_center(center)
 {}
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 
 
@@ -331,12 +333,12 @@ PolarManifold<dim, spacedim>::normal_vector(
   // (tangential to the sphere).  In this case, the normal vector is
   // easy to compute since it is proportional to the vector from the
   // center to the point 'p'.
-  if (spherical_face_is_horizontal<dim, spacedim>(face, center))
+  if (spherical_face_is_horizontal<dim, spacedim>(face, p_center))
     {
       // So, if this is a "horizontal" face, then just compute the normal
       // vector as the one from the center to the point 'p', adequately
       // scaled.
-      const Tensor<1, spacedim> unnormalized_spherical_normal = p - center;
+      const Tensor<1, spacedim> unnormalized_spherical_normal = p - p_center;
       const Tensor<1, spacedim> normalized_spherical_normal =
         unnormalized_spherical_normal / unnormalized_spherical_normal.norm();
       return normalized_spherical_normal;
@@ -355,6 +357,7 @@ PolarManifold<dim, spacedim>::normal_vector(
 // SphericalManifold
 // ============================================================
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 template <int dim, int spacedim>
 SphericalManifold<dim, spacedim>::SphericalManifold(
   const Point<spacedim> center)
@@ -362,6 +365,7 @@ SphericalManifold<dim, spacedim>::SphericalManifold(
   , p_center(center)
   , polar_manifold(center)
 {}
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 
 
@@ -447,7 +451,6 @@ SphericalManifold<dim, spacedim>::get_tangent_vector(
   const Point<spacedim> &p2) const
 {
   const double tol = 1e-10;
-  (void)tol;
 
   Assert(p1 != p2, ExcMessage("p1 and p2 should not concide."));
 
@@ -630,8 +633,6 @@ namespace internal
                        const ArrayView<const double>       &weights,
                        const Point<3>                      &candidate_point)
       {
-        (void)distances;
-
         AssertDimension(directions.size(), distances.size());
         AssertDimension(directions.size(), weights.size());
 
@@ -1473,17 +1474,19 @@ FunctionManifold<dim, spacedim, chartdim>::push_forward(
   for (unsigned int i = 0; i < spacedim; ++i)
     result[i] = pf[i];
 
-#ifdef DEBUG
-  Vector<double> pb(chartdim);
-  pull_back_function->vector_value(result, pb);
-  for (unsigned int i = 0; i < chartdim; ++i)
-    Assert(
-      (chart_point.norm() > tolerance &&
-       (std::abs(pb[i] - chart_point[i]) < tolerance * chart_point.norm())) ||
-        (std::abs(pb[i] - chart_point[i]) < tolerance),
-      ExcMessage(
-        "The push forward is not the inverse of the pull back! Bailing out."));
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      Vector<double> pb(chartdim);
+      pull_back_function->vector_value(result, pb);
+      for (unsigned int i = 0; i < chartdim; ++i)
+        Assert(
+          (chart_point.norm() > tolerance &&
+           (std::abs(pb[i] - chart_point[i]) <
+            tolerance * chart_point.norm())) ||
+            (std::abs(pb[i] - chart_point[i]) < tolerance),
+          ExcMessage(
+            "The push forward is not the inverse of the pull back! Bailing out."));
+    }
 
   return result;
 }
@@ -1681,12 +1684,12 @@ TransfiniteInterpolationManifold<dim, spacedim>::initialize(
   for (const auto &cell : triangulation.active_cell_iterators())
     {
       bool cell_is_flat = true;
-      for (unsigned int l = 0; l < GeometryInfo<dim>::lines_per_cell; ++l)
+      for (const auto l : cell->line_indices())
         if (cell->line(l)->manifold_id() != cell->manifold_id() &&
             cell->line(l)->manifold_id() != numbers::flat_manifold_id)
           cell_is_flat = false;
-      if (dim > 2)
-        for (unsigned int q = 0; q < GeometryInfo<dim>::quads_per_cell; ++q)
+      if constexpr (dim > 2)
+        for (const auto q : cell->face_indices())
           if (cell->quad(q)->manifold_id() != cell->manifold_id() &&
               cell->quad(q)->manifold_id() != numbers::flat_manifold_id)
             cell_is_flat = false;
@@ -2611,6 +2614,6 @@ TransfiniteInterpolationManifold<dim, spacedim>::get_new_points(
 
 
 // explicit instantiations
-#include "manifold_lib.inst"
+#include "grid/manifold_lib.inst"
 
 DEAL_II_NAMESPACE_CLOSE

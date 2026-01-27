@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,7 +16,6 @@
 
 // same as multigrid_dg_sip but using periodic boundary conditions
 
-#include <deal.II/base/function.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/utilities.h>
 
@@ -26,7 +25,6 @@
 #include <deal.II/dofs/dof_tools.h>
 
 #include <deal.II/fe/fe_dgq.h>
-#include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/mapping_q.h>
 
 #include <deal.II/grid/grid_generator.h>
@@ -55,7 +53,7 @@
 
 
 template <int dim, typename number = double>
-class LaplaceOperator : public Subscriptor
+class LaplaceOperator : public EnableObserverPointer
 {
 public:
   using value_type = number;
@@ -573,7 +571,7 @@ do_test(const DoFHandler<dim> &dof, const unsigned int n_q_points_1d)
     preconditioner(dof, mg, mg_transfer);
 
   {
-    ReductionControl control(30, 1e-20, 1e-10);
+    ReductionControl control(30, 1e-20, 1e-10, false, true);
     SolverCG<LinearAlgebra::distributed::Vector<double>> solver(control);
     solver.solve(fine_matrix, sol, in, preconditioner);
   }

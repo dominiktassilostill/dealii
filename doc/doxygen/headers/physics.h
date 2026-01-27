@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2022 by the deal.II authors
+// Copyright (C) 2016 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,7 +15,7 @@
 /**
  * @defgroup physics Physics
  *
- * @brief A module dedicated to the implementation of functions and
+ * @brief A group dedicated to the implementation of functions and
  * classes that relate to continuum physics, physical fields and materials.
  */
 

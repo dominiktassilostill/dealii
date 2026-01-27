@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2023 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,7 +20,7 @@
 
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/mutex.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/table.h>
 #include <deal.II/base/utilities.h>
 
@@ -346,7 +346,7 @@ namespace BlockMatrixIterators
  * @ref GlossBlockLA "Block (linear algebra)"
  */
 template <typename MatrixType>
-class BlockMatrixBase : public Subscriptor
+class BlockMatrixBase : public EnableObserverPointer
 {
 public:
   /**
@@ -849,7 +849,7 @@ protected:
   /**
    * Array of sub-matrices.
    */
-  Table<2, SmartPointer<BlockType, BlockMatrixBase<MatrixType>>> sub_objects;
+  Table<2, ObserverPointer<BlockType, BlockMatrixBase<MatrixType>>> sub_objects;
 
   /**
    * This function collects the sizes of the sub-objects and stores them in
@@ -1116,7 +1116,6 @@ namespace BlockMatrixIterators
     : matrix(matrix)
     , base_iterator(matrix->block(0, 0).begin())
   {
-    (void)col;
     Assert(col == 0, ExcNotImplemented());
 
     // check if this is a regular row or
@@ -1316,7 +1315,6 @@ namespace BlockMatrixIterators
     : matrix(matrix)
     , base_iterator(matrix->block(0, 0).begin())
   {
-    (void)col;
     Assert(col == 0, ExcNotImplemented());
     // check if this is a regular row or
     // the end of the matrix
@@ -1352,8 +1350,8 @@ namespace BlockMatrixIterators
       {
         // we were asked to create the end
         // iterator for this matrix
-        this->row_block = numbers::invalid_size_type;
-        this->col_block = numbers::invalid_size_type;
+        this->row_block = numbers::invalid_unsigned_int;
+        this->col_block = numbers::invalid_unsigned_int;
       }
   }
 
@@ -1362,7 +1360,8 @@ namespace BlockMatrixIterators
   inline typename Accessor<BlockMatrixType, false>::size_type
   Accessor<BlockMatrixType, false>::row() const
   {
-    Assert(this->row_block != numbers::invalid_size_type, ExcIteratorPastEnd());
+    Assert(this->row_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
 
     return (matrix->row_block_indices.local_to_global(this->row_block, 0) +
             base_iterator->row());
@@ -1373,7 +1372,8 @@ namespace BlockMatrixIterators
   inline typename Accessor<BlockMatrixType, false>::size_type
   Accessor<BlockMatrixType, false>::column() const
   {
-    Assert(this->col_block != numbers::invalid_size_type, ExcIteratorPastEnd());
+    Assert(this->col_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
 
     return (matrix->column_block_indices.local_to_global(this->col_block, 0) +
             base_iterator->column());
@@ -1384,8 +1384,10 @@ namespace BlockMatrixIterators
   inline typename Accessor<BlockMatrixType, false>::value_type
   Accessor<BlockMatrixType, false>::value() const
   {
-    Assert(this->row_block != numbers::invalid_size_type, ExcIteratorPastEnd());
-    Assert(this->col_block != numbers::invalid_size_type, ExcIteratorPastEnd());
+    Assert(this->row_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
+    Assert(this->col_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
 
     return base_iterator->value();
   }
@@ -1397,8 +1399,10 @@ namespace BlockMatrixIterators
   Accessor<BlockMatrixType, false>::set_value(
     typename Accessor<BlockMatrixType, false>::value_type newval) const
   {
-    Assert(this->row_block != numbers::invalid_size_type, ExcIteratorPastEnd());
-    Assert(this->col_block != numbers::invalid_size_type, ExcIteratorPastEnd());
+    Assert(this->row_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
+    Assert(this->col_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
 
     base_iterator->value() = newval;
   }
@@ -1409,8 +1413,10 @@ namespace BlockMatrixIterators
   inline void
   Accessor<BlockMatrixType, false>::advance()
   {
-    Assert(this->row_block != numbers::invalid_size_type, ExcIteratorPastEnd());
-    Assert(this->col_block != numbers::invalid_size_type, ExcIteratorPastEnd());
+    Assert(this->row_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
+    Assert(this->col_block != numbers::invalid_unsigned_int,
+           ExcIteratorPastEnd());
 
     // Remember current row inside block
     size_type local_row = base_iterator->row();
@@ -1456,8 +1462,8 @@ namespace BlockMatrixIterators
                 ++this->row_block;
                 if (this->row_block == matrix->n_block_rows())
                   {
-                    this->row_block = numbers::invalid_size_type;
-                    this->col_block = numbers::invalid_size_type;
+                    this->row_block = numbers::invalid_unsigned_int;
+                    this->col_block = numbers::invalid_unsigned_int;
                     return;
                   }
               }
@@ -1482,8 +1488,8 @@ namespace BlockMatrixIterators
       // have to have the same
       // base_iterator representation, but
       // valid iterators have to
-      return (((this->row_block == numbers::invalid_size_type) &&
-               (this->col_block == numbers::invalid_size_type)) ||
+      return (((this->row_block == numbers::invalid_unsigned_int) &&
+               (this->col_block == numbers::invalid_unsigned_int)) ||
               (base_iterator == a.base_iterator));
 
     return false;
@@ -1786,14 +1792,15 @@ BlockMatrixBase<MatrixType>::set(const size_type  row,
       temporary_data.column_values[col_index.first][local_index] = value;
     }
 
-#  ifdef DEBUG
-  // If in debug mode, do a check whether
-  // the right length has been obtained.
-  size_type length = 0;
-  for (unsigned int i = 0; i < this->n_block_cols(); ++i)
-    length += temporary_data.counter_within_block[i];
-  Assert(length <= n_cols, ExcInternalError());
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      // If in debug mode, do a check whether
+      // the right length has been obtained.
+      size_type length = 0;
+      for (unsigned int i = 0; i < this->n_block_cols(); ++i)
+        length += temporary_data.counter_within_block[i];
+      Assert(length <= n_cols, ExcInternalError());
+    }
 
   // Now we found out about where the
   // individual columns should start and
@@ -1929,20 +1936,21 @@ BlockMatrixBase<MatrixType>::add(const size_type  row,
   // efficiently.
   if (col_indices_are_sorted == true)
     {
-#  ifdef DEBUG
-      // check whether indices really are
-      // sorted.
-      size_type before = col_indices[0];
-      for (size_type i = 1; i < n_cols; ++i)
-        if (col_indices[i] <= before)
-          {
-            Assert(false,
-                   ExcMessage("Flag col_indices_are_sorted is set, but "
-                              "indices appear to not be sorted."));
-          }
-        else
-          before = col_indices[i];
-#  endif
+      if constexpr (running_in_debug_mode())
+        {
+          // check whether indices really are
+          // sorted.
+          size_type before = col_indices[0];
+          for (size_type i = 1; i < n_cols; ++i)
+            if (col_indices[i] <= before)
+              {
+                Assert(false,
+                       ExcMessage("Flag col_indices_are_sorted is set, but "
+                                  "indices appear to not be sorted."));
+              }
+            else
+              before = col_indices[i];
+        }
       const std::pair<unsigned int, size_type> row_index =
         this->row_block_indices.global_to_local(row);
 
@@ -2045,14 +2053,15 @@ BlockMatrixBase<MatrixType>::add(const size_type  row,
       temporary_data.column_values[col_index.first][local_index] = value;
     }
 
-#  ifdef DEBUG
-  // If in debug mode, do a check whether
-  // the right length has been obtained.
-  size_type length = 0;
-  for (unsigned int i = 0; i < this->n_block_cols(); ++i)
-    length += temporary_data.counter_within_block[i];
-  Assert(length <= n_cols, ExcInternalError());
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      // If in debug mode, do a check whether
+      // the right length has been obtained.
+      size_type length = 0;
+      for (unsigned int i = 0; i < this->n_block_cols(); ++i)
+        length += temporary_data.counter_within_block[i];
+      Assert(length <= n_cols, ExcInternalError());
+    }
 
   // Now we found out about where the
   // individual columns should start and

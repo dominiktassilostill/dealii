@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2024 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,9 +19,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/geometry_info.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/tensor.h>
 
@@ -85,7 +85,7 @@ namespace FETools
    * FETools::add_fe_name() functions.
    */
   template <int dim, int spacedim = dim>
-  class FEFactoryBase : public Subscriptor
+  class FEFactoryBase : public EnableObserverPointer
   {
   public:
     /**
@@ -364,7 +364,7 @@ namespace FETools
    * @param fe The finite element for which to compute these matrices.
    *
    * @param matrices An array of <i>GeometryInfo<dim>::subfaces_per_face =
-   * 2<sup>dim-1</sup></i> FullMatrix objects,holding the embedding matrix for
+   * 2<sup>dim-1</sup></i> FullMatrix objects, holding the embedding matrix for
    * each subface.
    *
    * @param face_coarse The number of the face on the coarse side of the face
@@ -381,12 +381,11 @@ namespace FETools
    */
   template <int dim, typename number, int spacedim>
   void
-  compute_face_embedding_matrices(
-    const FiniteElement<dim, spacedim> &fe,
-    FullMatrix<number> (&matrices)[GeometryInfo<dim>::max_children_per_face],
-    const unsigned int face_coarse,
-    const unsigned int face_fine,
-    const double       threshold = 1.e-12);
+  compute_face_embedding_matrices(const FiniteElement<dim, spacedim>  &fe,
+                                  const ArrayView<FullMatrix<number>> &matrices,
+                                  const unsigned int face_coarse,
+                                  const unsigned int face_fine,
+                                  const double       threshold = 1.e-12);
 
   /**
    * For all possible (isotropic and anisotropic) refinement cases compute the
@@ -843,12 +842,8 @@ namespace FETools
    * treated patches if the mesh had been refined adaptively (this cannot
    * happen if the  mesh has been refined globally because there the children
    * of a patch are all active). We also perform the operation described above
-   * on these patches, but it is easy to see that on patches that are children
-   * of previously treated patches, the operation is now the identity operation
-   * (since it interpolates from the children of the current patch a function
-   * that had previously been interpolated to these children from an even
-   * coarser patch). Consequently, this does not alter the solution vector any
-   * more.
+   * on these patches, which means that the final DoF values will always
+   * originate from the most refined patches.
    *
    * The name of the function originates from the fact that it can be used to
    * construct a representation of a function of higher polynomial degree on a
@@ -933,6 +928,69 @@ namespace FETools
   lexicographic_to_hierarchic_numbering(unsigned int degree);
 
   /**
+   * Given the polynomial degree, direction, and numbering options, this
+   * function returns a pair of vectors mapping cell DoFs to face patch DoFs
+   * in lexicographic order.
+   *
+   * This function works for scalar finite elements, specifically those derived
+   * from FE_Q and FE_DGQ. It computes the mapping from the DoFs of
+   * two adjacent cells sharing a face perpendicular to @p direction in
+   * reference space, to the DoFs on the face patch. The result is a pair of
+   * vectors: the first for the DoFs on the first cell, the second for the
+   * DoFs on the second cell. The @p cell_hierarchical_numbering flag
+   * determines whether hierarchical or lexicographic numbering is assumed for
+   * the cell DoFs. The @p is_continuous flag indicates whether the finite
+   * element space is continuous (i.e., FE_Q).
+   *
+   * @param degree Polynomial degree of the finite element.
+   * @param direction Axis perpendicular to the considered face.
+   * @param cell_hierarchical_numbering If true, use hierarchical numbering for cell DoFs.
+   * @param is_continuous If true, assumes the finite element space is continuous (FE_Q).
+   * @return A pair of vectors mapping cell DoFs to face patch DoFs in lexicographic order.
+   */
+  template <int dim>
+  std::pair<std::vector<unsigned int>, std::vector<unsigned int>>
+  cell_to_face_patch_numbering(const unsigned int &degree,
+                               const unsigned int &direction,
+                               const bool         &cell_hierarchical_numbering,
+                               const bool         &is_continuous);
+
+
+  /**
+   * @copydoc FETools::cell_to_face_patch_numbering()
+   *
+   * @deprecated Use FETools::cell_to_face_patch_numbering() instead.
+   */
+  template <int dim>
+  DEAL_II_DEPRECATED_EARLY_WITH_COMMENT(
+    "Use FETools::cell_to_face_patch_numbering() instead.")
+  std::pair<
+    std::vector<unsigned int>,
+    std::vector<unsigned int>> cell_to_face_patch(const unsigned int &degree,
+                                                  const unsigned int &direction,
+                                                  const bool &
+                                                    cell_hierarchical_numbering,
+                                                  const bool &is_continuous);
+
+  /**
+   * Given an index of a face DoF, compute the cell DoF index. This function is
+   * intended for use with single-component interpolatory elements like
+   * FE_SimplexP and FE_Q_Base in which DoFs defined on lines or quadrilaterals
+   * are rotated along with the face.
+   *
+   * @note Most applications should call FiniteElement::face_to_cell_index()
+   * instead, which may use this function in its implementation.
+   *
+   * @see FiniteElement::face_to_cell_index()
+   */
+  template <int dim, int spacedim>
+  unsigned int
+  face_to_cell_index(const FiniteElement<dim, spacedim> &fe,
+                     const unsigned int                  face_dof_index,
+                     const unsigned int                  face_no,
+                     const types::geometric_orientation  combined_orientation);
+
+  /**
    * A namespace that contains functions that help setting up internal
    * data structures when implementing FiniteElement which are build
    * from simpler ("base") elements, for example FESystem. The things
@@ -949,7 +1007,7 @@ namespace FETools
    * <li> Tensor product construction (<code>do_tensor_product=true</code>):
    * The tensor product construction, in the simplest case, builds a
    * vector-valued element from scalar elements (see
-   * @ref vector_valued "this documentation module"
+   * @ref vector_valued "this documentation topic"
    * and
    * @ref GlossComponent "this glossary entry"
    * for more information).
@@ -1051,7 +1109,7 @@ namespace FETools
      *   vector of elements or an initializer list as arguments.
      */
     template <int dim, int spacedim>
-    DEAL_II_DEPRECATED_EARLY FiniteElementData<dim>
+    DEAL_II_DEPRECATED FiniteElementData<dim>
     multiply_dof_numbers(const FiniteElement<dim, spacedim> *fe1,
                          const unsigned int                  N1,
                          const FiniteElement<dim, spacedim> *fe2 = nullptr,
@@ -1072,7 +1130,7 @@ namespace FETools
      * individual shape functions that do not depend on whether the
      * composed element uses the tensor product or combination
      * strategy outlined in the documentation of the
-     * FETools::Composition namespace. Consequently, this function
+     * FETools::Compositing namespace. Consequently, this function
      * does not have a @p do_tensor_product argument.
      */
     template <int dim, int spacedim>
@@ -1104,25 +1162,25 @@ namespace FETools
      * individual shape functions that do not depend on whether the
      * composed element uses the tensor product or combination
      * strategy outlined in the documentation of the
-     * FETools::Composition namespace. Consequently, this function
+     * FETools::Compositing namespace. Consequently, this function
      * does not have a @p do_tensor_product argument.
      *
      * @deprecated Use the versions of this function that take a
      *   vector of elements or an initializer list as arguments.
      */
     template <int dim, int spacedim>
-    DEAL_II_DEPRECATED_EARLY std::vector<bool>
-                             compute_restriction_is_additive_flags(
-                               const FiniteElement<dim, spacedim> *fe1,
-                               const unsigned int                  N1,
-                               const FiniteElement<dim, spacedim> *fe2 = nullptr,
-                               const unsigned int                  N2 = 0,
-                               const FiniteElement<dim, spacedim> *fe3 = nullptr,
-                               const unsigned int                  N3 = 0,
-                               const FiniteElement<dim, spacedim> *fe4 = nullptr,
-                               const unsigned int                  N4 = 0,
-                               const FiniteElement<dim, spacedim> *fe5 = nullptr,
-                               const unsigned int                  N5 = 0);
+    DEAL_II_DEPRECATED std::vector<bool>
+                       compute_restriction_is_additive_flags(
+                         const FiniteElement<dim, spacedim> *fe1,
+                         const unsigned int                  N1,
+                         const FiniteElement<dim, spacedim> *fe2 = nullptr,
+                         const unsigned int                  N2  = 0,
+                         const FiniteElement<dim, spacedim> *fe3 = nullptr,
+                         const unsigned int                  N3  = 0,
+                         const FiniteElement<dim, spacedim> *fe4 = nullptr,
+                         const unsigned int                  N4  = 0,
+                         const FiniteElement<dim, spacedim> *fe5 = nullptr,
+                         const unsigned int                  N5  = 0);
 
 
     /**
@@ -1182,19 +1240,19 @@ namespace FETools
      *   vector of elements or an initializer list as arguments.
      */
     template <int dim, int spacedim>
-    DEAL_II_DEPRECATED_EARLY std::vector<ComponentMask>
-                             compute_nonzero_components(
-                               const FiniteElement<dim, spacedim> *fe1,
-                               const unsigned int                  N1,
-                               const FiniteElement<dim, spacedim> *fe2 = nullptr,
-                               const unsigned int                  N2 = 0,
-                               const FiniteElement<dim, spacedim> *fe3 = nullptr,
-                               const unsigned int                  N3 = 0,
-                               const FiniteElement<dim, spacedim> *fe4 = nullptr,
-                               const unsigned int                  N4 = 0,
-                               const FiniteElement<dim, spacedim> *fe5 = nullptr,
-                               const unsigned int                  N5 = 0,
-                               const bool                          do_tensor_product = true);
+    DEAL_II_DEPRECATED std::vector<ComponentMask>
+                       compute_nonzero_components(
+                         const FiniteElement<dim, spacedim> *fe1,
+                         const unsigned int                  N1,
+                         const FiniteElement<dim, spacedim> *fe2 = nullptr,
+                         const unsigned int                  N2  = 0,
+                         const FiniteElement<dim, spacedim> *fe3 = nullptr,
+                         const unsigned int                  N3  = 0,
+                         const FiniteElement<dim, spacedim> *fe4 = nullptr,
+                         const unsigned int                  N4  = 0,
+                         const FiniteElement<dim, spacedim> *fe5 = nullptr,
+                         const unsigned int                  N5  = 0,
+                         const bool                          do_tensor_product = true);
 
     /**
      * For a given (composite) @p finite_element build @p
@@ -1328,7 +1386,7 @@ namespace FETools
    * Note also that this table exists once for each space dimension. If you
    * have a program that works with finite elements in different space
    * dimensions (for example,
-   * @ref step_4 "step-4"
+   * step-4
    * does something like this), then you should call this function for each
    * space dimension for which you want your finite element added to the map.
    */

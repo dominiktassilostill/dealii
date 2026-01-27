@@ -19,7 +19,7 @@
 
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/lazy.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/symmetric_tensor.h>
 #include <deal.II/base/tensor.h>
 
@@ -104,7 +104,7 @@ namespace internal
  *
  * See the description of the
  * @ref vector_valued
- * module for examples how to use the features of this namespace.
+ * topic for examples how to use the features of this namespace.
  *
  * @ingroup feaccess vector_valued
  */
@@ -114,7 +114,7 @@ namespace FEValuesViews
    * A class representing a view to a single scalar component of a possibly
    * vector-valued finite element. Views are discussed in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * You get an object of this type if you apply a FEValuesExtractors::Scalar
    * to an FEValues, FEFaceValues or FESubfaceValues object.
@@ -548,7 +548,7 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    ObserverPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The single scalar component this view represents of the FEValuesBase
@@ -569,7 +569,7 @@ namespace FEValuesViews
    * forming a vector part of a vector-valued finite element. Views are
    * discussed in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * Note that in the current context, a vector is meant in the sense physics
    * uses it: it has <code>spacedim</code> components that behave in specific
@@ -1271,7 +1271,7 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    ObserverPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The first component of the vector this view represents of the
@@ -1294,7 +1294,7 @@ namespace FEValuesViews
    * components forming a symmetric second-order tensor from a vector-valued
    * finite element. Views are discussed in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * This class allows to query the value and divergence of (components of)
    * shape functions and solutions representing symmetric tensors. The
@@ -1584,7 +1584,7 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    ObserverPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The first component of the vector this view represents of the
@@ -1607,7 +1607,7 @@ namespace FEValuesViews
    * forming a second-order tensor from a vector-valued finite element. Views
    * are discussed in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * This class allows to query the value, gradient and divergence of
    * (components of) shape functions and solutions representing tensors. The
@@ -1958,7 +1958,7 @@ namespace FEValuesViews
     /**
      * A pointer to the FEValuesBase object we operate on.
      */
-    SmartPointer<const FEValuesBase<dim, spacedim>> fe_values;
+    ObserverPointer<const FEValuesBase<dim, spacedim>> fe_values;
 
     /**
      * The first component of the vector this view represents of the

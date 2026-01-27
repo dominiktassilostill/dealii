@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -242,6 +242,7 @@ namespace TriangulationDescription
                                    unsigned int>>
               temp;
 
+            temp.reserve(this->coarse_cells.size());
             for (unsigned int i = 0; i < this->coarse_cells.size(); ++i)
               temp.emplace_back(this->coarse_cell_index_to_coarse_cell_id[i],
                                 this->coarse_cells[i],
@@ -724,7 +725,7 @@ namespace TriangulationDescription
             dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
               &tria))
         {
-          Assert(comm == ptria->get_communicator(),
+          Assert(comm == ptria->get_mpi_communicator(),
                  ExcMessage("MPI communicators do not match."));
           Assert(my_rank_in == numbers::invalid_unsigned_int ||
                    my_rank_in == dealii::Utilities::MPI::this_mpi_process(comm),
@@ -734,24 +735,26 @@ namespace TriangulationDescription
                    "in the given communicator."));
         }
 
-      // If we are dealing with a sequential triangulation, then someone
-      // will have needed to set the subdomain_ids by hand. Make sure that
-      // all ids we see are less than the number of processes we are
-      // supposed to split the triangulation into.
-      if (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
-            &tria) == nullptr)
+      if constexpr (running_in_debug_mode())
         {
-#if DEBUG
-          const unsigned int n_mpi_processes =
-            dealii::Utilities::MPI::n_mpi_processes(comm);
-          for (const auto &cell : tria.active_cell_iterators())
-            Assert(cell->subdomain_id() < n_mpi_processes,
-                   ExcMessage("You can't have a cell with subdomain_id of " +
-                              std::to_string(cell->subdomain_id()) +
-                              " when splitting the triangulation using an MPI "
-                              " communicator with only " +
-                              std::to_string(n_mpi_processes) + " processes."));
-#endif
+          // If we are dealing with a sequential triangulation, then someone
+          // will have needed to set the subdomain_ids by hand. Make sure that
+          // all ids we see are less than the number of processes we are
+          // supposed to split the triangulation into.
+          if (dynamic_cast<const parallel::TriangulationBase<dim, spacedim> *>(
+                &tria) == nullptr)
+            {
+              const unsigned int n_mpi_processes =
+                dealii::Utilities::MPI::n_mpi_processes(comm);
+              for (const auto &cell : tria.active_cell_iterators())
+                Assert(cell->subdomain_id() < n_mpi_processes,
+                       ExcMessage(
+                         "You can't have a cell with subdomain_id of " +
+                         std::to_string(cell->subdomain_id()) +
+                         " when splitting the triangulation using an MPI "
+                         " communicator with only " +
+                         std::to_string(n_mpi_processes) + " processes."));
+            }
         }
 
       // First, figure out for what rank we are supposed to build the
@@ -1013,16 +1016,15 @@ namespace TriangulationDescription
       const TriangulationDescription::Settings settings_in)
     {
 #ifdef DEAL_II_WITH_MPI
-      if (tria.get_communicator() == MPI_COMM_NULL)
+      if (tria.get_mpi_communicator() == MPI_COMM_NULL)
         AssertDimension(partition.locally_owned_size(), 0);
 #endif
 
       if (partition.size() == 0)
         {
           AssertDimension(partitions_mg.size(), 0);
-          return create_description_from_triangulation(tria,
-                                                       tria.get_communicator(),
-                                                       settings_in);
+          return create_description_from_triangulation(
+            tria, tria.get_mpi_communicator(), settings_in);
         }
 
       // Update partitioner ghost elements because we will later want
@@ -1046,7 +1048,6 @@ namespace TriangulationDescription
           const unsigned int n_mpi_ranks =
             dealii::Utilities::MPI::n_mpi_processes(
               partition.get_mpi_communicator());
-          (void)n_mpi_ranks;
 
           for (unsigned int i = 0; i < partition.locally_owned_size(); ++i)
             {
@@ -1141,7 +1142,7 @@ namespace TriangulationDescription
             mg_cell_to_future_owner,
             coinciding_vertex_groups,
             vertex_to_coinciding_vertex_group,
-            tria.get_communicator(),
+            tria.get_mpi_communicator(),
             rank,
             settings));
 
@@ -1171,7 +1172,7 @@ namespace TriangulationDescription
 
 
 /*-------------- Explicit Instantiations -------------------------------*/
-#include "tria_description.inst"
+#include "grid/tria_description.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

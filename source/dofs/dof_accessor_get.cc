@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2023 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,6 @@
 #include <deal.II/fe/fe.h>
 
 #include <deal.II/grid/tria_iterator.h>
-#include <deal.II/grid/tria_iterator.templates.h>
 
 #include <deal.II/lac/block_vector.h>
 #include <deal.II/lac/la_parallel_block_vector.h>
@@ -29,6 +28,7 @@
 #include <deal.II/lac/sparse_matrix.h>
 #include <deal.II/lac/trilinos_epetra_vector.h>
 #include <deal.II/lac/trilinos_parallel_block_vector.h>
+#include <deal.II/lac/trilinos_tpetra_block_vector.h>
 #include <deal.II/lac/trilinos_tpetra_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector.h>
@@ -185,6 +185,6 @@ DoFCellAccessor<dim, spacedim, lda>::get_interpolated_dof_values(
 
 // --------------------------------------------------------------------------
 // explicit instantiations
-#include "dof_accessor_get.inst"
+#include "dofs/dof_accessor_get.inst"
 
 DEAL_II_NAMESPACE_CLOSE

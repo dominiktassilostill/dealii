@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -56,7 +56,7 @@ reinit_vector(const dealii::DoFHandler<dim, spacedim>      &mg_dof,
   for (unsigned int level = v.min_level(); level <= v.max_level(); ++level)
     {
       v[level].reinit(mg_dof.locally_owned_mg_dofs(level),
-                      tria->get_communicator());
+                      tria->get_mpi_communicator());
     }
 }
 

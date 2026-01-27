@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,8 +19,8 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/table.h>
 #include <deal.II/base/table_indices.h>
 #include <deal.II/base/tensor.h>
@@ -86,7 +86,7 @@ namespace FESeries
    * $ \bf k $ .
    */
   template <int dim, int spacedim = dim>
-  class Fourier : public Subscriptor
+  class Fourier : public EnableObserverPointer
   {
   public:
     using CoefficientType = typename std::complex<double>;
@@ -182,7 +182,7 @@ namespace FESeries
     /**
      * hp::FECollection for which transformation matrices will be calculated.
      */
-    SmartPointer<const hp::FECollection<dim, spacedim>> fe_collection;
+    ObserverPointer<const hp::FECollection<dim, spacedim>> fe_collection;
 
     /**
      * hp::QCollection used in calculation of transformation matrices.
@@ -256,7 +256,7 @@ namespace FESeries
    * $ \widetilde P_m(x) $ using tensor product rule.
    */
   template <int dim, int spacedim = dim>
-  class Legendre : public Subscriptor
+  class Legendre : public EnableObserverPointer
   {
   public:
     using CoefficientType = double;
@@ -352,7 +352,7 @@ namespace FESeries
     /**
      * hp::FECollection for which transformation matrices will be calculated.
      */
-    SmartPointer<const hp::FECollection<dim, spacedim>> fe_collection;
+    ObserverPointer<const hp::FECollection<dim, spacedim>> fe_collection;
 
     /**
      * hp::QCollection used in calculation of transformation matrices.

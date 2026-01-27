@@ -208,7 +208,7 @@ namespace Step89
 
       data_out.build_patches(mapping, degree, DataOut<dim>::curved_inner_cells);
       data_out.write_vtu_in_parallel(name_prefix + ".vtu",
-                                     dof_handler.get_communicator());
+                                     dof_handler.get_mpi_communicator());
     }
   } // namespace HelperFunctions
 
@@ -792,17 +792,17 @@ namespace Step89
                 remote_face_ids, matrix_free.get_boundary_id(face)))
             {
               // If @c face is non-matching we have to query values via the
-              // FERemoteEvaluaton objects. This is done by passing the
-              // corresponding FERemoteEvaluaton objects to the function that
+              // FERemoteEvaluation objects. This is done by passing the
+              // corresponding FERemoteEvaluation objects to the function that
               // evaluates the kernel. As mentioned above, each side of the
               // non-matching interface is traversed separately and we do not
               // have to consider the neighbor in the kernel. Note, that the
-              // values in the FERemoteEvaluaton objects are already updated at
+              // values in the FERemoteEvaluation objects are already updated at
               // this point.
 
               // For point-to-point interpolation we simply use the
-              // corresponding FERemoteEvaluaton objects in combination with the
-              // standard FEFaceEvaluation objects.
+              // corresponding FERemoteEvaluation objects in combination with
+              // the standard FEFaceEvaluation objects.
               velocity_r.reinit(face);
               pressure_r.reinit(face);
 
@@ -1180,7 +1180,7 @@ namespace Step89
                    (cell->vertex(1) - cell->vertex(0)).norm_square());
       h_local_min = std::sqrt(h_local_min);
       const double h_min =
-        Utilities::MPI::min(h_local_min, dof_handler.get_communicator());
+        Utilities::MPI::min(h_local_min, dof_handler.get_mpi_communicator());
 
       const double dt =
         cr * HelperFunctions::compute_dt_cfl(h_min, degree, speed_of_sound);

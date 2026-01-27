@@ -61,7 +61,7 @@ create_partitioner(const DoFHandler<dim, spacedim> &dof_handler)
   return std::make_shared<const Utilities::MPI::Partitioner>(
     dof_handler.locally_owned_dofs(),
     locally_relevant_dofs,
-    dof_handler.get_communicator());
+    dof_handler.get_mpi_communicator());
 }
 
 
@@ -87,11 +87,11 @@ main(int argc, char **argv)
 
   MappingQ1<patch_dim, spacedim> mapping_slice;
 
-  parallel::distributed::Triangulation<dim, spacedim> tria_backround(comm);
-  GridGenerator::hyper_cube(tria_backround, -1.0, +1.0);
-  tria_backround.refine_global(n_refinements_1);
+  parallel::distributed::Triangulation<dim, spacedim> tria_background(comm);
+  GridGenerator::hyper_cube(tria_background, -1.0, +1.0);
+  tria_background.refine_global(n_refinements_1);
 
-  DoFHandler<dim, spacedim> dof_handler(tria_backround);
+  DoFHandler<dim, spacedim> dof_handler(tria_background);
   dof_handler.distribute_dofs(
     FESystem<dim, spacedim>(FE_Q<dim, spacedim>{1}, n_components));
 

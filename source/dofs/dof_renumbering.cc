@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -679,8 +679,8 @@ namespace DoFRenumbering
 
     // If we don't have a renumbering (i.e., when there is 1 component) then
     // return
-    if (Utilities::MPI::max(renumbering.size(),
-                            dof_handler.get_communicator()) == 0)
+    if (Utilities::MPI::logical_and(renumbering.size() == 0,
+                                    dof_handler.get_mpi_communicator()))
       return;
 
     // verify that the last numbered
@@ -725,8 +725,8 @@ namespace DoFRenumbering
 
     // If we don't have a renumbering (i.e., when there is 1 component) then
     // return
-    if (Utilities::MPI::max(renumbering.size(),
-                            dof_handler.get_communicator()) == 0)
+    if (Utilities::MPI::logical_and(renumbering.size() == 0,
+                                    dof_handler.get_mpi_communicator()))
       return;
 
     // verify that the last numbered
@@ -931,17 +931,18 @@ namespace DoFRenumbering
           local_dof_count[c] = component_to_dof_map[c].size();
 
         std::vector<types::global_dof_index> prefix_dof_count(n_buckets);
-        const int ierr = MPI_Exscan(local_dof_count.data(),
-                                    prefix_dof_count.data(),
-                                    n_buckets,
-                                    DEAL_II_DOF_INDEX_MPI_TYPE,
-                                    MPI_SUM,
-                                    tria->get_communicator());
+        const int                            ierr = MPI_Exscan(
+          local_dof_count.data(),
+          prefix_dof_count.data(),
+          n_buckets,
+          Utilities::MPI::mpi_type_id_for_type<types::global_dof_index>,
+          MPI_SUM,
+          tria->get_mpi_communicator());
         AssertThrowMPI(ierr);
 
         std::vector<types::global_dof_index> global_dof_count(n_buckets);
         Utilities::MPI::sum(local_dof_count,
-                            tria->get_communicator(),
+                            tria->get_mpi_communicator(),
                             global_dof_count);
 
         // calculate shifts
@@ -1054,9 +1055,13 @@ namespace DoFRenumbering
     Assert(result == 0 || result == dof_handler.n_dofs(level),
            ExcInternalError());
 
-    if (Utilities::MPI::max(renumbering.size(),
-                            dof_handler.get_communicator()) > 0)
-      dof_handler.renumber_dofs(level, renumbering);
+    // If we don't have a renumbering (i.e., when there is 1 component) then
+    // return
+    if (Utilities::MPI::logical_and(renumbering.size() == 0,
+                                    dof_handler.get_mpi_communicator()))
+      return;
+
+    dof_handler.renumber_dofs(level, renumbering);
   }
 
 
@@ -1192,17 +1197,18 @@ namespace DoFRenumbering
           local_dof_count[c] = block_to_dof_map[c].size();
 
         std::vector<types::global_dof_index> prefix_dof_count(n_buckets);
-        const int ierr = MPI_Exscan(local_dof_count.data(),
-                                    prefix_dof_count.data(),
-                                    n_buckets,
-                                    DEAL_II_DOF_INDEX_MPI_TYPE,
-                                    MPI_SUM,
-                                    tria->get_communicator());
+        const int                            ierr = MPI_Exscan(
+          local_dof_count.data(),
+          prefix_dof_count.data(),
+          n_buckets,
+          Utilities::MPI::mpi_type_id_for_type<types::global_dof_index>,
+          MPI_SUM,
+          tria->get_mpi_communicator());
         AssertThrowMPI(ierr);
 
         std::vector<types::global_dof_index> global_dof_count(n_buckets);
         Utilities::MPI::sum(local_dof_count,
-                            tria->get_communicator(),
+                            tria->get_mpi_communicator(),
                             global_dof_count);
 
         // calculate shifts
@@ -1384,12 +1390,13 @@ namespace DoFRenumbering
 #ifdef DEAL_II_WITH_MPI
         types::global_dof_index locally_owned_size =
           dof_handler.locally_owned_dofs().n_elements();
-        const int ierr = MPI_Exscan(&locally_owned_size,
-                                    &my_starting_index,
-                                    1,
-                                    DEAL_II_DOF_INDEX_MPI_TYPE,
-                                    MPI_SUM,
-                                    tria->get_communicator());
+        const int ierr = MPI_Exscan(
+          &locally_owned_size,
+          &my_starting_index,
+          1,
+          Utilities::MPI::mpi_type_id_for_type<types::global_dof_index>,
+          MPI_SUM,
+          tria->get_mpi_communicator());
         AssertThrowMPI(ierr);
 #endif
       }
@@ -2259,11 +2266,13 @@ namespace DoFRenumbering
       dof_handler.n_locally_owned_dofs(), numbers::invalid_dof_index);
     compute_support_point_wise(renumbering, dof_handler);
 
-    // If there is only one component then there is nothing to do, so check
-    // first:
-    if (Utilities::MPI::max(renumbering.size(),
-                            dof_handler.get_communicator()) > 0)
-      dof_handler.renumber_dofs(renumbering);
+    // If we don't have a renumbering (i.e., when there is 1 component) then
+    // return
+    if (Utilities::MPI::logical_and(renumbering.size() == 0,
+                                    dof_handler.get_mpi_communicator()))
+      return;
+
+    dof_handler.renumber_dofs(renumbering);
   }
 
 
@@ -2295,14 +2304,15 @@ namespace DoFRenumbering
                                           std::vector<unsigned int>(),
                                           false);
 
-#ifdef DEBUG
-    {
-      const std::vector<types::global_dof_index> dofs_per_component =
-        DoFTools::count_dofs_per_fe_component(dof_handler, true);
-      for (const auto &dpc : dofs_per_component)
-        Assert(dofs_per_component[0] == dpc, ExcNotImplemented());
-    }
-#endif
+    if constexpr (running_in_debug_mode())
+      {
+        {
+          const std::vector<types::global_dof_index> dofs_per_component =
+            DoFTools::count_dofs_per_fe_component(dof_handler, true);
+          for (const auto &dpc : dofs_per_component)
+            Assert(dofs_per_component[0] == dpc, ExcNotImplemented());
+        }
+      }
     const unsigned int n_components =
       dof_handler.get_fe_collection().n_components();
     Assert(dof_handler.n_dofs() % n_components == 0, ExcInternalError());
@@ -2338,15 +2348,16 @@ namespace DoFRenumbering
                                               component_dofs.end());
       }
     component_renumbered_dofs.compress();
-#ifdef DEBUG
-    {
-      IndexSet component_renumbered_dofs2(dof_handler.n_dofs());
-      component_renumbered_dofs2.add_indices(component_renumbering.begin(),
-                                             component_renumbering.end());
-      Assert(component_renumbered_dofs2 == component_renumbered_dofs,
-             ExcInternalError());
-    }
-#endif
+    if constexpr (running_in_debug_mode())
+      {
+        {
+          IndexSet component_renumbered_dofs2(dof_handler.n_dofs());
+          component_renumbered_dofs2.add_indices(component_renumbering.begin(),
+                                                 component_renumbering.end());
+          Assert(component_renumbered_dofs2 == component_renumbered_dofs,
+                 ExcInternalError());
+        }
+      }
     for (const FiniteElement<dim, spacedim> &fe :
          dof_handler.get_fe_collection())
       {
@@ -2433,6 +2444,72 @@ namespace DoFRenumbering
           component_renumbered_dofs.index_within_set(component_renumbering[i]);
         new_dof_indices[i] = component_to_nodal[local_index];
       }
+  }
+
+
+
+  template <int dim>
+  void
+  lexicographic(DoFHandler<dim> &dof_handler, const double tolerance)
+  {
+    std::vector<types::global_dof_index> renumbering;
+    compute_lexicographic(renumbering, dof_handler, tolerance);
+    dof_handler.renumber_dofs(renumbering);
+  }
+
+
+  template <int dim>
+  void
+  compute_lexicographic(std::vector<types::global_dof_index> &new_dof_indices,
+                        const DoFHandler<dim>                &dof_handler,
+                        const double                          tolerance)
+  {
+    Assert(dynamic_cast<const parallel::distributed::Triangulation<dim> *>(
+             &dof_handler.get_triangulation()) == nullptr,
+           ExcMessage(
+             "Lexicographic renumbering is not implemented for distributed "
+             "triangulations."));
+
+    std::map<types::global_dof_index, Point<dim>> dof_location_map;
+    DoFTools::map_dofs_to_support_points(MappingQ1<dim>(),
+                                         dof_handler,
+                                         dof_location_map);
+    std::vector<std::pair<types::global_dof_index, Point<dim>>>
+      dof_location_vector;
+
+    dof_location_vector.reserve(dof_location_map.size());
+    for (const auto &s : dof_location_map)
+      dof_location_vector.push_back(s);
+
+    std::sort(
+      dof_location_vector.begin(),
+      dof_location_vector.end(),
+      [&](const std::pair<types::global_dof_index, Point<dim>> &p1,
+          const std::pair<types::global_dof_index, Point<dim>> &p2) -> bool {
+        for (int i = dim - 1; i >= 0; --i)
+          {
+            const double diff = p1.second(i) - p2.second(i);
+            // Check if p1 is significantly smaller than p2 in this dimension
+            if (diff < -tolerance)
+              return true;
+            // Check if p1 is significantly larger than p2 in this dimension
+            if (diff > tolerance)
+              return false;
+            // Otherwise, coordinates are considered equal within tolerance for
+            // this dimension, continue to the next dimension.
+          }
+        // All coordinates are within tolerance, points are considered
+        // equivalent. Use the original DoF index as a tie-breaker to preserve
+        // relative order.
+        return p1.first < p2.first;
+      });
+
+    new_dof_indices.resize(dof_location_vector.size(),
+                           numbers::invalid_dof_index);
+
+    for (types::global_dof_index dof = 0; dof < dof_location_vector.size();
+         ++dof)
+      new_dof_indices[dof_location_vector[dof].first] = dof;
   }
 
 
@@ -2597,11 +2674,8 @@ namespace DoFRenumbering
       Assert(
         matrix_free.get_dof_handler(component).get_fe().n_base_elements() == 1,
         ExcNotImplemented());
-      Assert(dynamic_cast<const FE_Q_Base<dim> *>(
-               &matrix_free.get_dof_handler(component).get_fe().base_element(
-                 0)),
-             ExcNotImplemented("Matrix-free renumbering only works for "
-                               "FE_Q elements"));
+      const bool is_fe_q = dynamic_cast<const FE_Q_Base<dim> *>(
+        &matrix_free.get_dof_handler(component).get_fe().base_element(0));
 
       const unsigned int fe_degree =
         matrix_free.get_dof_handler(component).get_fe().degree;
@@ -2733,29 +2807,37 @@ namespace DoFRenumbering
                     data.get_cell_iterator(cell, v, component)
                       ->get_mg_dof_indices(dof_indices);
 
-                  for (unsigned int a = 0; a < dofs_on_objects.size(); ++a)
-                    {
-                      const auto &r = dofs_on_objects[a];
-                      if (a == 10 || a == 16)
-                        // switch order x-z for y faces in 3d to lexicographic
-                        // layout
-                        for (unsigned int i1 = 0; i1 < nn; ++i1)
-                          for (unsigned int i0 = 0; i0 < nn; ++i0)
+                  if (is_fe_q)
+                    for (unsigned int a = 0; a < dofs_on_objects.size(); ++a)
+                      {
+                        const auto &r = dofs_on_objects[a];
+                        if (a == 10 || a == 16)
+                          // switch order x-z for y faces in 3d to lexicographic
+                          // layout
+                          for (unsigned int i1 = 0; i1 < nn; ++i1)
+                            for (unsigned int i0 = 0; i0 < nn; ++i0)
+                              for (unsigned int c = 0; c < n_comp; ++c)
+                                renumber_func(
+                                  dof_indices[r.first + r.second * c + i1 +
+                                              i0 * nn],
+                                  owned_dofs,
+                                  dof_numbers_mf_order,
+                                  counter_dof_numbers);
+                        else
+                          for (unsigned int i = 0; i < r.second; ++i)
                             for (unsigned int c = 0; c < n_comp; ++c)
-                              renumber_func(dof_indices[r.first + r.second * c +
-                                                        i1 + i0 * nn],
-                                            owned_dofs,
-                                            dof_numbers_mf_order,
-                                            counter_dof_numbers);
-                      else
-                        for (unsigned int i = 0; i < r.second; ++i)
-                          for (unsigned int c = 0; c < n_comp; ++c)
-                            renumber_func(
-                              dof_indices[r.first + r.second * c + i],
-                              owned_dofs,
-                              dof_numbers_mf_order,
-                              counter_dof_numbers);
-                    }
+                              renumber_func(
+                                dof_indices[r.first + r.second * c + i],
+                                owned_dofs,
+                                dof_numbers_mf_order,
+                                counter_dof_numbers);
+                      }
+                  else
+                    for (const types::global_dof_index i : dof_indices)
+                      renumber_func(i,
+                                    owned_dofs,
+                                    dof_numbers_mf_order,
+                                    counter_dof_numbers);
                 }
 
               // part (b): increment the touch count of a dof appearing in the
@@ -2900,7 +2982,7 @@ namespace DoFRenumbering
 
 
 /*-------------- Explicit Instantiations -------------------------------*/
-#include "dof_renumbering.inst"
+#include "dofs/dof_renumbering.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

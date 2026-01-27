@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2024 by the deal.II authors
+// Copyright (C) 2014 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,9 +26,12 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <numeric>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -90,9 +93,10 @@ Manifold<dim, spacedim>::get_new_point(
             });
 
   // Now loop over points in the order of their associated weight
+  DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
   Point<spacedim> p = surrounding_points[permutation[0]];
-  double          w = weights[permutation[0]];
-
+  DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
+  double w = weights[permutation[0]];
   for (unsigned int i = 1; i < n_points; ++i)
     {
       double weight = 0.0;
@@ -171,8 +175,8 @@ Manifold<3, 3>::normal_vector(const Triangulation<3, 3>::face_iterator &face,
                                          vertices[1].distance(p),
                                          vertices[2].distance(p),
                                          vertices[3].distance(p)}};
-  const double max_distance = std::max(std::max(distances[0], distances[1]),
-                                       std::max(distances[2], distances[3]));
+  const double                max_distance =
+    std::max({distances[0], distances[1], distances[2], distances[3]});
 
   // We need to find two tangential vectors to the given point p, but we do
   // not know how the point is oriented against the face. We guess the two
@@ -812,24 +816,30 @@ FlatManifold<3>::get_normals_at_vertices(
   const Triangulation<3>::face_iterator &face,
   Manifold<3, 3>::FaceVertexNormals     &face_vertex_normals) const
 {
-  const unsigned int vertices_per_face = GeometryInfo<3>::vertices_per_face;
-
-  static const unsigned int neighboring_vertices[4][2] = {{1, 2},
-                                                          {3, 0},
-                                                          {0, 3},
-                                                          {2, 1}};
-  for (unsigned int vertex = 0; vertex < vertices_per_face; ++vertex)
+  if (face->reference_cell() == ReferenceCells::Quadrilateral)
     {
-      // first define the two tangent vectors at the vertex by using the
-      // two lines radiating away from this vertex
-      const Tensor<1, 3> tangents[2] = {
-        face->vertex(neighboring_vertices[vertex][0]) - face->vertex(vertex),
-        face->vertex(neighboring_vertices[vertex][1]) - face->vertex(vertex)};
+      static const unsigned int neighboring_vertices[4][2] = {{1, 2},
+                                                              {3, 0},
+                                                              {0, 3},
+                                                              {2, 1}};
+      for (unsigned int vertex = 0; vertex < face->n_vertices(); ++vertex)
+        {
+          // first define the two tangent vectors at the vertex by using the
+          // two lines radiating away from this vertex
+          const Tensor<1, 3> tangents[2] = {
+            face->vertex(neighboring_vertices[vertex][0]) -
+              face->vertex(vertex),
+            face->vertex(neighboring_vertices[vertex][1]) -
+              face->vertex(vertex)};
 
-      // then compute the normal by taking the cross product. since the
-      // normal is not required to be normalized, no problem here
-      face_vertex_normals[vertex] = cross_product_3d(tangents[0], tangents[1]);
+          // then compute the normal by taking the cross product. since the
+          // normal is not required to be normalized, no problem here
+          face_vertex_normals[vertex] =
+            cross_product_3d(tangents[0], tangents[1]);
+        }
     }
+  else
+    DEAL_II_NOT_IMPLEMENTED();
 }
 
 
@@ -1122,6 +1132,6 @@ ChartManifold<dim, spacedim, chartdim>::get_periodicity() const
 }
 
 // explicit instantiations
-#include "manifold.inst"
+#include "grid/manifold.inst"
 
 DEAL_II_NAMESPACE_CLOSE

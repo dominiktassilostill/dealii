@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,7 +22,12 @@
 
 #include <deal.II/numerics/vector_tools_constraints.h>
 
+#include <boost/container/small_vector.hpp>
+
 #include <limits>
+#include <list>
+#include <set>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -613,7 +618,8 @@ namespace VectorTools
         std::pair<Tensor<1, dim>,
                   typename DoFHandler<dim, spacedim>::cell_iterator>>
                                                     &dof_to_normals_map,
-      std::map<VectorDoFTuple<dim>, Vector<number>> &dof_vector_to_b_values)
+      std::map<VectorDoFTuple<dim>, Vector<number>> &dof_vector_to_b_values,
+      const bool                                     use_manifold_for_normal)
     {
       // mapping from (active_fe_index, face_no and local
       // dof index) to dim vector indices of the same
@@ -686,7 +692,6 @@ namespace VectorTools
                     for (unsigned int d = 0; d < dim; ++d)
                       Assert(vector_dofs.dof_indices[d] < n_dofs,
                              ExcInternalError());
-                    (void)n_dofs;
 
                     // we need the normal vector on this face. we know that
                     // it is a vector of length 1 but at least with higher
@@ -736,11 +741,24 @@ namespace VectorTools
                     // of the normal vector provided by the boundary if they
                     // should point in different directions. this is the
                     // case in tests/deal.II/no_flux_11.
-                    Tensor<1, dim> normal_vector =
-                      (cell->face(face_no)->get_manifold().normal_vector(
-                        cell->face(face_no), fe_values.quadrature_point(i)));
-                    if (normal_vector * fe_values.normal_vector(i) < 0)
-                      normal_vector *= -1;
+                    Tensor<1, dim> normal_vector;
+
+                    if (use_manifold_for_normal)
+                      {
+                        // if we use high-order manifold ask it for the normal
+                        normal_vector =
+                          cell->face(face_no)->get_manifold().normal_vector(
+                            cell->face(face_no), fe_values.quadrature_point(i));
+
+                        if (normal_vector * fe_values.normal_vector(i) < 0)
+                          normal_vector *= -1;
+                      }
+                    else
+                      {
+                        // else ask mapping via FEFaceValues
+                        normal_vector = fe_values.normal_vector(i);
+                      }
+
                     Assert(std::fabs(normal_vector.norm() - 1) < 1e-14,
                            ExcInternalError());
                     for (unsigned int d = 0; d < dim; ++d)
@@ -791,6 +809,7 @@ namespace VectorTools
                                    &function_map,
       AffineConstraints<number>    &constraints,
       const Mapping<dim, spacedim> &mapping,
+      const bool                    use_manifold_for_normal,
       const IndexSet               &refinement_edge_indices = IndexSet(),
       const unsigned int            level = numbers::invalid_unsigned_int)
     {
@@ -873,7 +892,8 @@ namespace VectorTools
                   refinement_edge_indices,
                   level,
                   dof_to_normals_map,
-                  dof_vector_to_b_values);
+                  dof_vector_to_b_values,
+                  use_manifold_for_normal);
               }
         }
       else
@@ -894,7 +914,8 @@ namespace VectorTools
                   refinement_edge_indices,
                   level,
                   dof_to_normals_map,
-                  dof_vector_to_b_values);
+                  dof_vector_to_b_values,
+                  use_manifold_for_normal);
               }
         }
 
@@ -1273,7 +1294,8 @@ namespace VectorTools
     const std::map<types::boundary_id, const Function<spacedim> *>
                                  &function_map,
     AffineConstraints<double>    &constraints,
-    const Mapping<dim, spacedim> &mapping)
+    const Mapping<dim, spacedim> &mapping,
+    const bool                    use_manifold_for_normal)
   {
     internal::compute_nonzero_normal_flux_constraints_active_or_level(
       dof_handler,
@@ -1281,7 +1303,8 @@ namespace VectorTools
       boundary_ids,
       function_map,
       constraints,
-      mapping);
+      mapping,
+      use_manifold_for_normal);
   }
 
 
@@ -1297,7 +1320,8 @@ namespace VectorTools
     AffineConstraints<double>    &constraints,
     const Mapping<dim, spacedim> &mapping,
     const IndexSet               &refinement_edge_indices,
-    const unsigned int            level)
+    const unsigned int            level,
+    const bool                    use_manifold_for_normal)
   {
     internal::compute_nonzero_normal_flux_constraints_active_or_level(
       dof_handler,
@@ -1306,6 +1330,7 @@ namespace VectorTools
       function_map,
       constraints,
       mapping,
+      use_manifold_for_normal,
       refinement_edge_indices,
       level);
   }
@@ -1336,7 +1361,8 @@ namespace VectorTools
     const std::map<types::boundary_id, const Function<spacedim> *>
                                  &function_map,
     AffineConstraints<double>    &constraints,
-    const Mapping<dim, spacedim> &mapping)
+    const Mapping<dim, spacedim> &mapping,
+    const bool                    use_manifold_for_normal)
   {
     AffineConstraints<double> no_normal_flux_constraints(
       constraints.get_locally_owned_indices(), constraints.get_local_lines());
@@ -1345,7 +1371,8 @@ namespace VectorTools
                                             boundary_ids,
                                             function_map,
                                             no_normal_flux_constraints,
-                                            mapping);
+                                            mapping,
+                                            use_manifold_for_normal);
 
     const hp::FECollection<dim, spacedim> &fe_collection =
       dof_handler.get_fe_collection();
@@ -1539,7 +1566,6 @@ namespace VectorTools
       }
     AssertDimension(n_total_constraints_found,
                     no_normal_flux_constraints.n_constraints());
-    (void)n_total_constraints_found;
   }
 
 
@@ -1550,7 +1576,8 @@ namespace VectorTools
     const unsigned int                  first_vector_component,
     const std::set<types::boundary_id> &boundary_ids,
     AffineConstraints<number>          &constraints,
-    const Mapping<dim, spacedim>       &mapping)
+    const Mapping<dim, spacedim>       &mapping,
+    const bool                          use_manifold_for_normal)
   {
     Functions::ZeroFunction<dim, number> zero_function(dim);
     std::map<types::boundary_id, const Function<spacedim, number> *>
@@ -1563,7 +1590,8 @@ namespace VectorTools
       boundary_ids,
       function_map,
       constraints,
-      mapping);
+      mapping,
+      use_manifold_for_normal);
   }
 
 
@@ -1577,7 +1605,8 @@ namespace VectorTools
     AffineConstraints<double>          &constraints,
     const Mapping<dim, spacedim>       &mapping,
     const IndexSet                     &refinement_edge_indices,
-    const unsigned int                  level)
+    const unsigned int                  level,
+    const bool                          use_manifold_for_normal)
   {
     Functions::ZeroFunction<dim>                             zero_function(dim);
     std::map<types::boundary_id, const Function<spacedim> *> function_map;
@@ -1590,6 +1619,7 @@ namespace VectorTools
       function_map,
       constraints,
       mapping,
+      use_manifold_for_normal,
       refinement_edge_indices,
       level);
   }
@@ -1603,7 +1633,8 @@ namespace VectorTools
     const unsigned int                  first_vector_component,
     const std::set<types::boundary_id> &boundary_ids,
     AffineConstraints<double>          &constraints,
-    const Mapping<dim, spacedim>       &mapping)
+    const Mapping<dim, spacedim>       &mapping,
+    const bool                          use_manifold_for_normal)
   {
     Functions::ZeroFunction<dim>                             zero_function(dim);
     std::map<types::boundary_id, const Function<spacedim> *> function_map;
@@ -1614,7 +1645,8 @@ namespace VectorTools
                                                 boundary_ids,
                                                 function_map,
                                                 constraints,
-                                                mapping);
+                                                mapping,
+                                                use_manifold_for_normal);
   }
 } // namespace VectorTools
 

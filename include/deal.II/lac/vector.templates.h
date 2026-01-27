@@ -52,7 +52,6 @@ DEAL_II_NAMESPACE_OPEN
 
 template <typename Number>
 Vector<Number>::Vector(const Vector<Number> &v)
-  : Subscriptor()
 {
   *this = v;
 }
@@ -200,8 +199,12 @@ Vector<Number>::Vector(
       // that know about the original vector.
       LinearAlgebra::TpetraWrappers::TpetraTypes::VectorType<OtherNumber,
                                                              MemorySpace>
-        localized_vector(complete_index_set(size()).make_tpetra_map_rcp(),
-                         v.get_mpi_communicator());
+        localized_vector(
+          complete_index_set(size())
+            .template make_tpetra_map_rcp<
+              LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<
+                MemorySpace>>(),
+          v.get_mpi_communicator());
 
       Teuchos::RCP<const LinearAlgebra::TpetraWrappers::TpetraTypes::ImportType<
         MemorySpace>>
@@ -214,7 +217,7 @@ Vector<Number>::Vector(
 #  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto localized_vector_2d =
         localized_vector.template getLocalView<Kokkos::HostSpace>(
-          Tpetra::Access::ReadOnly);
+          Tpetra::Access::ReadOnlyStruct{});
 #  else
       localized_vector.template sync<Kokkos::HostSpace>();
       auto localized_vector_2d =
@@ -306,10 +309,7 @@ Vector<Number>::all_zero() const
 {
   Assert(size() != 0, ExcEmptyObject());
 
-  for (size_type i = 0; i < size(); ++i)
-    if (values[i] != Number())
-      return false;
-  return true;
+  return std::all_of(begin(), end(), numbers::value_is_zero<Number>);
 }
 
 
@@ -618,7 +618,7 @@ template <typename Number>
 void
 Vector<Number>::extract_subvector_to(
   const ArrayView<const types::global_dof_index> &indices,
-  ArrayView<Number>                              &elements) const
+  const ArrayView<Number>                        &elements) const
 {
   AssertDimension(indices.size(), elements.size());
   for (unsigned int i = 0; i < indices.size(); ++i)
@@ -890,8 +890,12 @@ Vector<Number>::operator=(
       // that know about the original vector.
       LinearAlgebra::TpetraWrappers::TpetraTypes::VectorType<OtherNumber,
                                                              MemorySpace>
-        localized_vector(complete_index_set(size()).make_tpetra_map_rcp(),
-                         v.get_mpi_communicator());
+        localized_vector(
+          complete_index_set(size())
+            .template make_tpetra_map_rcp<
+              LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<
+                MemorySpace>>(),
+          v.get_mpi_communicator());
 
       Teuchos::RCP<const LinearAlgebra::TpetraWrappers::TpetraTypes::ImportType<
         MemorySpace>>
@@ -904,7 +908,7 @@ Vector<Number>::operator=(
 #  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto localized_vector_2d =
         localized_vector.template getLocalView<Kokkos::HostSpace>(
-          Tpetra::Access::ReadOnly);
+          Tpetra::Access::ReadOnlyStruct{});
 #  else
       localized_vector.template sync<Kokkos::HostSpace>();
       auto localized_vector_2d =
@@ -991,27 +995,11 @@ Vector<Number>::block_write(std::ostream &out) const
 {
   AssertThrow(out.fail() == false, ExcIO());
 
-  // other version of the following
-  //  out << size() << std::endl << '[';
-
-  // reason: operator<< seems to use some resources that lead to problems in a
-  // multithreaded environment. We convert the size index to
-  // unsigned long long int that is at least 64 bits to be able to output it on
-  // all platforms, since std::uint64_t is not in C.
-  const unsigned long long int sz = size();
-  char                         buf[16];
-
-  std::sprintf(buf, "%llu", sz);
-  std::strcat(buf, "\n[");
-
-  out.write(buf, std::strlen(buf));
+  out << std::to_string(size()) << "\n[";
   out.write(reinterpret_cast<const char *>(begin()),
             reinterpret_cast<const char *>(end()) -
               reinterpret_cast<const char *>(begin()));
-
-  // out << ']';
-  const char outro = ']';
-  out.write(&outro, 1);
+  out << ']';
 
   AssertThrow(out.fail() == false, ExcIO());
 }
@@ -1037,7 +1025,6 @@ Vector<Number>::block_read(std::istream &in)
   reinit(sz, true);
 
   char c;
-  //  in >> c;
   in.read(&c, 1);
   AssertThrow(c == '[', ExcIO());
 
@@ -1045,7 +1032,6 @@ Vector<Number>::block_read(std::istream &in)
           reinterpret_cast<const char *>(end()) -
             reinterpret_cast<const char *>(begin()));
 
-  //  in >> c;
   in.read(&c, 1);
   AssertThrow(c == ']', ExcIO());
 }

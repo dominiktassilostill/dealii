@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,9 +17,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/mpi_stub.h>
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/lac/exceptions.h>
 #include <deal.II/lac/identity_matrix.h>
@@ -463,9 +463,9 @@ namespace SparseMatrixIterators
 
 } // namespace SparseMatrixIterators
 
-DEAL_II_NAMESPACE_CLOSE
+DEAL_II_NAMESPACE_CLOSE // Do not convert for module purposes
 
-namespace std
+  namespace std
 {
   template <typename number, bool Constness>
   struct iterator_traits<
@@ -480,43 +480,43 @@ namespace std
   };
 } // namespace std
 
-DEAL_II_NAMESPACE_OPEN
+DEAL_II_NAMESPACE_OPEN // Do not convert for module purposes
 
-/**
- * @}
- */
+  /**
+   * @}
+   */
 
 
-// TODO: Add multithreading to the other vmult functions.
+  // TODO: Add multithreading to the other vmult functions.
 
-/**
- * Sparse matrix. This class implements the functionality to store matrix
- * entry values in the locations denoted by a SparsityPattern. See
- * @ref Sparsity
- * for a discussion about the separation between sparsity patterns and
- * matrices.
- *
- * The elements of a SparseMatrix are stored in the same order in which the
- * SparsityPattern class stores its entries. Within each row, elements are
- * generally stored left-to-right in increasing column index order; the
- * exception to this rule is that if the matrix is square (m() == n()), then
- * the diagonal entry is stored as the first element in each row to make
- * operations like applying a Jacobi or SSOR preconditioner faster. As a
- * consequence, if you traverse the elements of a row of a SparseMatrix with
- * the help of iterators into this object (using SparseMatrix::begin and
- * SparseMatrix::end) you will find that the elements are not sorted by column
- * index within each row whenever the matrix is square.
- *
- * @note Instantiations for this template are provided for <tt>@<float@> and
- * @<double@></tt>; others can be generated in application programs (see the
- * section on
- * @ref Instantiations
- * in the manual).
- *
- * @ingroup Matrix1
- */
-template <typename number>
-class SparseMatrix : public virtual Subscriptor
+  /**
+   * Sparse matrix. This class implements the functionality to store matrix
+   * entry values in the locations denoted by a SparsityPattern. See
+   * @ref Sparsity
+   * for a discussion about the separation between sparsity patterns and
+   * matrices.
+   *
+   * The elements of a SparseMatrix are stored in the same order in which the
+   * SparsityPattern class stores its entries. Within each row, elements are
+   * generally stored left-to-right in increasing column index order; the
+   * exception to this rule is that if the matrix is square (m() == n()), then
+   * the diagonal entry is stored as the first element in each row to make
+   * operations like applying a Jacobi or SSOR preconditioner faster. As a
+   * consequence, if you traverse the elements of a row of a SparseMatrix with
+   * the help of iterators into this object (using SparseMatrix::begin and
+   * SparseMatrix::end) you will find that the elements are not sorted by column
+   * index within each row whenever the matrix is square.
+   *
+   * @note Instantiations for this template are provided for <tt>@<float@> and
+   * @<double@></tt>; others can be generated in application programs (see the
+   * section on
+   * @ref Instantiations
+   * in the manual).
+   *
+   * @ingroup Matrix1
+   */
+  template <typename number>
+  class SparseMatrix : public virtual EnableObserverPointer
 {
 public:
   /**
@@ -1103,7 +1103,7 @@ public:
   diag_element(const size_type i) const;
 
   /**
-   * Same as above, but return a writeable reference. You're sure you know
+   * Same as above, but return a writable reference. You're sure you know
    * what you do?
    */
   number &
@@ -1742,9 +1742,9 @@ private:
   /**
    * Pointer to the sparsity pattern used for this matrix. In order to
    * guarantee that it is not deleted while still in use, we subscribe to it
-   * using the SmartPointer class.
+   * using the ObserverPointer class.
    */
-  SmartPointer<const SparsityPattern, SparseMatrix<number>> cols;
+  ObserverPointer<const SparsityPattern, SparseMatrix<number>> cols;
 
   /**
    * Array of values for all the nonzero entries. The position of an
@@ -1815,6 +1815,7 @@ SparseMatrix<number>::m() const
 }
 
 
+
 template <typename number>
 inline typename SparseMatrix<number>::size_type
 SparseMatrix<number>::n() const
@@ -1822,6 +1823,17 @@ SparseMatrix<number>::n() const
   Assert(cols != nullptr, ExcNeedsSparsityPattern());
   return cols->cols;
 }
+
+
+
+template <typename number>
+inline const SparsityPattern &
+SparseMatrix<number>::get_sparsity_pattern() const
+{
+  Assert(cols != nullptr, ExcNeedsSparsityPattern());
+  return *cols;
+}
+
 
 
 // Inline the set() and add() functions, since they will be called frequently.

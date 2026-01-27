@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -43,10 +43,10 @@ public:
   {}
 
   double
-  value(const Point<dim> &point, const unsigned int compontent) const
+  value(const Point<dim> &point, const unsigned int component) const
   {
-    return std::sin(point[compontent] * 0.5 * numbers::PI) -
-           (is_displacement_function ? point[compontent] : 0.0);
+    return std::sin(point[component] * 0.5 * numbers::PI) -
+           (is_displacement_function ? point[component] : 0.0);
   }
 
 private:
@@ -80,7 +80,7 @@ do_test(const unsigned int degree,
   LinearAlgebra::distributed::Vector<double> vector(
     dof_handler.locally_owned_dofs(),
     locally_relevant_dofs,
-    dof_handler.get_communicator());
+    dof_handler.get_mpi_communicator());
 
   VectorTools::interpolate(dof_handler, fu, vector);
 

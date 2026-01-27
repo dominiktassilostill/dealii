@@ -242,7 +242,7 @@ namespace Step31
     // we can abort the program preserving information about where the
     // problem happened.
     template <class MatrixType, class PreconditionerType>
-    class InverseMatrix : public Subscriptor
+    class InverseMatrix : public EnableObserverPointer
     {
     public:
       InverseMatrix(const MatrixType         &m,
@@ -253,8 +253,8 @@ namespace Step31
       void vmult(VectorType &dst, const VectorType &src) const;
 
     private:
-      const SmartPointer<const MatrixType> matrix;
-      const PreconditionerType            &preconditioner;
+      const ObserverPointer<const MatrixType> matrix;
+      const PreconditionerType               &preconditioner;
     };
 
 
@@ -342,7 +342,7 @@ namespace Step31
     // preconditioners in the constructor and that the matrices we use here
     // are built upon Trilinos:
     template <class PreconditionerTypeA, class PreconditionerTypeMp>
-    class BlockSchurPreconditioner : public Subscriptor
+    class BlockSchurPreconditioner : public EnableObserverPointer
     {
     public:
       BlockSchurPreconditioner(
@@ -355,10 +355,10 @@ namespace Step31
                  const TrilinosWrappers::MPI::BlockVector &src) const;
 
     private:
-      const SmartPointer<const TrilinosWrappers::BlockSparseMatrix>
+      const ObserverPointer<const TrilinosWrappers::BlockSparseMatrix>
         stokes_matrix;
-      const SmartPointer<const InverseMatrix<TrilinosWrappers::SparseMatrix,
-                                             PreconditionerTypeMp>>
+      const ObserverPointer<const InverseMatrix<TrilinosWrappers::SparseMatrix,
+                                                PreconditionerTypeMp>>
                                  m_inverse;
       const PreconditionerTypeA &a_preconditioner;
 
@@ -673,7 +673,7 @@ namespace Step31
     if (timestep_number != 0)
       {
         double min_temperature = std::numeric_limits<double>::max(),
-               max_temperature = -std::numeric_limits<double>::max();
+               max_temperature = std::numeric_limits<double>::lowest();
 
         for (const auto &cell : temperature_dof_handler.active_cell_iterators())
           {
@@ -699,7 +699,7 @@ namespace Step31
     else
       {
         double min_temperature = std::numeric_limits<double>::max(),
-               max_temperature = -std::numeric_limits<double>::max();
+               max_temperature = std::numeric_limits<double>::lowest();
 
         for (const auto &cell : temperature_dof_handler.active_cell_iterators())
           {
@@ -1124,12 +1124,10 @@ namespace Step31
 
     Amg_preconditioner = std::make_shared<TrilinosWrappers::PreconditionAMG>();
 
-    std::vector<std::vector<bool>>   constant_modes;
-    const FEValuesExtractors::Vector velocity_components(0);
-    DoFTools::extract_constant_modes(stokes_dof_handler,
-                                     stokes_fe.component_mask(
-                                       velocity_components),
-                                     constant_modes);
+    const FEValuesExtractors::Vector     velocity_components(0);
+    const std::vector<std::vector<bool>> constant_modes =
+      DoFTools::extract_constant_modes(
+        stokes_dof_handler, stokes_fe.component_mask(velocity_components));
     TrilinosWrappers::PreconditionAMG::AdditionalData amg_data;
     amg_data.constant_modes = constant_modes;
 
@@ -1977,7 +1975,7 @@ namespace Step31
     std::vector<TrilinosWrappers::MPI::Vector> tmp = {
       TrilinosWrappers::MPI::Vector(temperature_solution),
       TrilinosWrappers::MPI::Vector(temperature_solution)};
-    temperature_trans.interpolate(x_temperature, tmp);
+    temperature_trans.interpolate(tmp);
 
     temperature_solution     = tmp[0];
     old_temperature_solution = tmp[1];
@@ -1991,7 +1989,7 @@ namespace Step31
     // we do not need another temporary vector since we just interpolate a
     // single vector. In the end, we have to tell the program that the matrices
     // and preconditioners need to be regenerated, since the mesh has changed.
-    stokes_trans.interpolate(x_stokes, stokes_solution);
+    stokes_trans.interpolate(stokes_solution);
 
     stokes_constraints.distribute(stokes_solution);
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2024 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -222,19 +222,20 @@ FE_FaceQ<dim, spacedim>::get_subface_interpolation_matrix(
             }
         }
 
-#ifdef DEBUG
-      // make sure that the row sum of each of the matrices is 1 at this
-      // point. this must be so since the shape functions sum up to 1
-      for (unsigned int j = 0; j < source_fe->n_dofs_per_face(face_no); ++j)
+      if constexpr (running_in_debug_mode())
         {
-          double sum = 0.;
+          // make sure that the row sum of each of the matrices is 1 at this
+          // point. this must be so since the shape functions sum up to 1
+          for (unsigned int j = 0; j < source_fe->n_dofs_per_face(face_no); ++j)
+            {
+              double sum = 0.;
 
-          for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
-            sum += interpolation_matrix(j, i);
+              for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
+                sum += interpolation_matrix(j, i);
 
-          Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+              Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+            }
         }
-#endif
     }
   else if (dynamic_cast<const FE_Nothing<dim> *>(&x_source_fe) != nullptr)
     {
@@ -449,7 +450,6 @@ FE_FaceQ<dim, spacedim>::compare_for_domination(
   const unsigned int                  codim) const
 {
   Assert(codim <= dim, ExcImpossibleInDim(dim));
-  (void)codim;
 
   // vertex/line/face/cell domination
   // --------------------------------
@@ -579,9 +579,6 @@ FE_FaceQ<1, spacedim>::get_subface_interpolation_matrix(
   FullMatrix<double> &interpolation_matrix,
   const unsigned int  face_no) const
 {
-  (void)x_source_fe;
-  (void)face_no;
-
   Assert(interpolation_matrix.n() == this->n_dofs_per_face(face_no),
          ExcDimensionMismatch(interpolation_matrix.n(),
                               this->n_dofs_per_face(face_no)));
@@ -834,7 +831,6 @@ FE_FaceP<dim, spacedim>::compare_for_domination(
   const unsigned int                  codim) const
 {
   Assert(codim <= dim, ExcImpossibleInDim(dim));
-  (void)codim;
 
   // vertex/line/face/cell domination
   // --------------------------------
@@ -956,7 +952,6 @@ FE_FaceP<dim, spacedim>::get_subface_interpolation_matrix(
               v_in(k) = this->poly_space.compute_value(i, p);
             }
           const double result = H.least_squares(v_out, v_in);
-          (void)result;
           Assert(result < 1e-12, FETools::ExcLeastSquaresError(result));
 
           for (unsigned int j = 0; j < source_fe->n_dofs_per_face(face_no); ++j)
@@ -1025,7 +1020,7 @@ FE_FaceP<1, spacedim>::get_name() const
 
 
 // explicit instantiations
-#include "fe_face.inst"
+#include "fe/fe_face.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

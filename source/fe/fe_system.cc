@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -146,7 +146,7 @@ namespace internal
     const unsigned int n_dofs_per_cell =
       fe.base_element(base_no).n_dofs_per_cell();
 
-    auto copy_row = [](const auto row_in, auto row_out) {
+    auto copy_row = [](const auto &row_in, const auto &row_out) {
       std::copy(row_in.begin(), row_in.end(), row_out.begin());
     };
 
@@ -197,8 +197,6 @@ namespace internal
     FEValuesImplementation::FiniteElementRelatedData<dim, spacedim>
       &output_data)
   {
-    (void)fe;
-    (void)base_no;
     Assert(!fe.base_element(base_no).is_primitive(), ExcInternalError());
 
     for (const auto &offset : offsets)
@@ -984,9 +982,9 @@ FESystem<dim, spacedim>::get_prolongation_matrix(
 template <int dim, int spacedim>
 unsigned int
 FESystem<dim, spacedim>::face_to_cell_index(
-  const unsigned int  face_dof_index,
-  const unsigned int  face,
-  const unsigned char combined_orientation) const
+  const unsigned int                 face_dof_index,
+  const unsigned int                 face,
+  const types::geometric_orientation combined_orientation) const
 {
   // we need to ask the base elements how they want to translate
   // the DoFs within their own numbering. thus, translate to
@@ -1574,6 +1572,10 @@ FESystem<dim, spacedim>::build_interface_constraints()
 
             case 3:
               {
+                Assert(this->reference_cell() ==
+                         ReferenceCells::get_hypercube<dim>(),
+                       ExcNotImplemented());
+
                 // same way as above, although a little more complicated...
 
                 // the indices m=0..5*d_v-1 are from the center and the four
@@ -1703,7 +1705,6 @@ FESystem<dim, spacedim>::initialize(
          ExcMessage("You only passed FiniteElements with multiplicity 0."));
 
   const ReferenceCell reference_cell = fes.front()->reference_cell();
-  (void)reference_cell;
   Assert(std::all_of(fes.begin(),
                      fes.end(),
                      [reference_cell](const FiniteElement<dim, spacedim> *fe) {
@@ -1796,7 +1797,11 @@ FESystem<dim, spacedim>::initialize(
       {
         const unsigned int base = this->system_to_base_table[i].first.first,
                            base_index = this->system_to_base_table[i].second;
-        Assert(base < this->n_base_elements(), ExcInternalError());
+        // Do not use `this` in Assert because nvcc when using C++20 assumes
+        // that `this` is an integer and we get the following error: base
+        // operand of '->' is not a pointer
+        const unsigned int n_base_elements = this->n_base_elements();
+        Assert(base < n_base_elements, ExcInternalError());
         Assert(base_index < base_element(base).unit_support_points.size(),
                ExcInternalError());
         this->unit_support_points[i] =
@@ -1927,23 +1932,24 @@ FESystem<dim, spacedim>::initialize(
           }
       }
 
-#  ifdef DEBUG
-    // check generalized_support_points_index_table for consistency
-    for (unsigned int i = 0; i < base_elements.size(); ++i)
+    if constexpr (running_in_debug_mode())
       {
-        if (!base_element(i).has_generalized_support_points())
-          continue;
-
-        const auto &points =
-          base_elements[i].first->get_generalized_support_points();
-        for (unsigned int j = 0; j < points.size(); ++j)
+        // check generalized_support_points_index_table for consistency
+        for (unsigned int i = 0; i < base_elements.size(); ++i)
           {
-            const auto n = generalized_support_points_index_table[i][j];
-            Assert(this->generalized_support_points[n] == points[j],
-                   ExcInternalError());
+            if (!base_element(i).has_generalized_support_points())
+              continue;
+
+            const auto &points =
+              base_elements[i].first->get_generalized_support_points();
+            for (unsigned int j = 0; j < points.size(); ++j)
+              {
+                const auto n = generalized_support_points_index_table[i][j];
+                Assert(this->generalized_support_points[n] == points[j],
+                       ExcInternalError());
+              }
           }
-      }
-#  endif /* DEBUG */
+      } /* DEBUG */
   });
 
   // initialize quad dof index permutation in 3d and higher
@@ -1954,10 +1960,16 @@ FESystem<dim, spacedim>::initialize(
         {
           // the array into which we want to write should have the correct size
           // already.
-          Assert(this->adjust_quad_dof_index_for_face_orientation_table[face_no]
-                     .n_elements() ==
-                   this->reference_cell().n_face_orientations(face_no) *
-                     this->n_dofs_per_quad(face_no),
+          // Do not use `this` in Assert because nvcc when using C++20 assumes
+          // that `this` is an integer and we get the following error: base
+          // operand of '->' is not a pointer
+          const unsigned int n_elements =
+            this->adjust_quad_dof_index_for_face_orientation_table[face_no]
+              .n_elements();
+          const unsigned int n_face_orientations =
+            this->reference_cell().n_face_orientations(face_no);
+          const unsigned int n_dofs_per_quad = this->n_dofs_per_quad(face_no);
+          Assert(n_elements == n_face_orientations * n_dofs_per_quad,
                  ExcInternalError());
 
           // to obtain the shifts for this composed element, copy the shift
@@ -1980,13 +1992,20 @@ FESystem<dim, spacedim>::initialize(
                   index += temp.size(0);
                 }
             }
-          Assert(index == this->n_dofs_per_quad(face_no), ExcInternalError());
+          Assert(index == n_dofs_per_quad, ExcInternalError());
         }
+    });
 
+  if (dim > 1)
+    init_tasks += Threads::new_task([&]() {
       // additionally compose the permutation information for lines
-      Assert(this->adjust_line_dof_index_for_line_orientation_table.size() ==
-               this->n_dofs_per_line(),
-             ExcInternalError());
+      // Do not use `this` in Assert because nvcc when using C++20 assumes that
+      // `this` is an integer and we get the following error: base operand of
+      // '->' is not a pointer
+      const unsigned int table_size =
+        this->adjust_line_dof_index_for_line_orientation_table.size();
+      const unsigned int n_dofs_per_line = this->n_dofs_per_line();
+      Assert(table_size == n_dofs_per_line, ExcInternalError());
       unsigned int index = 0;
       for (unsigned int b = 0; b < this->n_base_elements(); ++b)
         {
@@ -2003,8 +2022,63 @@ FESystem<dim, spacedim>::initialize(
               index += temp2.size();
             }
         }
-      Assert(index == this->n_dofs_per_line(), ExcInternalError());
+      Assert(index == n_dofs_per_line, ExcInternalError());
     });
+
+
+  // Compute local_dof_sparsity_pattern if any of our base elements contains a
+  // non-empty one (empty denotes the default of all DoFs coupling within a
+  // cell). Note the we currently only handle coupling within a base element and
+  // not between two different base elements. Handling the latter could be
+  // doable if the underlying element happens to be identical, but we currently
+  // have no functionality to compute the coupling between different elements
+  // with a pattern (for example FE_Q_iso_Q1 with different degrees).
+  {
+    // Does any of our base elements not couple all DoFs?
+    const bool have_nonempty = [&]() -> bool {
+      for (unsigned int b = 0; b < this->n_base_elements(); ++b)
+        {
+          if (!this->base_element(b).get_local_dof_sparsity_pattern().empty() &&
+              (this->element_multiplicity(b) > 0))
+            return true;
+        }
+      return false;
+    }();
+
+    if (have_nonempty)
+      {
+        this->local_dof_sparsity_pattern.reinit(this->n_dofs_per_cell(),
+                                                this->n_dofs_per_cell());
+
+        // by default, everything couples:
+        this->local_dof_sparsity_pattern.fill(true);
+
+        // Find shape functions within the same base element. If we do, grab the
+        // coupling from that base element pattern:
+        for (unsigned int i = 0; i < this->n_dofs_per_cell(); ++i)
+          for (unsigned int j = 0; j < this->n_dofs_per_cell(); ++j)
+            {
+              const auto vi = this->system_to_base_index(i);
+              const auto vj = this->system_to_base_index(j);
+
+              const auto base_index_i = vi.first.first;
+              const auto base_index_j = vj.first.first;
+              if (base_index_i == base_index_j)
+                {
+                  const auto shape_index_i = vi.second;
+                  const auto shape_index_j = vj.second;
+
+                  const auto &pattern = this->base_element(base_index_i)
+                                          .get_local_dof_sparsity_pattern();
+
+                  if (!pattern.empty())
+                    this->local_dof_sparsity_pattern(i, j) =
+                      pattern(shape_index_i, shape_index_j);
+                }
+            }
+      }
+  }
+
 
   // wait for all of this to finish
   init_tasks.join_all();
@@ -2417,35 +2491,79 @@ FESystem<dim, spacedim>::compare_for_domination(
 
   // vertex/line/face/cell domination
   // --------------------------------
-  // at present all we can do is to compare with other FESystems that have the
-  // same number of components and bases
   if (const FESystem<dim, spacedim> *fe_sys_other =
         dynamic_cast<const FESystem<dim, spacedim> *>(&fe_other))
     {
       Assert(this->n_components() == fe_sys_other->n_components(),
-             ExcNotImplemented());
-      Assert(this->n_base_elements() == fe_sys_other->n_base_elements(),
-             ExcNotImplemented());
+             ExcMessage("You can only compare two elements for domination "
+                        "that have the same number of vector components. The "
+                        "current element has " +
+                        std::to_string(this->n_components()) +
+                        " vector components, and you are comparing it "
+                        "against an element with " +
+                        std::to_string(fe_sys_other->n_components()) +
+                        " vector components."));
 
       FiniteElementDomination::Domination domination =
         FiniteElementDomination::no_requirements;
 
-      // loop over all base elements and do some sanity checks
-      for (unsigned int b = 0; b < this->n_base_elements(); ++b)
+      // If the two elements have the same number of base elements,
+      // and the base elements have the same multiplicities, we can
+      // get away with only comparing each of the bases:
+      if ((this->n_base_elements() == fe_sys_other->n_base_elements()) &&
+          // Use a lambda function to test whether all base elements have
+          // the same multiplicity:
+          [&]() {
+            for (unsigned int b = 0; b < this->n_base_elements(); ++b)
+              if (this->element_multiplicity(b) !=
+                  fe_sys_other->element_multiplicity(b))
+                return false;
+            return true;
+          }())
         {
-          Assert(this->base_element(b).n_components() ==
-                   fe_sys_other->base_element(b).n_components(),
-                 ExcNotImplemented());
-          Assert(this->element_multiplicity(b) ==
-                   fe_sys_other->element_multiplicity(b),
-                 ExcNotImplemented());
+          for (unsigned int b = 0; b < this->n_base_elements(); ++b)
+            {
+              Assert(this->base_element(b).n_components() ==
+                       fe_sys_other->base_element(b).n_components(),
+                     ExcNotImplemented());
+              // for this pair of base elements, check who dominates and combine
+              // with previous result
+              const FiniteElementDomination::Domination base_domination =
+                (this->base_element(b).compare_for_domination(
+                  fe_sys_other->base_element(b), codim));
 
-          // for this pair of base elements, check who dominates and combine
-          // with previous result
-          const FiniteElementDomination::Domination base_domination =
-            (this->base_element(b).compare_for_domination(
-              fe_sys_other->base_element(b), codim));
-          domination = domination & base_domination;
+              domination = domination & base_domination;
+            }
+        }
+      else
+        // The two elements do not line up either with their numbers of
+        // base elements, or with the multiplicities of the base elements
+        {
+          for (unsigned int c = 0; c < this->n_components(); ++c)
+            {
+              const unsigned int base_element_index_in_fe_sys_this =
+                this->component_to_base_index(c).first;
+              const unsigned int base_element_index_in_fe_sys_other =
+                fe_sys_other->component_to_base_index(c).first;
+
+              Assert(this->base_element(base_element_index_in_fe_sys_this)
+                         .n_components() ==
+                       fe_sys_other
+                         ->base_element(base_element_index_in_fe_sys_other)
+                         .n_components(),
+                     ExcNotImplemented());
+
+              // for this pair of base elements, check who dominates and combine
+              // with previous result
+              const FiniteElementDomination::Domination base_domination =
+                (this->base_element(base_element_index_in_fe_sys_this)
+                   .compare_for_domination(
+                     fe_sys_other->base_element(
+                       base_element_index_in_fe_sys_other),
+                     codim));
+
+              domination = domination & base_domination;
+            }
         }
 
       return domination;
@@ -2713,6 +2831,6 @@ FESystem<dim, spacedim>::memory_consumption() const
 #endif
 
 // explicit instantiations
-#include "fe_system.inst"
+#include "fe/fe_system.inst"
 
 DEAL_II_NAMESPACE_CLOSE

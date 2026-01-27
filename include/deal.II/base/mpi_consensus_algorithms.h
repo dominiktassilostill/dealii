@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,6 +20,9 @@
 #include <deal.II/base/mpi.h>
 #include <deal.II/base/mpi.templates.h>
 #include <deal.II/base/mpi_tags.h>
+
+#include <set>
+#include <vector>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -151,9 +154,14 @@ namespace Utilities
        *    (1) deliver only references to empty vectors (of size 0) the data
        *    to be sent can be inserted to or read from, and (2) communicate
        *    these vectors blindly.
+       *
+       * @deprecated Instead of deriving a class from this base class and
+       *   providing a corresponding object to one of the run() functions,
+       *   use the free functions in this namespace that take function
+       *   objects as arguments.
        */
       template <typename RequestType, typename AnswerType>
-      class Process
+      class DEAL_II_DEPRECATED Process
       {
       public:
         /**
@@ -242,6 +250,7 @@ namespace Utilities
          */
         virtual ~Interface() = default;
 
+        DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
         /**
          * Run the consensus algorithm and return a vector of process ranks
          * that have requested answers from the current process.
@@ -249,9 +258,16 @@ namespace Utilities
          * This version of the run() function simply unpacks the functions
          * packaged in `process` and calls the version of the run() function
          * that takes a number of `std::function` arguments.
+         *
+         * @deprecated Instead of deriving a class from the Process base class and
+         *   providing a corresponding object to this function,
+         *   use the other run() function in this class that takes function
+         *   objects as arguments.
          */
+        DEAL_II_DEPRECATED
         std::vector<unsigned int>
         run(Process<RequestType, AnswerType> &process, const MPI_Comm comm);
+        DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
         /**
          * Run the consensus algorithm and return a vector of process ranks
@@ -1268,7 +1284,7 @@ namespace Utilities
   {
     namespace ConsensusAlgorithms
     {
-      namespace
+      namespace internal
       {
         /**
          * Return whether a vector of targets (MPI ranks) has only unique
@@ -1362,7 +1378,7 @@ namespace Utilities
           std::rethrow_exception(exception);
 #  endif
         }
-      } // namespace
+      } // namespace internal
 
 
 
@@ -1439,7 +1455,7 @@ namespace Utilities
                       &process_answer,
         const MPI_Comm comm)
       {
-        Assert(has_unique_elements(targets),
+        Assert(internal::has_unique_elements(targets),
                ExcMessage("The consensus algorithms expect that each process "
                           "only sends a single message to another process, "
                           "but the targets provided include duplicates."));
@@ -1486,7 +1502,7 @@ namespace Utilities
           }
         catch (...)
           {
-            handle_exception(std::current_exception(), comm);
+            internal::handle_exception(std::current_exception(), comm);
           }
 
         return std::vector<unsigned int>(requesting_processes.begin(),
@@ -1787,12 +1803,13 @@ namespace Utilities
               AssertThrowMPI(ierr);
             }
 
-#    ifdef DEBUG
-          // note: IBarrier seems to make problem during testing, this
-          // additional Barrier seems to help
-          ierr = MPI_Barrier(comm);
-          AssertThrowMPI(ierr);
-#    endif
+          if constexpr (running_in_debug_mode())
+            {
+              // note: IBarrier seems to make problem during testing, this
+              // additional Barrier seems to help
+              ierr = MPI_Barrier(comm);
+              AssertThrowMPI(ierr);
+            }
         }
 #  endif
       }
@@ -1810,7 +1827,7 @@ namespace Utilities
                       &process_answer,
         const MPI_Comm comm)
       {
-        Assert(has_unique_elements(targets),
+        Assert(internal::has_unique_elements(targets),
                ExcMessage("The consensus algorithms expect that each process "
                           "only sends a single message to another process, "
                           "but the targets provided include duplicates."));
@@ -1838,7 +1855,7 @@ namespace Utilities
           }
         catch (...)
           {
-            handle_exception(std::current_exception(), comm);
+            internal::handle_exception(std::current_exception(), comm);
           }
 
         return std::vector<unsigned int>(requesting_processes.begin(),
@@ -2081,7 +2098,6 @@ namespace Utilities
                       &process_answer,
         const MPI_Comm comm)
       {
-        (void)comm;
         Assert(Utilities::MPI::n_mpi_processes(comm) == 1,
                ExcMessage("You shouldn't use the 'Serial' class on "
                           "communicators that have more than one process "

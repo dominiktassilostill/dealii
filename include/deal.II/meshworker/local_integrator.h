@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2024 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,8 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/exceptions.h>
 
 #include <functional>
 #include <string>
@@ -56,7 +57,7 @@ namespace MeshWorker
    * @ingroup MeshWorker
    */
   template <int dim, int spacedim = dim, typename number = double>
-  class DEAL_II_DEPRECATED_EARLY LocalIntegrator : public Subscriptor
+  class DEAL_II_DEPRECATED LocalIntegrator : public EnableObserverPointer
   {
   public:
     /**
@@ -128,7 +129,7 @@ namespace MeshWorker
      * @deprecated Because the library itself does not use this field, it is
      *   better placed in derived classes.
      */
-    DEAL_II_DEPRECATED_EARLY
+    DEAL_II_DEPRECATED
     std::vector<std::string> input_vector_names;
 
     /**
@@ -142,7 +143,7 @@ namespace MeshWorker
      * @deprecated Because the library itself does not use this field, it is
      *   better placed in derived classes.
      */
-    DEAL_II_DEPRECATED_EARLY
+    DEAL_II_DEPRECATED
     std::vector<std::string> output_names;
 
     /**

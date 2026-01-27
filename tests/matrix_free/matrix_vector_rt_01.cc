@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 by the deal.II authors
+// Copyright (C) 2022 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,7 +14,7 @@
 
 // This function tests the correctness of the matrix-free implementation
 // of the FE_RaviartThomasNodal element by evaluating values + gradients
-// as well as the divergence and comparing the result with FEVaules which
+// as well as the divergence and comparing the result with FEValues which
 // is considered the reference. The mesh is a hypercube mesh with no
 // hanging nodes and no other constraints.
 

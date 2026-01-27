@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2024 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,7 +22,6 @@
 #  include <deal.II/base/index_set.h>
 #  include <deal.II/base/mpi_stub.h>
 #  include <deal.II/base/partitioner.h>
-#  include <deal.II/base/subscriptor.h>
 
 #  include <deal.II/lac/exceptions.h>
 #  include <deal.II/lac/read_vector.h>
@@ -30,11 +29,13 @@
 #  include <deal.II/lac/vector_operation.h>
 #  include <deal.II/lac/vector_type_traits.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_ConfigDefs.h>
 #  include <Epetra_FEVector.h>
 #  include <Epetra_LocalMap.h>
 #  include <Epetra_Map.h>
 #  include <Epetra_MpiComm.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #  include <memory>
 #  include <utility>
@@ -401,7 +402,7 @@ namespace TrilinosWrappers
      * @ingroup TrilinosWrappers
      * @ingroup Vectors
      */
-    class Vector : public Subscriptor, public ReadVector<TrilinosScalar>
+    class Vector : public ReadVector<TrilinosScalar>
     {
     public:
       /**
@@ -558,11 +559,10 @@ namespace TrilinosWrappers
        * Reinit functionality. This function destroys the old vector content
        * and generates a new one based on the input partitioning.  The flag
        * <tt>omit_zeroing_entries</tt> determines whether the vector should be
-       * filled with zero (false). If the flag is set to <tt>true</tt>, the
-       * vector entries are in an unspecified state and the user has to set
-       * all elements. In the current implementation, this method still sets
-       * the entries to zero, but this might change between releases without
-       * notification.
+       * filled with zeros (if set to <tt>false</tt>) or left in an unspecified
+       * state (if the flag is set to <tt>true</tt>). In the current
+       * implementation, this method still sets the entries to zero, but this
+       * might change between releases without notification.
        *
        * Depending on whether the @p parallel_partitioning argument uniquely
        * subdivides elements among processors or not, the resulting vector may
@@ -719,7 +719,7 @@ namespace TrilinosWrappers
       /**
        * Another copy function. This one takes a deal.II vector and copies it
        * into a TrilinosWrapper vector. Note that since we do not provide any
-       * Epetra_map that tells about the partitioning of the vector among the
+       * Epetra_Map that tells about the partitioning of the vector among the
        * MPI processes, the size of the TrilinosWrapper vector has to be the
        * same as the size of the input vector.
        */
@@ -758,18 +758,6 @@ namespace TrilinosWrappers
       void
       import_elements(const LinearAlgebra::ReadWriteVector<double> &rwv,
                       const VectorOperation::values                 operation);
-
-      /**
-       * @deprecated Use import_elements() instead.
-       */
-      DEAL_II_DEPRECATED
-      void
-      import(const LinearAlgebra::ReadWriteVector<double> &rwv,
-             const VectorOperation::values                 operation)
-      {
-        import_elements(rwv, operation);
-      }
-
 
       /**
        * Test for equality. This function assumes that the present vector and
@@ -1031,8 +1019,9 @@ namespace TrilinosWrappers
        * Extract a range of elements all at once.
        */
       virtual void
-      extract_subvector_to(const ArrayView<const size_type> &indices,
-                           ArrayView<TrilinosScalar> &elements) const override;
+      extract_subvector_to(
+        const ArrayView<const size_type> &indices,
+        const ArrayView<TrilinosScalar>  &elements) const override;
 
       /**
        * Instead of getting individual elements of a vector via operator(),
@@ -1463,7 +1452,10 @@ namespace TrilinosWrappers
     inline const VectorReference &
     VectorReference::operator=(const TrilinosScalar &value) const
     {
+      Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
       vector.set(1, &index, &value);
+
       return *this;
     }
 
@@ -1472,7 +1464,10 @@ namespace TrilinosWrappers
     inline const VectorReference &
     VectorReference::operator+=(const TrilinosScalar &value) const
     {
+      Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
       vector.add(1, &index, &value);
+
       return *this;
     }
 
@@ -1481,8 +1476,11 @@ namespace TrilinosWrappers
     inline const VectorReference &
     VectorReference::operator-=(const TrilinosScalar &value) const
     {
-      TrilinosScalar new_value = -value;
+      Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+      const TrilinosScalar new_value = -value;
       vector.add(1, &index, &new_value);
+
       return *this;
     }
 
@@ -1491,8 +1489,12 @@ namespace TrilinosWrappers
     inline const VectorReference &
     VectorReference::operator*=(const TrilinosScalar &value) const
     {
-      TrilinosScalar new_value = static_cast<TrilinosScalar>(*this) * value;
+      Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+      const TrilinosScalar new_value =
+        static_cast<TrilinosScalar>(*this) * value;
       vector.set(1, &index, &new_value);
+
       return *this;
     }
 
@@ -1501,11 +1503,17 @@ namespace TrilinosWrappers
     inline const VectorReference &
     VectorReference::operator/=(const TrilinosScalar &value) const
     {
-      TrilinosScalar new_value = static_cast<TrilinosScalar>(*this) / value;
+      Assert(!vector.has_ghost_elements(), ExcGhostsPresent());
+
+      const TrilinosScalar new_value =
+        static_cast<TrilinosScalar>(*this) / value;
       vector.set(1, &index, &new_value);
+
       return *this;
     }
   } // namespace internal
+
+
 
   namespace MPI
   {
@@ -1581,8 +1589,9 @@ namespace TrilinosWrappers
 
 
     inline void
-    Vector::extract_subvector_to(const ArrayView<const size_type> &indices,
-                                 ArrayView<TrilinosScalar> &elements) const
+    Vector::extract_subvector_to(
+      const ArrayView<const size_type> &indices,
+      const ArrayView<TrilinosScalar>  &elements) const
     {
       AssertDimension(indices.size(), elements.size());
       for (unsigned int i = 0; i < indices.size(); ++i)
@@ -1978,6 +1987,10 @@ namespace TrilinosWrappers
                         const Vector        &V,
                         const Vector        &W)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       this->add(a, V);
       return *this * W;
     }
@@ -1992,6 +2005,9 @@ namespace TrilinosWrappers
     inline Vector &
     Vector::operator*=(const TrilinosScalar a)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(a);
 
       const int ierr = vector->Scale(a);
@@ -2005,6 +2021,9 @@ namespace TrilinosWrappers
     inline Vector &
     Vector::operator/=(const TrilinosScalar a)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(a);
 
       const TrilinosScalar factor = 1. / a;
@@ -2022,6 +2041,9 @@ namespace TrilinosWrappers
     inline Vector &
     Vector::operator+=(const Vector &v)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertDimension(size(), v.size());
       Assert(vector->Map().SameAs(v.vector->Map()),
              ExcDifferentParallelPartitioning());
@@ -2037,6 +2059,9 @@ namespace TrilinosWrappers
     inline Vector &
     Vector::operator-=(const Vector &v)
     {
+      // if we have ghost values, do not allow
+      // writing to this vector at all.
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertDimension(size(), v.size());
       Assert(vector->Map().SameAs(v.vector->Map()),
              ExcDifferentParallelPartitioning());
@@ -2252,6 +2277,7 @@ namespace TrilinosWrappers
     inline Vector &
     Vector::operator=(const TrilinosScalar s)
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(s);
 
       int ierr = vector->PutScalar(s);
@@ -2325,6 +2351,14 @@ struct is_serial_vector<TrilinosWrappers::MPI::Vector> : std::false_type
 {};
 
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,8 +18,9 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/exceptions.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <string>
 
@@ -97,7 +98,7 @@ class SparseMatrix;
  */
 template <typename MatrixType = SparseMatrix<double>,
           typename VectorType = dealii::Vector<double>>
-class PreconditionSelector : public Subscriptor
+class PreconditionSelector : public EnableObserverPointer
 {
 public:
   /**
@@ -188,7 +189,8 @@ private:
    * Matrix that is used for the matrix-builtin preconditioning function. cf.
    * also @p PreconditionUseMatrix.
    */
-  SmartPointer<const MatrixType, PreconditionSelector<MatrixType, VectorType>>
+  ObserverPointer<const MatrixType,
+                  PreconditionSelector<MatrixType, VectorType>>
     A;
 
   /**

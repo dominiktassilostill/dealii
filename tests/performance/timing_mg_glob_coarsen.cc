@@ -79,7 +79,7 @@ dealii::ConditionalOStream debug_output(std::cout, false);
 
 
 template <int dim, typename number = double>
-class LaplaceOperator : public Subscriptor
+class LaplaceOperator : public EnableObserverPointer
 {
 public:
   using value_type = number;
@@ -303,8 +303,8 @@ public:
   }
 
 private:
-  SmartPointer<const MGSmootherBase<VectorType>> coarse_smooth;
-  const std::vector<unsigned int>               *constrained_dofs;
+  ObserverPointer<const MGSmootherBase<VectorType>> coarse_smooth;
+  const std::vector<unsigned int>                  *constrained_dofs;
 
   mutable VectorType src_copy;
 };
@@ -402,7 +402,8 @@ private:
     PreconditionChebyshev<LaplaceOperator<dim, float>, VectorTypeMG>;
   mg::SmootherRelaxation<SmootherType, VectorTypeMG> mg_smoother;
 
-  MGLevelObject<MGTwoLevelTransfer<dim, VectorTypeMG>>           mg_transfers;
+  MGLevelObject<std::unique_ptr<MGTwoLevelTransferBase<dim, VectorTypeMG>>>
+                                                                 mg_transfers;
   std::unique_ptr<MGTransferGlobalCoarsening<dim, VectorTypeMG>> mg_transfer;
 };
 
@@ -503,7 +504,7 @@ LaplaceProblem<dim>::setup_dofs()
 
       IndexSet relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_h);
       AffineConstraints<float> &constraints = level_constraints[level];
-      constraints.reinit(relevant_dofs);
+      constraints.reinit(dof_h.locally_owned_dofs(), relevant_dofs);
       DoFTools::make_hanging_node_constraints(dof_h, constraints);
       constraints.close();
       typename MatrixFree<dim, float>::AdditionalData additional_data;
@@ -517,7 +518,7 @@ LaplaceProblem<dim>::setup_dofs()
       // now create the final constraints object
       relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_h);
       constraints.clear();
-      constraints.reinit(relevant_dofs);
+      constraints.reinit(dof_h.locally_owned_dofs(), relevant_dofs);
       DoFTools::make_hanging_node_constraints(dof_h, constraints);
       constraints.close();
     }
@@ -621,10 +622,19 @@ LaplaceProblem<dim>::setup_transfer()
   mg_transfers.resize(0, dof_handlers.max_level());
   for (unsigned int level = 1; level <= dof_handlers.max_level(); ++level)
     {
-      mg_transfers[level].reinit(dof_handlers[level],
-                                 dof_handlers[level - 1],
-                                 level_constraints[level],
-                                 level_constraints[level - 1]);
+      auto transfer = std::make_unique<MGTwoLevelTransfer<dim, VectorTypeMG>>();
+      if (level < triangulation.n_global_levels())
+        transfer->reinit(dof_handlers[level],
+                         dof_handlers[level - 1],
+                         level_constraints[level],
+                         level_constraints[level - 1]);
+      else
+        transfer->reinit(level_matrices[level].get_matrix_free(),
+                         0,
+                         level_matrices[level - 1].get_matrix_free(),
+                         0);
+
+      mg_transfers[level] = std::move(transfer);
     }
 
   mg_transfer = std::make_unique<MGTransferGlobalCoarsening<dim, VectorTypeMG>>(

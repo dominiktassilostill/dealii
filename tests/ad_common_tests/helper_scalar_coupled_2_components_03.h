@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2022 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -202,7 +202,6 @@ test_tensor_scalar_coupled()
     ad_helper.extract_gradient_component(Dpsi, s_dof);
   std::cout << "extracted Dpsi (t): " << dpsi_dt << "\n"
             << "extracted Dpsi (s): " << dpsi_ds << "\n";
-  ;
 
   // Verify the result
   using func = FunctionsTestTensorScalarCoupled<dim, ScalarNumberType>;

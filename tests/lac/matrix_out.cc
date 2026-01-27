@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2018 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -34,7 +34,9 @@ main()
         full_matrix(i, i) = 1;
 
       MatrixOut matrix_out;
-      matrix_out.build_patches(full_matrix, "full_matrix");
+      matrix_out.build_patches(full_matrix,
+                               "full_matrix",
+                               {false, 1, false, false});
       matrix_out.write_gnuplot(logfile);
     };
 
@@ -57,7 +59,7 @@ main()
       MatrixOut matrix_out;
       matrix_out.build_patches(sparse_matrix,
                                "sparse_matrix",
-                               MatrixOut::Options(true));
+                               MatrixOut::Options(true, 1, false, false));
       matrix_out.write_eps(logfile);
     };
 
@@ -73,7 +75,7 @@ main()
       MatrixOut matrix_out;
       matrix_out.build_patches(full_matrix,
                                "collated_matrix",
-                               MatrixOut::Options(false, 4));
+                               MatrixOut::Options(false, 4, false, false));
       matrix_out.write_gmv(logfile);
     };
 }

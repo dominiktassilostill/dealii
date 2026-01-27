@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2005 - 2023 by the deal.II authors
+// Copyright (C) 2005 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,6 +24,8 @@
 #include <deal.II/hp/collection.h>
 
 #include <memory>
+#include <set>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -43,7 +45,7 @@ namespace hp
    *
    * It implements the concepts stated in the
    * @ref hpcollection
-   * module described in the doxygen documentation.
+   * topic described in the doxygen documentation.
    *
    * In addition to offering access to the elements of the collection, this
    * class provides access to the maximal number of degrees of freedom per
@@ -149,11 +151,11 @@ namespace hp
      * clang-tidy).
      */
     FECollection(FECollection<dim, spacedim> &&) noexcept(
-      std::is_nothrow_move_constructible<
-        std::vector<std::shared_ptr<const FiniteElement<dim, spacedim>>>>::value
-        &&std::is_nothrow_move_constructible<std::function<
+      std::is_nothrow_move_constructible_v<
+        std::vector<std::shared_ptr<const FiniteElement<dim, spacedim>>>>
+        &&std::is_nothrow_move_constructible_v<std::function<
           unsigned int(const typename hp::FECollection<dim, spacedim> &,
-                       const unsigned int)>>::value) = default;
+                       const unsigned int)>>) = default;
 
     /**
      * Move assignment operator.

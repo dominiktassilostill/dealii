@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,11 +19,11 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/derivative_form.h>
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/point.h>
 #include <deal.II/base/quadrature.h>
 #include <deal.II/base/std_cxx20/iota_view.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/symmetric_tensor.h>
 
 #include <deal.II/dofs/dof_accessor.h>
@@ -42,6 +42,8 @@
 #include <deal.II/hp/q_collection.h>
 
 #include <deal.II/lac/read_vector.h>
+
+#include <boost/signals2/connection.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -151,7 +153,7 @@ DEAL_II_NAMESPACE_OPEN
  * @ingroup feaccess
  */
 template <int dim, int spacedim>
-class FEValuesBase : public Subscriptor
+class FEValuesBase : public EnableObserverPointer
 {
 public:
   /**
@@ -1406,7 +1408,7 @@ public:
    * concept of views is explained in the documentation of the namespace
    * FEValuesViews and in particular in the
    * @ref vector_valued
-   * module.
+   * topic.
    */
   const FEValuesViews::Scalar<dim, spacedim> &
   operator[](const FEValuesExtractors::Scalar &scalar) const;
@@ -1417,7 +1419,7 @@ public:
    * finite element. The concept of views is explained in the documentation of
    * the namespace FEValuesViews and in particular in the
    * @ref vector_valued
-   * module.
+   * topic.
    */
   const FEValuesViews::Vector<dim, spacedim> &
   operator[](const FEValuesExtractors::Vector &vector) const;
@@ -1429,7 +1431,7 @@ public:
    * is explained in the documentation of the namespace FEValuesViews and in
    * particular in the
    * @ref vector_valued
-   * module.
+   * topic.
    */
   const FEValuesViews::SymmetricTensor<2, dim, spacedim> &
   operator[](const FEValuesExtractors::SymmetricTensor<2> &tensor) const;
@@ -1441,7 +1443,7 @@ public:
    * vector-valued finite element. The concept of views is explained in the
    * documentation of the namespace FEValuesViews and in particular in the
    * @ref vector_valued
-   * module.
+   * topic.
    */
   const FEValuesViews::Tensor<2, dim, spacedim> &
   operator[](const FEValuesExtractors::Tensor<2> &tensor) const;
@@ -1698,7 +1700,8 @@ protected:
   /**
    * A pointer to the mapping object associated with this FEValues object.
    */
-  const SmartPointer<const Mapping<dim, spacedim>, FEValuesBase<dim, spacedim>>
+  const ObserverPointer<const Mapping<dim, spacedim>,
+                        FEValuesBase<dim, spacedim>>
     mapping;
 
   /**
@@ -1720,8 +1723,8 @@ protected:
    * A pointer to the finite element object associated with this FEValues
    * object.
    */
-  const SmartPointer<const FiniteElement<dim, spacedim>,
-                     FEValuesBase<dim, spacedim>>
+  const ObserverPointer<const FiniteElement<dim, spacedim>,
+                        FEValuesBase<dim, spacedim>>
     fe;
 
   /**
@@ -2346,7 +2349,8 @@ template <int dim, int spacedim>
 inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FEValuesBase<dim, spacedim>::dof_indices() const
 {
-  return {0U, dofs_per_cell};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, dofs_per_cell);
 }
 
 
@@ -2358,7 +2362,8 @@ FEValuesBase<dim, spacedim>::dof_indices_starting_at(
 {
   Assert(start_dof_index <= dofs_per_cell,
          ExcIndexRange(start_dof_index, 0, dofs_per_cell + 1));
-  return {start_dof_index, dofs_per_cell};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    start_dof_index, dofs_per_cell);
 }
 
 
@@ -2370,7 +2375,8 @@ FEValuesBase<dim, spacedim>::dof_indices_ending_at(
 {
   Assert(end_dof_index < dofs_per_cell,
          ExcIndexRange(end_dof_index, 0, dofs_per_cell));
-  return {0U, end_dof_index + 1};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, end_dof_index + 1);
 }
 
 
@@ -2379,7 +2385,8 @@ template <int dim, int spacedim>
 inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FEValuesBase<dim, spacedim>::quadrature_point_indices() const
 {
-  return {0U, n_quadrature_points};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, n_quadrature_points);
 }
 
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2019 by the deal.II authors
+// Copyright (C) 2014 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,6 +29,16 @@ using namespace OpenCASCADE;
 int
 main()
 {
+  // This test might trigger spurious floating point exception despite
+  // functioning properly. Simply disable floating point exceptions again
+  // (after they had been enabled int tests.h)
+#if defined(DEBUG) && defined(DEAL_II_HAVE_FP_EXCEPTIONS)
+  {
+    const int current_fe_except = fegetexcept();
+    fedisableexcept(current_fe_except);
+  }
+#endif
+
   initlog();
   TopoDS_Shape sh = read_STL(SOURCE_DIR "/stl_files/sphere_refined.stl");
   write_STL(sh, "tmp.stl", 0.001, false, 1e-6, false, 0.001, false);

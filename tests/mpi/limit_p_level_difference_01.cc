@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -96,23 +96,24 @@ test(const unsigned int fes_size, const unsigned int max_difference)
   for (const auto &cell :
        dofh.active_cell_iterators() | IteratorFilters::LocallyOwnedCell())
     count[cell->active_fe_index()]++;
-  Utilities::MPI::sum(count, tria.get_communicator(), count);
+  Utilities::MPI::sum(count, tria.get_mpi_communicator(), count);
   deallog << "fe count:" << count << std::endl;
 
-#ifdef DEBUG
-  // check each cell's active FE index by its distance from the center
-  for (const auto &cell :
-       dofh.active_cell_iterators() | IteratorFilters::LocallyOwnedCell())
+  if constexpr (running_in_debug_mode())
     {
-      const double       distance = cell->center().distance(Point<dim>());
-      const unsigned int expected_level =
-        (sequence.size() - 1) -
-        max_difference * static_cast<unsigned int>(std::round(distance));
+      // check each cell's active FE index by its distance from the center
+      for (const auto &cell :
+           dofh.active_cell_iterators() | IteratorFilters::LocallyOwnedCell())
+        {
+          const double       distance = cell->center().distance(Point<dim>());
+          const unsigned int expected_level =
+            (sequence.size() - 1) -
+            max_difference * static_cast<unsigned int>(std::round(distance));
 
-      Assert(cell->active_fe_index() == sequence[expected_level],
-             ExcInternalError());
+          Assert(cell->active_fe_index() == sequence[expected_level],
+                 ExcInternalError());
+        }
     }
-#endif
 
   deallog << "OK" << std::endl;
 }

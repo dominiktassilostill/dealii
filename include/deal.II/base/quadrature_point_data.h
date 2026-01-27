@@ -17,8 +17,8 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/quadrature.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/distributed/tria.h>
 
@@ -60,7 +60,7 @@ DEAL_II_NAMESPACE_OPEN
  * for example, adopting a level-set approach to describe material behavior.
  */
 template <typename CellIteratorType, typename DataType>
-class CellDataStorage : public Subscriptor
+class CellDataStorage : public EnableObserverPointer
 {
 public:
   /**
@@ -91,7 +91,7 @@ public:
    * may reflect, for example, different constitutive models of continuum
    * mechanics in different parts of the domain.
    *
-   * @note The first time this method is called, it stores a SmartPointer to the
+   * @note The first time this method is called, it stores a ObserverPointer to the
    * Triangulation object that owns the cell. The future invocations of this
    * method expects the cell to be from the same stored triangulation.
    *
@@ -227,8 +227,8 @@ private:
    * Triangulation, we need to store a reference to that Triangulation within
    * the class.
    */
-  SmartPointer<const Triangulation<dimension, space_dimension>,
-               CellDataStorage<CellIteratorType, DataType>>
+  ObserverPointer<const Triangulation<dimension, space_dimension>,
+                  CellDataStorage<CellIteratorType, DataType>>
     tria;
 
   /**
@@ -654,7 +654,7 @@ CellDataStorage<CellIteratorType, DataType>::erase(const CellIteratorType &cell)
   for (unsigned int i = 0; i < it->second.size(); ++i)
     {
       Assert(
-        it->second[i].unique(),
+        it->second[i].use_count() == 1,
         ExcMessage(
           "Can not erase the cell data multiple objects reference its data."));
     }
@@ -678,7 +678,7 @@ CellDataStorage<CellIteratorType, DataType>::clear()
       for (unsigned int i = 0; i < it->second.size(); ++i)
         {
           Assert(
-            it->second[i].unique(),
+            it->second[i].use_count() == 1,
             ExcMessage(
               "Can not erase the cell data, multiple objects reference it."));
         }

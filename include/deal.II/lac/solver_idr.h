@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2024 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,9 +18,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/signaling_nan.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/template_constraints.h>
 
 #include <deal.II/lac/block_vector_base.h>
@@ -261,7 +261,6 @@ namespace internal
     block(VectorType &vector, const unsigned int b)
     {
       AssertDimension(b, 0);
-      (void)b;
       return vector;
     }
 
@@ -382,9 +381,9 @@ void SolverIDR<VectorType>::solve(const MatrixType         &A,
           for (unsigned int b = 0;
                b < internal::SolverIDRImplementation::n_blocks(tmp_q);
                ++b)
-            for (auto indx : internal::SolverIDRImplementation::block(tmp_q, b)
-                               .locally_owned_elements())
-              internal::SolverIDRImplementation::block(tmp_q, b)(indx) =
+            for (auto index : internal::SolverIDRImplementation::block(tmp_q, b)
+                                .locally_owned_elements())
+              internal::SolverIDRImplementation::block(tmp_q, b)(index) =
                 normal_distribution(rng);
           tmp_q.compress(VectorOperation::insert);
         }

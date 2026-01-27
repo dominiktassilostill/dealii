@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -61,7 +61,7 @@ refine_and_transfer(const Function<dim> &function, Triangulation<dim> &tria)
   dh.distribute_dofs(fe);
 
   Vector<double> sol_new(dh.n_dofs());
-  soltrans.interpolate(sol_old, sol_new);
+  soltrans.interpolate(sol_new);
 
   return sol_new;
 }

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2014 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -25,7 +25,7 @@
  *
  * @note Documentation on coding conventions, relations between
  * classes, and details of the implementation is found in the
- * documentation of namespaces in this module.
+ * documentation of namespaces in this group.
  *
  * <h3>Integration on finite element meshes</h3>
  *

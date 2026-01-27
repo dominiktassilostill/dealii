@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,12 +16,13 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/cgal/utilities.h>
+
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/tria.h>
 
 #include <CGAL/IO/File_medit.h>
 #include <CGAL/IO/io.h>
-#include <deal.II/cgal/utilities.h>
 
 #include "../tests.h"
 
@@ -48,17 +49,17 @@ test()
   AdditionalData<3> data;
   data.cell_size = .1;
   cgal_surface_mesh_to_cgal_triangulation(sm, tria, data);
-  const unsigned int n_intial_facets = tria.number_of_facets_in_complex();
+  const unsigned int n_initial_facets = tria.number_of_facets_in_complex();
   tria.clear();
   data.cell_size = .5;
   cgal_surface_mesh_to_cgal_triangulation(sm, tria, data);
 
   Assert(
-    n_intial_facets > tria.number_of_facets_in_complex(),
+    n_initial_facets > tria.number_of_facets_in_complex(),
     ExcMessage(
       "The number of facets in the finer mesh must be greater than the number of facets in the coarse mesh."));
   deallog << std::boolalpha
-          << (n_intial_facets > tria.number_of_facets_in_complex())
+          << (n_initial_facets > tria.number_of_facets_in_complex())
           << std::endl;
 }
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2020 by the deal.II authors
+// Copyright (C) 2010 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,6 +20,7 @@
 
 #include <deal.II/algorithms/any_data.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/event.h>
 
 #include <fstream>
@@ -62,7 +63,7 @@ namespace Algorithms
    * providing additional information and forwarded to the inner Operator
    * objects of the nested iteration.
    */
-  class OperatorBase : public Subscriptor
+  class OperatorBase : public EnableObserverPointer
   {
   public:
     /**
@@ -101,7 +102,7 @@ namespace Algorithms
    * in each step of an iteration.
    */
   template <typename VectorType>
-  class OutputOperator : public Subscriptor
+  class OutputOperator : public EnableObserverPointer
   {
   public:
     /**

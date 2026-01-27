@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -110,7 +110,7 @@ namespace internal
 
       /**
        * This variable holds the one-dimensional embedding (prolongation) matrix
-       * from mother element to all the children.
+       * from parent element to all the children.
        */
       std::vector<Number> prolongation_matrix_1d;
     };

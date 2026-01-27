@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2024 by the deal.II authors
+// Copyright (C) 2011 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,8 +18,8 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/index_set.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/utilities.h>
 
 #include <deal.II/lac/exceptions.h>
@@ -291,7 +291,7 @@ namespace DynamicSparsityPatternIterators
  * certain amount of memory, but grows as necessary.  An extensive description
  * of sparsity patterns can be found in the documentation of the
  * @ref Sparsity
- * module.
+ * topic.
  *
  * This class is an example of the "dynamic" type of
  * @ref Sparsity.
@@ -963,7 +963,6 @@ namespace DynamicSparsityPatternIterators
   inline int
   Iterator::operator-(const Iterator &other) const
   {
-    (void)other;
     Assert(accessor.sparsity_pattern == other.accessor.sparsity_pattern,
            ExcInternalError());
     DEAL_II_NOT_IMPLEMENTED();

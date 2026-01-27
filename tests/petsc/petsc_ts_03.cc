@@ -187,8 +187,10 @@ public:
     };
 
     // This callback is called if decide_and_prepare_for_remeshing returns true.
-    time_stepper.interpolate = [&](const std::vector<VectorType> &all_in,
-                                   std::vector<VectorType> &all_out) -> void {
+    time_stepper.transfer_solution_vectors_to_new_mesh =
+      [&](const double /* t */,
+          const std::vector<VectorType> &all_in,
+          std::vector<VectorType>       &all_out) -> void {
       deallog << "Interpolate" << std::endl;
       for (auto &v : all_in)
         all_out.push_back(v);
@@ -231,13 +233,13 @@ main(int argc, char **argv)
 
   data.add_parameters(prm);
   deallog << "# Default Parameters" << std::endl;
-  prm.print_parameters(deallog.get_file_stream(), ParameterHandler::ShortText);
+  prm.print_parameters(deallog.get_file_stream(), ParameterHandler::ShortPRM);
 
   std::ifstream ifile(SOURCE_DIR "/petsc_ts_03_in.prm");
   prm.parse_input(ifile);
 
   deallog << "# Testing Parameters" << std::endl;
-  prm.print_parameters(deallog.get_file_stream(), ParameterHandler::ShortText);
+  prm.print_parameters(deallog.get_file_stream(), ParameterHandler::ShortPRM);
 
   for (int setjaci = 0; setjaci < 2; setjaci++)
     {

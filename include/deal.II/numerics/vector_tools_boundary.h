@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -276,7 +276,7 @@ namespace VectorTools
    * are not set in the second operation on degrees of freedom that are
    * already constrained. This makes sure that the discretization remains
    * conforming as is needed. See the discussion on conflicting constraints in
-   * the module on @ref constraints.
+   * the topic on @ref constraints.
    *
    * For further information and details on the other function arguments, see
    * the interpolate_boundary_values() function with `std::map` arguments and
@@ -527,7 +527,7 @@ namespace VectorTools
    * are not set in the second operation on degrees of freedom that are
    * already constrained. This makes sure that the discretization remains
    * conforming as is needed. See the discussion on conflicting constraints in
-   * the module on
+   * the topic on
    * @ref constraints.
    *
    * If @p component_mapping is empty, it is assumed that the number of
@@ -537,12 +537,36 @@ namespace VectorTools
    * In 1d, projection equals interpolation. Therefore,
    * interpolate_boundary_values is called.
    *
-   * @arg @p component_mapping: if the components in @p boundary_functions and
-   * @p dof do not coincide, this vector allows them to be remapped. If the
-   * vector is not empty, it has to have one entry for each component in @p
-   * dof. This entry is the component number in @p boundary_functions that
-   * should be used for this component in @p dof. By default, no remapping is
-   * applied.
+   * @param[in] mapping The mapping that will be used in the transformations
+   * necessary to integrate along the boundary.
+   * @param[in] dof The DoFHandler that describes the finite element space and
+   * the numbering of degrees of freedom.
+   * @param[in] boundary_functions A map from boundary indicators to pointers
+   * to functions that describe the desired values on those parts of the
+   * boundary marked with this boundary indicator (see
+   * @ref GlossBoundaryIndicator "Boundary indicator").
+   * The projection happens on only those parts of the boundary whose
+   * indicators are represented in this map.
+   * @param[in] q The face quadrature used in the integration necessary to
+   * compute the @ref GlossMassMatrix "mass matrix" and right hand side of the projection.
+   * @param[out] constraints The result of this function. After the call, it
+   * will contain constraints for all indices of degrees of freedom at the
+   * boundary (as covered
+   * by the boundary parts in @p boundary_functions) to the computed dof
+   * value for this degree of freedom. For each degree of freedom at the
+   * boundary, if its index already exists in @p boundary_values then its
+   * boundary value will be overwritten, otherwise a new entry with proper
+   * index and boundary value for this degree of freedom will be inserted into
+   * @p constraints.
+   * @param[in] component_mapping It is sometimes convenient to project a
+   * vector-valued function onto only parts of a finite element space (for
+   * example, to project a function with <code>dim</code> components onto the
+   * velocity components of a <code>dim+1</code> component DoFHandler for a
+   * Stokes problem). To allow for this, this argument allows components to be
+   * remapped. If the vector is not empty, it has to have one entry for each
+   * vector component of the finite element used in @p dof. This entry is the
+   * component number in @p boundary_functions that should be used for this
+   * component in @p dof. By default, no remapping is applied.
    *
    * @ingroup constraints
    */
@@ -632,7 +656,7 @@ namespace VectorTools
    * the Dirichlet conditions should be set first, and then completed by
    * hanging node constraints, in order to make sure that the discretization
    * remains consistent. See the discussion on conflicting constraints in the
-   * module on
+   * topic on
    * @ref constraints.
    *
    * <h4>Arguments to this function</h4>
@@ -716,7 +740,7 @@ namespace VectorTools
    * the Dirichlet conditions should be set first, and then completed by
    * hanging node constraints, in order to make sure that the discretization
    * remains consistent. See the discussion on conflicting constraints in the
-   * module on
+   * topic on
    * @ref constraints.
    *
    * The argument @p first_vector_component denotes the first vector component

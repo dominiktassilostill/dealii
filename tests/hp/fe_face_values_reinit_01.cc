@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2022 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -76,7 +76,7 @@ test()
 
   for (const auto &cell : triangulation.active_cell_iterators())
     {
-      for (const auto face : cell->face_iterators())
+      for (const auto &face : cell->face_iterators())
         {
           hp_fe_face_values.reinit(cell, face);
 
@@ -90,7 +90,7 @@ test()
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
-      for (const auto face : cell->face_indices())
+      for (const auto &face : cell->face_indices())
         {
           hp_fe_face_values.reinit(cell, face);
 
@@ -104,7 +104,7 @@ test()
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     {
-      for (const auto face : cell->face_iterators())
+      for (const auto &face : cell->face_iterators())
         {
           hp_fe_face_values.reinit(cell, face);
 

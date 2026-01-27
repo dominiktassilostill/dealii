@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -48,12 +48,14 @@ namespace GridTools
     // tria.n_levels()==1, since this is something that can happen on one
     // processor without being true on all. however, we can ask for the
     // global number of active cells and use that
-#ifdef DEBUG
-    if (const auto *p_tria = dynamic_cast<
-          const parallel::DistributedTriangulationBase<dim, spacedim> *>(&tria))
-      Assert(p_tria->n_global_active_cells() == tria.n_cells(0),
-             ExcNotImplemented());
-#endif
+    if constexpr (running_in_debug_mode())
+      {
+        if (const auto *p_tria = dynamic_cast<
+              const parallel::DistributedTriangulationBase<dim, spacedim> *>(
+              &tria))
+          Assert(p_tria->n_global_active_cells() == tria.n_cells(0),
+                 ExcNotImplemented());
+      }
 
     // the algorithm used simply traverses all cells and picks out the
     // boundary vertices. it may or may not be faster to simply get all
@@ -150,7 +152,7 @@ namespace GridTools
         }
 
     const double global_volume =
-      Utilities::MPI::sum(local_volume, triangulation.get_communicator());
+      Utilities::MPI::sum(local_volume, triangulation.get_mpi_communicator());
 
     return global_volume;
   }
@@ -413,7 +415,7 @@ namespace GridTools
         min_diameter = std::min(min_diameter, cell->diameter(mapping));
 
     const double global_min_diameter =
-      Utilities::MPI::min(min_diameter, triangulation.get_communicator());
+      Utilities::MPI::min(min_diameter, triangulation.get_mpi_communicator());
     return global_min_diameter;
   }
 
@@ -430,13 +432,13 @@ namespace GridTools
         max_diameter = std::max(max_diameter, cell->diameter(mapping));
 
     const double global_max_diameter =
-      Utilities::MPI::max(max_diameter, triangulation.get_communicator());
+      Utilities::MPI::max(max_diameter, triangulation.get_mpi_communicator());
     return global_max_diameter;
   }
 } /* namespace GridTools */
 
 
 // explicit instantiations
-#include "grid_tools_geometry.inst"
+#include "grid/grid_tools_geometry.inst"
 
 DEAL_II_NAMESPACE_CLOSE

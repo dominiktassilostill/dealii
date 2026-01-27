@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2024 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -139,6 +139,12 @@ for (S : REAL_AND_COMPLEX_SCALARS; T : DEAL_II_VEC_TEMPLATES)
       DiagonalMatrix<LinearAlgebra::distributed::T<S>> &) const;
 
     template void AffineConstraints<S>::distribute_local_to_global<
+      DiagonalMatrix<T<S>>>(const FullMatrix<S> &,
+                            const std::vector<size_type> &,
+                            const std::vector<size_type> &,
+                            DiagonalMatrix<T<S>> &) const;
+
+    template void AffineConstraints<S>::distribute_local_to_global<
       DiagonalMatrix<LinearAlgebra::distributed::T<S>>>(
       const FullMatrix<S> &,
       const std::vector<size_type> &,
@@ -246,53 +252,128 @@ for (S : REAL_AND_COMPLEX_SCALARS)
 for (S : TRILINOS_SCALARS)
   {
     template void AffineConstraints<S>::distribute_local_to_global<
-      LinearAlgebra::TpetraWrappers::SparseMatrix<S>,
-      LinearAlgebra::TpetraWrappers::Vector<S>>(
+      LinearAlgebra::TpetraWrappers::SparseMatrix<S, MemorySpace::Host>,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Host>>(
       const FullMatrix<S> &,
       const Vector<S> &,
       const std::vector<AffineConstraints<S>::size_type> &,
-      LinearAlgebra::TpetraWrappers::SparseMatrix<S> &,
-      LinearAlgebra::TpetraWrappers::Vector<S> &,
+      LinearAlgebra::TpetraWrappers::SparseMatrix<S, MemorySpace::Host> &,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Host> &,
+      bool,
+      std::integral_constant<bool, false>) const;
+
+
+    template void AffineConstraints<S>::distribute_local_to_global<
+      LinearAlgebra::TpetraWrappers::SparseMatrix<S>>(
+      const FullMatrix<S> &,
+      const std::vector<size_type> &,
+      const std::vector<size_type> &,
+      LinearAlgebra::TpetraWrappers::SparseMatrix<S> &) const;
+
+    template void AffineConstraints<S>::distribute_local_to_global<
+      LinearAlgebra::TpetraWrappers::SparseMatrix<S>,
+      Vector<S>>(const FullMatrix<S> &,
+                 const Vector<S> &,
+                 const std::vector<AffineConstraints<S>::size_type> &,
+                 LinearAlgebra::TpetraWrappers::SparseMatrix<S> &,
+                 Vector<S> &,
+                 bool,
+                 std::bool_constant<false>) const;
+
+    // BlockSparseMatrix
+    template void AffineConstraints<S>::distribute_local_to_global<
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host>,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Host>>(
+      const FullMatrix<S> &,
+      const Vector<S> &,
+      const std::vector<AffineConstraints<S>::size_type> &,
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host> &,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Host> &,
+      bool,
+      std::bool_constant<true>) const;
+
+    template void AffineConstraints<S>::distribute_local_to_global<
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host>,
+      LinearAlgebra::TpetraWrappers::BlockVector<S, MemorySpace::Host>>(
+      const FullMatrix<S> &,
+      const Vector<S> &,
+      const std::vector<AffineConstraints<S>::size_type> &,
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host> &,
+      LinearAlgebra::TpetraWrappers::BlockVector<S, MemorySpace::Host> &,
+      bool,
+      std::bool_constant<true>) const;
+
+    template void AffineConstraints<S>::distribute_local_to_global<
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host>>(
+      const FullMatrix<S> &,
+      const std::vector<AffineConstraints<S>::size_type> &,
+      const std::vector<AffineConstraints<S>::size_type> &,
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host> &)
+      const;
+
+    template void AffineConstraints<S>::distribute_local_to_global<
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host>>(
+      const FullMatrix<S> &,
+      const std::vector<AffineConstraints<S>::size_type> &,
+      const AffineConstraints<S> &,
+      const std::vector<AffineConstraints<S>::size_type> &,
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Host> &)
+      const;
+
+    template void AffineConstraints<S>::distribute_local_to_global<
+      LinearAlgebra::TpetraWrappers::SparseMatrix<S, MemorySpace::Default>,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Default>>(
+      const FullMatrix<S> &,
+      const Vector<S> &,
+      const std::vector<AffineConstraints<S>::size_type> &,
+      LinearAlgebra::TpetraWrappers::SparseMatrix<S, MemorySpace::Default> &,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Default> &,
       bool,
       std::integral_constant<bool, false>) const;
 
     // BlockSparseMatrix
     template void AffineConstraints<S>::distribute_local_to_global<
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S>,
-      LinearAlgebra::TpetraWrappers::Vector<S>>(
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Default>,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Default>>(
       const FullMatrix<S> &,
       const Vector<S> &,
       const std::vector<AffineConstraints<S>::size_type> &,
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S> &,
-      LinearAlgebra::TpetraWrappers::Vector<S> &,
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Default>
+        &,
+      LinearAlgebra::TpetraWrappers::Vector<S, MemorySpace::Default> &,
       bool,
       std::bool_constant<true>) const;
 
     template void AffineConstraints<S>::distribute_local_to_global<
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S>,
-      LinearAlgebra::TpetraWrappers::BlockVector<S>>(
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Default>,
+      LinearAlgebra::TpetraWrappers::BlockVector<S, MemorySpace::Default>>(
       const FullMatrix<S> &,
       const Vector<S> &,
       const std::vector<AffineConstraints<S>::size_type> &,
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S> &,
-      LinearAlgebra::TpetraWrappers::BlockVector<S> &,
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Default>
+        &,
+      LinearAlgebra::TpetraWrappers::BlockVector<S, MemorySpace::Default> &,
       bool,
       std::bool_constant<true>) const;
 
     template void AffineConstraints<S>::distribute_local_to_global<
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S>>(
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S,
+                                                       MemorySpace::Default>>(
       const FullMatrix<S> &,
       const std::vector<AffineConstraints<S>::size_type> &,
       const std::vector<AffineConstraints<S>::size_type> &,
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S> &) const;
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Default>
+        &) const;
 
     template void AffineConstraints<S>::distribute_local_to_global<
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S>>(
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S,
+                                                       MemorySpace::Default>>(
       const FullMatrix<S> &,
       const std::vector<AffineConstraints<S>::size_type> &,
       const AffineConstraints<S> &,
       const std::vector<AffineConstraints<S>::size_type> &,
-      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S> &) const;
+      LinearAlgebra::TpetraWrappers::BlockSparseMatrix<S, MemorySpace::Default>
+        &) const;
   }
 
 

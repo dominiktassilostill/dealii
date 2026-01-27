@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -204,7 +204,7 @@ RightHandSide<dim>::value_list(const std::vector<Point<dim>> &vp,
 
 
 template <class MatrixType, class PreconditionerType>
-class InverseMatrix : public Subscriptor
+class InverseMatrix : public EnableObserverPointer
 {
 public:
   InverseMatrix(const MatrixType &m, const PreconditionerType &preconditioner);
@@ -213,8 +213,8 @@ public:
   vmult(Vector<double> &dst, const Vector<double> &src) const;
 
 private:
-  const SmartPointer<const MatrixType>         matrix;
-  const SmartPointer<const PreconditionerType> preconditioner;
+  const ObserverPointer<const MatrixType>         matrix;
+  const ObserverPointer<const PreconditionerType> preconditioner;
 };
 
 
@@ -243,7 +243,7 @@ InverseMatrix<MatrixType, PreconditionerType>::vmult(
 
 
 template <class PreconditionerType>
-class SchurComplement : public Subscriptor
+class SchurComplement : public EnableObserverPointer
 {
 public:
   SchurComplement(
@@ -254,8 +254,8 @@ public:
   vmult(Vector<double> &dst, const Vector<double> &src) const;
 
 private:
-  const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
-  const SmartPointer<
+  const ObserverPointer<const BlockSparseMatrix<double>> system_matrix;
+  const ObserverPointer<
     const InverseMatrix<SparseMatrix<double>, PreconditionerType>>
     A_inverse;
 

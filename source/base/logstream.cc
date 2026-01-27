@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -12,6 +12,7 @@
 //
 // ------------------------------------------------------------------------
 
+#include <deal.II/base/exceptions.h>
 #include <deal.II/base/job_identifier.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/thread_management.h>
@@ -20,6 +21,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <stack>
 #include <thread>
 
 
@@ -306,7 +308,7 @@ LogStream::push(const std::string &text)
     pre = get_prefixes().top();
 
   pre += text;
-  pre += std::string(":");
+  pre += ":";
   get_prefixes().push(pre);
 }
 

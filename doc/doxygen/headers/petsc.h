@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2022 by the deal.II authors
+// Copyright (C) 2006 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
 /**
  * @defgroup PETScWrappers PETScWrappers
  *
- * The classes in this module are
+ * The classes in this group are
  * wrappers around functionality provided by the PETSc library. They provide a
  * modern object-oriented interface that is compatible with the interfaces of
  * the other linear algebra classes in deal.II. All classes and functions in

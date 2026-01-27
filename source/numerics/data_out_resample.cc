@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -63,10 +63,10 @@ DataOutResample<dim, patch_dim, spacedim>::update_mapping(
 
   std::vector<types::global_dof_index> dof_indices(fe.n_dofs_per_cell());
 
-  const IndexSet active_dofs =
-    DoFTools::extract_locally_active_dofs(patch_dof_handler);
   partitioner = std::make_shared<Utilities::MPI::Partitioner>(
-    patch_dof_handler.locally_owned_dofs(), active_dofs, MPI_COMM_WORLD);
+    patch_dof_handler.locally_owned_dofs(),
+    DoFTools::extract_locally_active_dofs(patch_dof_handler),
+    patch_dof_handler.get_mpi_communicator());
 
   for (const auto &cell : patch_dof_handler.active_cell_iterators() |
                             IteratorFilters::LocallyOwnedCell())
@@ -150,14 +150,15 @@ DataOutResample<dim, patch_dim, spacedim>::build_patches(
 
       const auto &dh = *data_ptr->dof_handler;
 
-#ifdef DEBUG
-      for (const auto &fe : dh.get_fe_collection())
-        Assert(
-          fe.n_base_elements() == 1,
-          ExcMessage(
-            "This class currently only supports scalar elements and elements "
-            "with a single base element."));
-#endif
+      if constexpr (running_in_debug_mode())
+        {
+          for (const auto &fe : dh.get_fe_collection())
+            Assert(
+              fe.n_base_elements() == 1,
+              ExcMessage(
+                "This class currently only supports scalar elements and elements "
+                "with a single base element."));
+        }
 
       for (unsigned int comp = 0; comp < dh.get_fe_collection().n_components();
            ++comp)
@@ -204,6 +205,6 @@ DataOutResample<dim, patch_dim, spacedim>::get_patches() const
 
 
 // explicit instantiations
-#include "data_out_resample.inst"
+#include "numerics/data_out_resample.inst"
 
 DEAL_II_NAMESPACE_CLOSE

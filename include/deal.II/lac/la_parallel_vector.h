@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2024 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,13 +18,13 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/communication_pattern_base.h>
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/memory_space.h>
 #include <deal.II/base/memory_space_data.h>
 #include <deal.II/base/mpi_stub.h>
 #include <deal.II/base/numbers.h>
 #include <deal.II/base/parallel.h>
 #include <deal.II/base/partitioner.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/lac/read_vector.h>
 #include <deal.II/lac/vector_operation.h>
@@ -32,6 +32,13 @@
 
 #include <iomanip>
 #include <memory>
+
+#if defined(DEAL_II_WITH_MPI)
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
+#  include <mpi.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
+#endif
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -44,7 +51,7 @@ namespace LinearAlgebra
    */
   namespace distributed
   {
-    template <typename>
+    template <typename, typename>
     class BlockVector;
   }
 
@@ -246,7 +253,7 @@ namespace LinearAlgebra
      * @endcode
      */
     template <typename Number, typename MemorySpace = MemorySpace::Host>
-    class Vector : public ::dealii::ReadVector<Number>, public Subscriptor
+    class Vector : public ::dealii::ReadVector<Number>
     {
     public:
       using memory_space    = MemorySpace;
@@ -264,6 +271,11 @@ namespace LinearAlgebra
         std::is_same_v<MemorySpace, ::dealii::MemorySpace::Host> ||
           std::is_same_v<MemorySpace, ::dealii::MemorySpace::Default>,
         "MemorySpace should be Host or Default");
+
+      static_assert(
+        (!std::is_same_v<MemorySpace, ::dealii::MemorySpace::Default>) ||
+          std::is_same_v<Number, float> || std::is_same_v<Number, double>,
+        "Number should be float or double for Default memory space");
 
       /**
        * @name 1: Basic Object-handling
@@ -709,17 +721,6 @@ namespace LinearAlgebra
       import_elements(const Vector<Number, MemorySpace2> &src,
                       VectorOperation::values             operation);
 
-      /**
-       * @deprecated Use import_elements() instead.
-       */
-      template <typename MemorySpace2>
-      DEAL_II_DEPRECATED void
-      import(const Vector<Number, MemorySpace2> &src,
-             VectorOperation::values             operation)
-      {
-        import_elements(src, operation);
-      }
-
       /** @} */
 
       /**
@@ -768,18 +769,6 @@ namespace LinearAlgebra
         const VectorOperation::values                 operation,
         const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
           &communication_pattern = {});
-
-      /**
-       * @deprecated Use import_elements() instead.
-       */
-      DEAL_II_DEPRECATED void
-      import(const LinearAlgebra::ReadWriteVector<Number> &V,
-             VectorOperation::values                       operation,
-             std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
-               communication_pattern = {})
-      {
-        import_elements(V, operation, communication_pattern);
-      }
 
       /**
        * Return the scalar product of two vectors.
@@ -913,7 +902,11 @@ namespace LinearAlgebra
       locally_owned_elements() const;
 
       /**
-       * Print the vector to the output stream @p out.
+       * Print the vector to the output stream @p out. @p precision denotes the
+       * desired precision with which values shall be printed, @p scientific
+       * whether scientific notation shall be used. If @p across is @p true
+       * then the vector is printed in a line, while if @p false then the
+       * elements are printed on a separate line each.
        */
       void
       print(std::ostream      &out,
@@ -1134,7 +1127,7 @@ namespace LinearAlgebra
       virtual void
       extract_subvector_to(
         const ArrayView<const types::global_dof_index> &indices,
-        ArrayView<Number> &elements) const override;
+        const ArrayView<Number> &elements) const override;
 
       /**
        * Instead of getting individual elements of a vector via operator(),
@@ -1355,6 +1348,12 @@ namespace LinearAlgebra
       linfty_norm_local() const;
 
       /**
+       * Local part of all_zero().
+       */
+      bool
+      all_zero_local() const;
+
+      /**
        * Local part of the addition followed by an inner product of two
        * vectors. The same applies for complex-valued vectors as for
        * the add_and_dot() function.
@@ -1363,6 +1362,16 @@ namespace LinearAlgebra
       add_and_dot_local(const Number                       a,
                         const Vector<Number, MemorySpace> &V,
                         const Vector<Number, MemorySpace> &W);
+
+      /**
+       * Assert that there are no spurious non-zero entries in the ghost
+       * region of the vector caused by some forgotten compress() or
+       * zero_out_ghost_values() calls, which is an invariant of the vector
+       * space operations such as the addition of vectors, scaling a vector,
+       * and similar.
+       */
+      void
+      assert_no_residual_content_in_ghost_region() const;
 
       /**
        * Shared pointer to store the parallel partitioning information. This
@@ -1455,7 +1464,7 @@ namespace LinearAlgebra
       friend class Vector;
 
       // Make BlockVector type friends.
-      template <typename Number2>
+      template <typename Number2, typename MemorySpace2>
       friend class BlockVector;
     };
     /** @} */

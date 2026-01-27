@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,6 +20,9 @@
 
 #include <deal.II/base/bounding_box.h>
 #include <deal.II/base/function.h>
+
+#include <array>
+
 
 DEAL_II_NAMESPACE_OPEN
 

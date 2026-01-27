@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2014 - 2024 by the deal.II authors
+## Copyright (C) 2014 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -131,7 +131,7 @@ macro(process_feature _feature)
       elseif(_arg MATCHES "^(optimized|debug|general)$")
         message(FATAL_ERROR
           "Internal configuration error: process_feature() does not support "
-          "»debug«, »optimized«, or »general« library identifiers, use the "
+          "\"debug«, »optimized«, or »general\" library identifiers, use the "
           "appropriate keyword instead."
           )
       endif()

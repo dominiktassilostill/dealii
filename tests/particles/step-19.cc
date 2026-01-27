@@ -234,7 +234,7 @@ namespace Step19
   // we want to solve. Recall how the domain looks like:
   //   <p align="center">
   //     <img
-  //     src="https://www.dealii.org/images/steps/developer/step-19.geometry.png"
+  //     src="https://dealii.org/images/steps/developer/step-19.geometry.png"
   //          alt="The geometry used in this program"
   //          width="600">
   //   </p>
@@ -754,7 +754,9 @@ namespace Step19
                 deallog << "Setting new velocity of particle "
                         << particle->get_id() << ": " << new_velocity
                         << std::endl;
-                particle->set_properties(make_array_view(new_velocity));
+                particle->set_properties(
+                  make_array_view(new_velocity.begin_raw(),
+                                  new_velocity.end_raw()));
 
                 // With the new velocity, we can then also update the location
                 // of the particle and tell the particle about it.

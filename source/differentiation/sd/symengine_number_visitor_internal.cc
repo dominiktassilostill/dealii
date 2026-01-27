@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,7 @@
 DEAL_II_NAMESPACE_OPEN
 
 /* --- Explicit instantiations --- */
-#  include "symengine_number_visitor_internal.inst"
+#  include "differentiation/sd/symengine_number_visitor_internal.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

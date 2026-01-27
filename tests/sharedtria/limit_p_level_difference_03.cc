@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -104,18 +104,19 @@ test(const unsigned int fes_size,
   (void)fe_indices_changed;
   Assert(fe_indices_changed, ExcInternalError());
 
-#ifdef DEBUG
-  // check each cell's active FE by its h-level
-  for (unsigned int l = 0; l < tria.n_global_levels(); ++l)
-    for (const auto &cell : dofh.cell_iterators_on_level(l))
-      if (cell->is_active() && cell->is_locally_owned())
-        {
-          const unsigned int expected_level = std::max(
-            0, static_cast<int>(sequence.size() - 1 - l * max_difference));
-          Assert(cell->active_fe_index() == sequence[expected_level],
-                 ExcInternalError());
-        }
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      // check each cell's active FE by its h-level
+      for (unsigned int l = 0; l < tria.n_global_levels(); ++l)
+        for (const auto &cell : dofh.cell_iterators_on_level(l))
+          if (cell->is_active() && cell->is_locally_owned())
+            {
+              const unsigned int expected_level = std::max(
+                0, static_cast<int>(sequence.size() - 1 - l * max_difference));
+              Assert(cell->active_fe_index() == sequence[expected_level],
+                     ExcInternalError());
+            }
+    }
 
   deallog << "OK" << std::endl;
 }

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,8 +14,10 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/exceptions.h>
 #include <deal.II/base/polynomials_barycentric.h>
 #include <deal.II/base/qprojector.h>
+#include <deal.II/base/types.h>
 
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_nothing.h>
@@ -27,6 +29,7 @@
 #include <deal.II/fe/mapping.h>
 
 #include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/tria_orientation.h>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -46,9 +49,7 @@ namespace
     for (const auto face_vertex_no : face_reference_cell.vertex_indices())
       {
         const auto vertex_no = reference_cell.face_to_cell_vertices(
-          face_no,
-          face_vertex_no,
-          ReferenceCell::default_combined_face_orientation());
+          face_no, face_vertex_no, numbers::default_geometric_orientation);
 
         midpoint += reference_cell.template vertex<dim>(vertex_no);
       }
@@ -220,7 +221,6 @@ namespace
   constraints_fe_p<2>(const unsigned int degree)
   {
     constexpr int dim = 2;
-    Assert(degree <= 3, ExcNotImplemented());
 
     // the following implements the 2d case
     // (the 3d case is not implemented yet)
@@ -231,13 +231,16 @@ namespace
     std::vector<Point<dim - 1>> constraint_points;
     // midpoint
     constraint_points.emplace_back(0.5);
-    if (degree == 2)
-      {
-        // midpoint on subface 0
-        constraint_points.emplace_back(0.25);
-        // midpoint on subface 1
-        constraint_points.emplace_back(0.75);
-      }
+    // subface 0
+    for (unsigned int i = 1; i < degree; ++i)
+      constraint_points.push_back(
+        GeometryInfo<dim - 1>::child_to_cell_coordinates(
+          Point<dim - 1>(i / double(degree)), 0));
+    // subface 1
+    for (unsigned int i = 1; i < degree; ++i)
+      constraint_points.push_back(
+        GeometryInfo<dim - 1>::child_to_cell_coordinates(
+          Point<dim - 1>(i / double(degree)), 1));
 
     // Now construct relation between destination (child) and source (mother)
     // dofs.
@@ -439,6 +442,21 @@ FE_SimplexPoly<dim, spacedim>::get_prolongation_matrix(
 
 
 template <int dim, int spacedim>
+unsigned int
+FE_SimplexPoly<dim, spacedim>::face_to_cell_index(
+  const unsigned int                 face_dof_index,
+  const unsigned int                 face,
+  const types::geometric_orientation combined_orientation) const
+{
+  return FETools::face_to_cell_index(*this,
+                                     face_dof_index,
+                                     face,
+                                     combined_orientation);
+}
+
+
+
+template <int dim, int spacedim>
 const FullMatrix<double> &
 FE_SimplexPoly<dim, spacedim>::get_restriction_matrix(
   const unsigned int         child,
@@ -521,24 +539,25 @@ FE_SimplexPoly<dim, spacedim>::get_restriction_matrix(
               restriction_mat[i][j] =
                 this->shape_value(j, transformed_point[0]);
         }
-#ifdef DEBUG
-      for (unsigned int i = 0; i < this->n_dofs_per_cell(); i++)
+      if constexpr (running_in_debug_mode())
         {
-          double sum = 0.;
+          for (unsigned int i = 0; i < this->n_dofs_per_cell(); i++)
+            {
+              double sum = 0.;
 
-          for (unsigned int j = 0; j < this->n_dofs_per_cell(); j++)
-            sum += restriction_mat[i][j];
+              for (unsigned int j = 0; j < this->n_dofs_per_cell(); j++)
+                sum += restriction_mat[i][j];
 
-          Assert(std::fabs(sum - 1) < eps || std::fabs(sum) < eps,
-                 ExcInternalError(
-                   "The entries in a row of the local "
-                   "restriction matrix do not add to zero or one. "
-                   "This typically indicates that the "
-                   "polynomial interpolation is "
-                   "ill-conditioned such that round-off "
-                   "prevents the sum to be one."));
+              Assert(std::fabs(sum - 1) < eps || std::fabs(sum) < eps,
+                     ExcInternalError(
+                       "The entries in a row of the local "
+                       "restriction matrix do not add to zero or one. "
+                       "This typically indicates that the "
+                       "polynomial interpolation is "
+                       "ill-conditioned such that round-off "
+                       "prevents the sum to be one."));
+            }
         }
-#endif
 
       // Remove small entries from the matrix
       for (unsigned int i = 0; i < restriction_mat.m(); ++i)
@@ -582,11 +601,12 @@ FE_SimplexPoly<dim, spacedim>::get_face_interpolation_matrix(
 
       const double eps = 2e-13 * this->degree * (dim - 1);
 
-      std::vector<Point<dim>> face_quadrature_points(quad_face_support.size());
-      QProjector<dim>::project_to_face(this->reference_cell(),
-                                       quad_face_support,
-                                       face_no,
-                                       face_quadrature_points);
+      const std::vector<Point<dim>> face_quadrature_points =
+        QProjector<dim>::project_to_face(this->reference_cell(),
+                                         quad_face_support,
+                                         face_no,
+                                         numbers::default_geometric_orientation)
+          .get_points();
 
       for (unsigned int i = 0; i < source_fe.n_dofs_per_face(face_no); ++i)
         for (unsigned int j = 0; j < this->n_dofs_per_face(face_no); ++j)
@@ -606,17 +626,18 @@ FE_SimplexPoly<dim, spacedim>::get_face_interpolation_matrix(
             interpolation_matrix(i, j) = matrix_entry;
           }
 
-#ifdef DEBUG
-      for (unsigned int j = 0; j < source_fe.n_dofs_per_face(face_no); ++j)
+      if constexpr (running_in_debug_mode())
         {
-          double sum = 0.;
+          for (unsigned int j = 0; j < source_fe.n_dofs_per_face(face_no); ++j)
+            {
+              double sum = 0.;
 
-          for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
-            sum += interpolation_matrix(j, i);
+              for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
+                sum += interpolation_matrix(j, i);
 
-          Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+              Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+            }
         }
-#endif
     }
   else if (dynamic_cast<const FE_Nothing<dim> *>(&source_fe) != nullptr)
     {
@@ -653,20 +674,21 @@ FE_SimplexPoly<dim, spacedim>::get_subface_interpolation_matrix(
 
       const double eps = 2e-13 * this->degree * (dim - 1);
 
-      std::vector<Point<dim>> subface_quadrature_points(
-        quad_face_support.size());
-      QProjector<dim>::project_to_subface(this->reference_cell(),
-                                          quad_face_support,
-                                          face_no,
-                                          subface,
-                                          subface_quadrature_points);
+      const Quadrature<dim> subface_quadrature =
+        QProjector<dim>::project_to_subface(
+          this->reference_cell(),
+          quad_face_support,
+          face_no,
+          subface,
+          numbers::default_geometric_orientation,
+          RefinementCase<dim - 1>::isotropic_refinement);
 
       for (unsigned int i = 0; i < source_fe.n_dofs_per_face(face_no); ++i)
         for (unsigned int j = 0; j < this->n_dofs_per_face(face_no); ++j)
           {
             double matrix_entry =
               this->shape_value(this->face_to_cell_index(j, 0),
-                                subface_quadrature_points[i]);
+                                subface_quadrature.point(i));
 
             // Correct the interpolated value. I.e. if it is close to 1 or
             // 0, make it exactly 1 or 0. Unfortunately, this is required to
@@ -679,17 +701,18 @@ FE_SimplexPoly<dim, spacedim>::get_subface_interpolation_matrix(
             interpolation_matrix(i, j) = matrix_entry;
           }
 
-#ifdef DEBUG
-      for (unsigned int j = 0; j < source_fe.n_dofs_per_face(face_no); ++j)
+      if constexpr (running_in_debug_mode())
         {
-          double sum = 0.;
+          for (unsigned int j = 0; j < source_fe.n_dofs_per_face(face_no); ++j)
+            {
+              double sum = 0.;
 
-          for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
-            sum += interpolation_matrix(j, i);
+              for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
+                sum += interpolation_matrix(j, i);
 
-          Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+              Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+            }
         }
-#endif
     }
   else if (dynamic_cast<const FE_Nothing<dim> *>(&source_fe) != nullptr)
     {
@@ -1285,6 +1308,6 @@ FE_SimplexDGP<dim, spacedim>::get_restriction_matrix(
 }
 
 // explicit instantiations
-#include "fe_simplex_p.inst"
+#include "fe/fe_simplex_p.inst"
 
 DEAL_II_NAMESPACE_CLOSE

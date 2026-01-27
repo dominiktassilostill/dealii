@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2020 by the deal.II authors
+// Copyright (C) 2006 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -78,7 +78,7 @@ namespace internal
 
     // explicit instantiations
 #ifndef DOXYGEN
-#  include "tria_objects.inst"
+#  include "grid/tria_objects.inst"
 #endif
   } // namespace TriangulationImplementation
 } // namespace internal

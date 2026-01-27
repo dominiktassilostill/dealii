@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,7 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-#include "affine_constraints.inst"
+#include "lac/affine_constraints.inst"
 
 /*
  * Note: You probably do not want to add your custom instantiation down
@@ -139,12 +139,19 @@ INSTANTIATE_DLTG_MATRIX(TrilinosWrappers::SparseMatrix);
 INSTANTIATE_DLTG_MATRIX(TrilinosWrappers::BlockSparseMatrix);
 
 #  ifndef DOXYGEN
-#    if defined(DEAL_II_TRILINOS_WITH_TPETRA) && defined(HAVE_TPETRA_INST_FLOAT)
+#    if defined(DEAL_II_TRILINOS_WITH_TPETRA) && \
+      defined(DEAL_II_TRILINOS_WITH_TPETRA_INST_FLOAT)
 // FIXME: This mixed variant is needed for multigrid and matrix free.
 template void
 dealii::AffineConstraints<double>::distribute<
-  dealii::LinearAlgebra::TpetraWrappers::Vector<float>>(
-  dealii::LinearAlgebra::TpetraWrappers::Vector<float> &) const;
+  dealii::LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Host>>(
+  dealii::LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Host> &)
+  const;
+template void
+dealii::AffineConstraints<double>::distribute<
+  dealii::LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Default>>(
+  dealii::LinearAlgebra::TpetraWrappers::Vector<float, MemorySpace::Default> &)
+  const;
 #    endif
 #  endif
 #endif

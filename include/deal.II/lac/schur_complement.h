@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -128,7 +128,7 @@ DEAL_II_NAMESPACE_OPEN
  * An illustration of typical usage of this operator for a fully coupled
  * system is given below.
  * @code
- * #include<deal.II/lac/schur_complement.h>
+ * #include <deal.II/lac/schur_complement.h>
  *
  * // Given BlockMatrix K and BlockVectors d,F
  *

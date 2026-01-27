@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -78,7 +78,7 @@ test()
         DoFTools::extract_locally_relevant_level_dofs(dh, level);
       level_vectors[level].reinit(dh.locally_owned_mg_dofs(level),
                                   relevant_dofs,
-                                  tria.get_communicator());
+                                  tria.get_mpi_communicator());
       std::vector<types::global_dof_index> dof_indices(fe.dofs_per_cell);
       for (const auto &cell : dh.mg_cell_iterators_on_level(level))
         if (cell->level_subdomain_id() != numbers::artificial_subdomain_id)

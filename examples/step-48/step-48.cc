@@ -309,7 +309,7 @@ namespace Step48
     const FE_Q<dim> fe;
     DoFHandler<dim> dof_handler;
 
-    MappingQ1<dim> mapping;
+    const MappingQ1<dim> mapping;
 
     AffineConstraints<double> constraints;
     IndexSet                  locally_relevant_dofs;
@@ -364,9 +364,8 @@ namespace Step48
   // cells whose center is within a radius of 11, and then refine once more
   // for a radius 6.  This simple ad hoc refinement could be done better by
   // adapting the mesh to the solution using error estimators during the time
-  // stepping as done in other example programs, and using
-  // parallel::distributed::SolutionTransfer to transfer the solution to the
-  // new mesh.
+  // stepping as done in other example programs, and using SolutionTransfer to
+  // transfer the solution to the new mesh.
   template <int dim>
   void SineGordonProblem<dim>::make_grid_and_dofs()
   {

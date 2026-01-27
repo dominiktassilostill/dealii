@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2023 by the deal.II authors
+// Copyright (C) 2009 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -168,7 +168,7 @@ namespace MeshWorker
 
 
     /// The block structure of the system
-    SmartPointer<const BlockInfo, DoFInfo<dim, spacedim>> block_info;
+    ObserverPointer<const BlockInfo, DoFInfo<dim, spacedim>> block_info;
 
     /**
      * The structure refers to a cell with level data instead of active data.

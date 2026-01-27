@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -108,6 +108,6 @@ namespace internal
   } // namespace FEValuesImplementation
 } // namespace internal
 
-#include "mapping_related_data.inst"
+#include "fe/mapping_related_data.inst"
 
 DEAL_II_NAMESPACE_CLOSE

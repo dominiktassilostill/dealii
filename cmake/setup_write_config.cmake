@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2014 - 2024 by the deal.II authors
+## Copyright (C) 2014 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -81,6 +81,14 @@ elseif(DEAL_II_HAVE_CXX20)
   _both("#        C++ language standard:  C++20\n")
 elseif(DEAL_II_HAVE_CXX17)
   _both("#        C++ language standard:  C++17\n")
+endif()
+
+if(DEAL_II_HAVE_CXX23 OR DEAL_II_HAVE_CXX20)
+  if(DEAL_II_WITH_CXX20_MODULE)
+    _both("#        Building C++20 module:  ON\n")
+  else()
+    _both("#        Building C++20 module:  OFF\n")
+  endif()
 endif()
 
 _both("#        Vectorization level:    ${DEAL_II_VECTORIZATION_WIDTH_IN_BITS} bit")
@@ -172,19 +180,24 @@ foreach(_feature ${_deal_ii_features_sorted})
         _both("#        ${_var} set up with bundled packages\n")
       endif()
     else()
-     _both("#        ${_var} = ${${_var}}\n")
+      _both("#        ${_var} = ${${_var}}\n")
     endif()
 
     #
-    # Print some non interface target related configuration values:
+    # Print some non interface target related configuration values.
+    # Specifically, go through all combinations of
+    #   ${FEATURE}_EXECUTABLE
+    #   ${FEATURE}_VERSION
+    #   ...
+    # and if a variable of that name is found, prints its value.
     #
 
-    foreach(_var
+    foreach(_conf_var
       EXECUTABLE VERSION DIR C_COMPILER CXX_COMPILER Fortran_COMPILER
       WITH_64BIT_BLAS_INDICES
       )
-      if(NOT "${${_feature}_${_var}}" STREQUAL "")
-        _detailed("#            ${_feature}_${_var} = ${${_feature}_${_var}}\n")
+      if(NOT "${${_feature}_${_conf_var}}" STREQUAL "")
+        _detailed("#            ${_feature}_${_conf_var} = ${${_feature}_${_conf_var}}\n")
       endif()
     endforeach()
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2014 by the deal.II authors
+// Copyright (C) 2006 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,7 +15,7 @@
 /**
  * @defgroup Solvers Linear solver classes
  *
- * This module groups iterative and direct solvers, eigenvalue solvers, and
+ * This page groups iterative and direct solvers, eigenvalue solvers, and
  * some control classes. All these classes operate on objects of the
  * @ref Matrices "matrix" and @ref Vectors "vector classes" defined in deal.II.
  *

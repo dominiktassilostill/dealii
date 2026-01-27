@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2024 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,11 @@
 
 
 #include <deal.II/base/config.h>
+
+#include <deal.II/base/types.h>
+
+#include <string>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -74,7 +79,7 @@ DEAL_II_NAMESPACE_OPEN
  *
  * See the description of the
  * @ref vector_valued
- * module for examples how to use the features of this namespace.
+ * topic for examples how to use the features of this namespace.
  *
  * @ingroup feaccess vector_valued
  */
@@ -87,7 +92,7 @@ namespace FEValuesExtractors
    * extractors is defined in the documentation of the namespace
    * FEValuesExtractors and in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * @ingroup feaccess vector_valued
    */
@@ -105,12 +110,12 @@ namespace FEValuesExtractors
      * resizing the array, and then later assigning a suitable object to each
      * element of the array.
      */
-    Scalar();
+    constexpr Scalar();
 
     /**
      * Constructor. Take the selected vector component as argument.
      */
-    Scalar(const unsigned int component);
+    constexpr Scalar(const unsigned int component);
 
     /**
      * Return a string that uniquely identifies this finite element extractor.
@@ -130,7 +135,7 @@ namespace FEValuesExtractors
    * The concept of extractors is defined in the documentation of the
    * namespace FEValuesExtractors and in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * Note that in the current context, a vector is meant in the sense physics
    * uses it: it has <code>spacedim</code> components that behave in specific
@@ -160,13 +165,13 @@ namespace FEValuesExtractors
      * resizing the array, and then later assigning a suitable object to each
      * element of the array.
      */
-    Vector();
+    constexpr Vector();
 
     /**
      * Constructor. Take the first component of the selected vector inside the
      * FEValues object as argument.
      */
-    Vector(const unsigned int first_vector_component);
+    constexpr Vector(const unsigned int first_vector_component);
 
     /**
      * Return a string that uniquely identifies this finite element extractor.
@@ -188,7 +193,7 @@ namespace FEValuesExtractors
    * The concept of extractors is defined in the documentation of the
    * namespace FEValuesExtractors and in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * @ingroup feaccess vector_valued
    */
@@ -207,13 +212,13 @@ namespace FEValuesExtractors
      * resizing the array, and then later assigning a suitable object to each
      * element of the array.
      */
-    SymmetricTensor();
+    constexpr SymmetricTensor();
 
     /**
      * Constructor. Take the first component of the selected tensor inside the
      * FEValues object as argument.
      */
-    SymmetricTensor(const unsigned int first_tensor_component);
+    constexpr SymmetricTensor(const unsigned int first_tensor_component);
 
     /**
      * Return a string that uniquely identifies this finite element extractor.
@@ -235,7 +240,7 @@ namespace FEValuesExtractors
    * The concept of extractors is defined in the documentation of the
    * namespace FEValuesExtractors and in the
    * @ref vector_valued
-   * module.
+   * topic.
    *
    * @ingroup feaccess vector_valued
    */
@@ -254,13 +259,13 @@ namespace FEValuesExtractors
      * resizing the array, and then later assigning a suitable object to each
      * element of the array.
      */
-    Tensor();
+    constexpr Tensor();
 
     /**
      * Constructor. Take the first component of the selected tensor inside the
      * FEValues object as argument.
      */
-    Tensor(const unsigned int first_tensor_component);
+    constexpr Tensor(const unsigned int first_tensor_component);
 
     /**
      * Return a string that uniquely identifies this finite element extractor.
@@ -279,7 +284,7 @@ namespace FEValuesExtractors
     /**
      * Construct a new FirstCoupling object with the given extractor.
      */
-    FirstCoupling(const Extractor &extractor);
+    constexpr FirstCoupling(const Extractor &extractor);
 
     /**
      * The actual extractor object.
@@ -297,7 +302,7 @@ namespace FEValuesExtractors
     /**
      * Construct a new SecondCoupling object with the given extractor.
      */
-    SecondCoupling(const Extractor &extractor);
+    constexpr SecondCoupling(const Extractor &extractor);
 
     /**
      * The actual extractor object.
@@ -311,61 +316,64 @@ namespace FEValuesExtractors
 
 namespace FEValuesExtractors
 {
-  inline Scalar::Scalar()
+  constexpr inline Scalar::Scalar()
     : component(numbers::invalid_unsigned_int)
   {}
 
 
 
-  inline Scalar::Scalar(const unsigned int component)
+  constexpr inline Scalar::Scalar(const unsigned int component)
     : component(component)
   {}
 
 
 
-  inline Vector::Vector()
+  constexpr inline Vector::Vector()
     : first_vector_component(numbers::invalid_unsigned_int)
   {}
 
 
-  inline Vector::Vector(const unsigned int first_vector_component)
+  constexpr inline Vector::Vector(const unsigned int first_vector_component)
     : first_vector_component(first_vector_component)
   {}
 
 
   template <int rank>
-  inline SymmetricTensor<rank>::SymmetricTensor()
+  constexpr inline SymmetricTensor<rank>::SymmetricTensor()
     : first_tensor_component(numbers::invalid_unsigned_int)
   {}
 
 
   template <int rank>
-  inline SymmetricTensor<rank>::SymmetricTensor(
+  constexpr inline SymmetricTensor<rank>::SymmetricTensor(
     const unsigned int first_tensor_component)
     : first_tensor_component(first_tensor_component)
   {}
 
 
   template <int rank>
-  inline Tensor<rank>::Tensor()
+  constexpr inline Tensor<rank>::Tensor()
     : first_tensor_component(numbers::invalid_unsigned_int)
   {}
 
 
   template <int rank>
-  inline Tensor<rank>::Tensor(const unsigned int first_tensor_component)
+  constexpr inline Tensor<rank>::Tensor(
+    const unsigned int first_tensor_component)
     : first_tensor_component(first_tensor_component)
   {}
 
 
   template <typename Extractor>
-  inline FirstCoupling<Extractor>::FirstCoupling(const Extractor &extractor)
+  constexpr inline FirstCoupling<Extractor>::FirstCoupling(
+    const Extractor &extractor)
     : extractor(extractor)
   {}
 
 
   template <typename Extractor>
-  inline SecondCoupling<Extractor>::SecondCoupling(const Extractor &extractor)
+  constexpr inline SecondCoupling<Extractor>::SecondCoupling(
+    const Extractor &extractor)
     : extractor(extractor)
   {}
 } // namespace FEValuesExtractors

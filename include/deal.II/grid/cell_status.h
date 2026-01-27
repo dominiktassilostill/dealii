@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -50,22 +50,22 @@ enum class CellStatus : unsigned int
   /**
    * @deprecated Use CellStatus::cell_will_persist instead
    */
-  CELL_PERSIST DEAL_II_DEPRECATED_EARLY = cell_will_persist,
+  CELL_PERSIST DEAL_II_DEPRECATED = cell_will_persist,
 
   /**
    * @deprecated Use CellStatus::cell_will_be_refined instead
    */
-  CELL_REFINE DEAL_II_DEPRECATED_EARLY = cell_will_be_refined,
+  CELL_REFINE DEAL_II_DEPRECATED = cell_will_be_refined,
 
   /**
    * @deprecated Use CellStatus::cell_will_be_coarsened instead
    */
-  CELL_COARSEN DEAL_II_DEPRECATED_EARLY = children_will_be_coarsened,
+  CELL_COARSEN DEAL_II_DEPRECATED = children_will_be_coarsened,
 
   /**
    * @deprecated Use CellStatus::cell_invalid instead
    */
-  CELL_INVALID DEAL_II_DEPRECATED_EARLY = cell_invalid,
+  CELL_INVALID DEAL_II_DEPRECATED = cell_invalid,
 };
 
 DEAL_II_NAMESPACE_CLOSE

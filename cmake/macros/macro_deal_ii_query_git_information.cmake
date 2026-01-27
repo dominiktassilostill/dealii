@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2015 - 2022 by the deal.II authors
+## Copyright (C) 2015 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -51,20 +51,38 @@ macro(deal_ii_query_git_information)
 
   find_package(Git)
 
+  set(_head_location "")
+
   #
   # Only run the following if we have git and the source directory seems to
   # be under version control.
   #
-  if(GIT_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git/HEAD)
+  if(GIT_FOUND AND EXISTS ${CMAKE_SOURCE_DIR}/.git)
+    if (EXISTS ${CMAKE_SOURCE_DIR}/.git/HEAD)
+      # A normal git repository
+      set(_head_location ${CMAKE_SOURCE_DIR}/.git/HEAD)
+    else()
+      # Likely a git worktree: Read .git file, which has the format "gitdir: <absolute path>"
+      file(STRINGS ${CMAKE_SOURCE_DIR}/.git _gitdir LIMIT_COUNT 1)
+      string(REGEX REPLACE "gitdir: " "" _gitdir ${_gitdir})
+      if(EXISTS ${_gitdir}/HEAD)
+        set(_head_location ${_gitdir}/HEAD)
+      endif()
+    endif()
+  endif()
+
+  if (EXISTS ${_head_location})
+    # We have a git repository, now grab the details
+
     #
     # Bogus configure_file calls to trigger a reconfigure, and thus an
     # update of branch and commit information every time HEAD has changed.
     #
     configure_file(
-      ${CMAKE_SOURCE_DIR}/.git/HEAD
+      ${_head_location}
       ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/HEAD
       )
-    file(STRINGS ${CMAKE_SOURCE_DIR}/.git/HEAD _head_ref LIMIT_COUNT 1)
+    file(STRINGS ${_head_location} _head_ref LIMIT_COUNT 1)
     string(REPLACE "ref: " "" _head_ref ${_head_ref})
     if(EXISTS ${CMAKE_SOURCE_DIR}/.git/${_head_ref})
       configure_file(
@@ -147,6 +165,30 @@ macro(deal_ii_query_git_information)
        endif()
     else()
        message(STATUS "Could not locate get_latest_tag.sh. " ${_prefix}GIT_TAG " will not be set.")
+    endif()
+
+    #
+    # Query for fancy tag:
+    #
+    set(_script "")
+    if(EXISTS     ${CMAKE_BINARY_DIR}/${DEAL_II_SHARE_RELDIR}/scripts/get_fancy_tag.sh)
+      set(_script ${CMAKE_BINARY_DIR}/${DEAL_II_SHARE_RELDIR}/scripts/get_fancy_tag.sh)
+    elseif(EXISTS ${DEAL_II_PATH}/${DEAL_II_SHARE_RELDIR}/scripts/get_fancy_tag.sh)
+      set(_script ${DEAL_II_PATH}/${DEAL_II_SHARE_RELDIR}/scripts/get_fancy_tag.sh)
+    endif()
+    if(NOT "${_script}" STREQUAL "")
+       execute_process(
+          COMMAND ${_script}
+          WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+          OUTPUT_VARIABLE _fancy_tag
+          RESULT_VARIABLE _result
+          OUTPUT_STRIP_TRAILING_WHITESPACE
+          )
+       if(${_result} EQUAL 0)
+         set(${_prefix}GIT_FANCY_TAG ${_fancy_tag})
+       endif()
+    else()
+       message(STATUS "Could not locate get_fancy_tag.sh. " ${_prefix}GIT_FANCY_TAG " will not be set.")
     endif()
 
   endif()

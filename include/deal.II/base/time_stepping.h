@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2023 by the deal.II authors
+// Copyright (C) 2014 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,11 +38,16 @@ namespace TimeStepping
    *   - RK_THIRD_ORDER (third order Runge-Kutta)
    *   - SSP_THIRD_ORDER (third order SSP Runge-Kutta)
    *   - RK_CLASSIC_FOURTH_ORDER (classical fourth order Runge-Kutta)
-   * - Low-storage (explicit) Runge-Kutta methods
-   *   - LOW_STORAGE_RK_STAGE3_ORDER3 (Three stages and third order)
-   *   - LOW_STORAGE_RK_STAGE5_ORDER4 (Five stages and fourth order)
-   *   - LOW_STORAGE_RK_STAGE7_ORDER4 (Seven stages and fourth order)
-   *   - LOW_STORAGE_RK_STAGE9_ORDER5 (Nine stages and fifth order)
+   *   - RK_FIFTH_ORDER (six stages and fifth order)
+   *   - RK_SIXTH_ORDER (seven stages and sixth order)
+   * - Low-storage (explicit) Runge-Kutta methods (see
+   * LowStorageRungeKutta::initialize):
+   *   - FORWARD_EULER (first order)
+   *   - HEUN_EULER (second order)
+   *   - LOW_STORAGE_RK_STAGE3_ORDER3 (three stages and third order)
+   *   - LOW_STORAGE_RK_STAGE5_ORDER4 (five stages and fourth order)
+   *   - LOW_STORAGE_RK_STAGE7_ORDER4 (seven stages and fourth order)
+   *   - LOW_STORAGE_RK_STAGE9_ORDER5 (nine stages and fifth order)
    * - Implicit methods (see ImplicitRungeKutta::initialize):
    *   - BACKWARD_EULER (first order)
    *   - IMPLICIT_MIDPOINT (second order)
@@ -76,6 +81,14 @@ namespace TimeStepping
      * Classical fourth order Runge-Kutta method.
      */
     RK_CLASSIC_FOURTH_ORDER,
+    /**
+     * Fifth order Runge-Kutta method.
+     */
+    RK_FIFTH_ORDER,
+    /**
+     * Sixth order Runge-Kutta method.
+     */
+    RK_SIXTH_ORDER,
     /**
      * Three-stage scheme of order three by Kennedy et al.
      * @cite KennedyCarpenterLewis2000. Its stability region is
@@ -508,7 +521,7 @@ namespace TimeStepping
       const double                                                       t,
       const double      factor_solution,
       const double      factor_ai,
-      const VectorType &corrent_ri,
+      const VectorType &current_ri,
       VectorType       &vec_ki,
       VectorType       &solution,
       VectorType       &next_ri) const;

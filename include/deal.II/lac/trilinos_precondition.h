@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2023 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,17 +20,19 @@
 
 #ifdef DEAL_II_WITH_TRILINOS
 
-#  include <deal.II/base/subscriptor.h>
+#  include <deal.II/base/enable_observer_pointer.h>
 
 #  include <deal.II/lac/la_parallel_vector.h>
 #  include <deal.II/lac/trilinos_vector.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_Map.h>
 #  include <Epetra_MpiComm.h>
 #  include <Epetra_MultiVector.h>
 #  include <Epetra_RowMatrix.h>
 #  include <Epetra_Vector.h>
 #  include <Teuchos_ParameterList.hpp>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #  include <memory>
 
@@ -73,7 +75,7 @@ namespace TrilinosWrappers
    * @ingroup TrilinosWrappers
    * @ingroup Preconditioners
    */
-  class PreconditionBase : public Subscriptor
+  class PreconditionBase : public EnableObserverPointer
   {
   public:
     /**
@@ -1283,7 +1285,7 @@ namespace TrilinosWrappers
    * is twofold.  When the initialize() function is invoked, a ML
    * preconditioner object is created based on the matrix that we want the
    * preconditioner to be based on. A call of the respective
-   * <code>vmult</code> function does call the respective operation in the
+   * <code>vmult</code> function calls the respective operation in the
    * Trilinos package, where it is called <code>ApplyInverse</code>. Use of
    * this class is explained in the step-31 tutorial program.
    *
@@ -1292,7 +1294,7 @@ namespace TrilinosWrappers
    * (Epetra) sparse matrices and vectors. There is support for use with
    * matrices of the dealii::SparseMatrix class and corresponding vectors,
    * too, but this requires generating a copy of the matrix, which is slower
-   * and takes (much) more memory. When doing such a copy operation, we can
+   * and takes (much) more memory. When doing such a copy operation, one can
    * still profit from the fact that some of the entries in the preconditioner
    * matrix are zero and hence can be neglected.
    *
@@ -1308,11 +1310,11 @@ namespace TrilinosWrappers
    * many processors. SSOR, on the other hand, gets more Jacobi-like on many
    * processors.
    *
-   * For proper functionality of this class we recommend using Trilinos v9.0
-   * and higher. Older versions may have problems with generating the
-   * coarse-matrix structure when using matrices with many nonzero entries per
-   * row (i.e., matrices stemming from higher order finite element
-   * discretizations).
+   * This class can be used as a preconditioner for linear solvers. It
+   * also provides a `vmult()` function (implemented in the
+   * PreconditionBase base class) that, when called, performs one
+   * multigrid cycle. By default, this is a V-cycle, but the
+   * AdditionalData class allows to also select a W-cycle.
    *
    * @ingroup TrilinosWrappers
    * @ingroup Preconditioners
@@ -1498,6 +1500,15 @@ namespace TrilinosWrappers
        * with the function DoFTools::extract_constant_modes.
        */
       std::vector<std::vector<bool>> constant_modes;
+
+      /**
+       * Same as above, but with values instead of Booleans. This
+       * is useful if you want to specify rotational modes
+       * in addition to the translational modes. See also:
+       * DoFTools::extract_rigid_body_modes
+       * and DoFTools::extract_level_rigid_body_modes.
+       */
+      std::vector<std::vector<double>> constant_modes_values;
 
       /**
        * Determines how many sweeps of the smoother should be performed. When
@@ -1689,10 +1700,18 @@ namespace TrilinosWrappers
    * on the Trilinos MueLu implementation, which is a black-box preconditioner
    * that works well for many PDE-based linear problems. The interface of
    * PreconditionerAMGMueLu is the same as the interface of PreconditionerAMG
-   * except for the higher_order_elements parameter which does not exist in
+   * (which, instead of the Trilinos package MueLu is built on the older
+   * Trilinos package ML). The only functional difference between the two
+   * classes is the `higher_order_elements` parameter which does not exist in
    * PreconditionerAMGMueLu.
    *
-   * @note You need to configure Trilinos with MueLU support for this
+   * This class can be used as a preconditioner for linear solvers. It
+   * also provides a `vmult()` function (implemented in the
+   * PreconditionBase base class) that, when called, performs one
+   * multigrid cycle. By default, this is a V-cycle, but the
+   * AdditionalData class allows to also select a W-cycle.
+   *
+   * @note You need to configure Trilinos with MueLu support for this
    * preconditioner to work.
    *
    * @note At the moment 64bit-indices are not supported.
@@ -1860,7 +1879,7 @@ namespace TrilinosWrappers
      * Let Trilinos compute a multilevel hierarchy for the solution of a
      * linear system with the given matrix. As opposed to the other initialize
      * function above, this function uses an object of type
-     * Epetra_CrsMatrixCrs.
+     * Epetra_CrsMatrix.
      */
     void
     initialize(const Epetra_CrsMatrix &matrix,
@@ -2168,6 +2187,14 @@ namespace TrilinosWrappers
 /** @} */
 
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_TRILINOS

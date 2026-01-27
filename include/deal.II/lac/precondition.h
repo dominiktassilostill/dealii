@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,11 +17,10 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/cuda_size.h>
 #include <deal.II/base/memory_space.h>
 #include <deal.II/base/mutex.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/parallel.h>
-#include <deal.II/base/smartpointer.h>
 #include <deal.II/base/template_constraints.h>
 
 #include <deal.II/lac/affine_constraints.h>
@@ -30,6 +29,8 @@
 #include <deal.II/lac/identity_matrix.h>
 #include <deal.II/lac/solver_cg.h>
 #include <deal.II/lac/vector_memory.h>
+
+#include <Kokkos_Core.hpp>
 
 #include <limits>
 
@@ -47,7 +48,7 @@ namespace LinearAlgebra
   {
     template <typename, typename>
     class Vector;
-    template <typename>
+    template <typename, typename>
     class BlockVector;
   } // namespace distributed
 } // namespace LinearAlgebra
@@ -135,7 +136,8 @@ namespace internal
       const unsigned int        eig_cg_n_iterations,
       const double              eig_cg_residual,
       const double              max_eigenvalue,
-      const EigenvalueAlgorithm eigenvalue_algorithm);
+      const EigenvalueAlgorithm eigenvalue_algorithm,
+      const double              safety_factor = 1.2);
 
     /**
      * Copy assignment operator.
@@ -190,6 +192,14 @@ namespace internal
     EigenvalueAlgorithm eigenvalue_algorithm;
 
     /**
+     * Safety factor that is multiplied to the estimated maximum eigenvalue
+     * before it is used in the preconditioner. This should be larger than 1
+     * (default: 1.2) to ensure that the maximum eigenvalue is not
+     * underestimated.
+     */
+    double safety_factor;
+
+    /**
      * Preconditioner.
      */
     std::shared_ptr<PreconditionerType> preconditioner;
@@ -216,7 +226,7 @@ namespace internal
  * Alternatively, the IdentityMatrix class can be used to precondition in this
  * way.
  */
-class PreconditionIdentity : public Subscriptor
+class PreconditionIdentity : public EnableObserverPointer
 {
 public:
   /**
@@ -331,7 +341,7 @@ private:
  * multiplied. Still, this class is useful in multigrid smoother objects
  * (MGSmootherRelaxation).
  */
-class PreconditionRichardson : public Subscriptor
+class PreconditionRichardson : public EnableObserverPointer
 {
 public:
   /**
@@ -495,7 +505,7 @@ private:
  */
 template <typename MatrixType = SparseMatrix<double>,
           typename VectorType = Vector<double>>
-class PreconditionUseMatrix : public Subscriptor
+class PreconditionUseMatrix : public EnableObserverPointer
 {
 public:
   /**
@@ -558,12 +568,12 @@ private:
  * For this purpose, the user needs to set the relaxation parameter
  * to zero. Internally, the minimum and maximum eigenvalues of the
  * preconditioned system are estimated by an eigenvalue algorithm, and the
- * resulting estimate is multiplied by the 1.2 for safety reasons. For more
- * details on the underlying algorithms, see PreconditionChebyshev.
+ * resulting estimate is multiplied by the safety factor (1.2 by default). For
+ * more details on the underlying algorithms, see PreconditionChebyshev.
  */
 template <typename MatrixType         = SparseMatrix<double>,
           typename PreconditionerType = IdentityMatrix>
-class PreconditionRelaxation : public Subscriptor
+class PreconditionRelaxation : public EnableObserverPointer
 {
 public:
   /**
@@ -590,7 +600,8 @@ public:
                    const double              eig_cg_residual     = 1e-2,
                    const double              max_eigenvalue      = 1,
                    const EigenvalueAlgorithm eigenvalue_algorithm =
-                     EigenvalueAlgorithm::lanczos);
+                     EigenvalueAlgorithm::lanczos,
+                   const double safety_factor = 1.2);
 
     /**
      * Relaxation parameter.
@@ -683,7 +694,7 @@ protected:
   /**
    * Pointer to the matrix object.
    */
-  SmartPointer<const MatrixType, PreconditionRelaxation<MatrixType>> A;
+  ObserverPointer<const MatrixType, PreconditionRelaxation<MatrixType>> A;
 
   /**
    * Stores the additional data passed to the initialize function, obtained
@@ -868,8 +879,8 @@ namespace internal
       }
 
     private:
-      const SmartPointer<const MatrixType> A;
-      const double                         relaxation;
+      const ObserverPointer<const MatrixType> A;
+      const double                            relaxation;
     };
 
     template <typename MatrixType>
@@ -936,8 +947,8 @@ namespace internal
       }
 
     private:
-      const SmartPointer<const MatrixType> A;
-      const double                         relaxation;
+      const ObserverPointer<const MatrixType> A;
+      const double                            relaxation;
     };
 
     template <typename MatrixType>
@@ -1027,8 +1038,8 @@ namespace internal
       }
 
     private:
-      const SmartPointer<const MatrixType> A;
-      const double                         relaxation;
+      const ObserverPointer<const MatrixType> A;
+      const double                            relaxation;
 
       /**
        * An array that stores for each matrix row where the first position after
@@ -1070,8 +1081,8 @@ namespace internal
       }
 
     private:
-      const SmartPointer<const MatrixType> A;
-      const double                         relaxation;
+      const ObserverPointer<const MatrixType> A;
+      const double                            relaxation;
 
       const std::vector<size_type> &permutation;
       const std::vector<size_type> &inverse_permutation;
@@ -1292,29 +1303,25 @@ namespace internal
                     const bool         transposed)
     {
       (void)transposed;
-      using Number = typename VectorType::value_type;
+      using Number          = typename VectorType::value_type;
+      Number       *dst_ptr = dst.begin();
+      const Number *src_ptr = src.begin();
 
       if (i == 0)
         {
-          Number       *dst_ptr = dst.begin();
-          const Number *src_ptr = src.begin();
-
           preconditioner.vmult(
             dst,
             src,
             [&](const unsigned int start_range, const unsigned int end_range) {
               // zero 'dst' before running the vmult operation
               if (end_range > start_range)
-                std::memset(dst.begin() + start_range,
+                std::memset(dst_ptr + start_range,
                             0,
                             sizeof(Number) * (end_range - start_range));
             },
             [&](const unsigned int start_range, const unsigned int end_range) {
               if (relaxation == 1.0)
                 return; // nothing to do
-
-              const auto src_ptr = src.begin();
-              const auto dst_ptr = dst.begin();
 
               DEAL_II_OPENMP_SIMD_PRAGMA
               for (std::size_t i = start_range; i < end_range; ++i)
@@ -1333,7 +1340,6 @@ namespace internal
             dst,
             tmp,
             [&](const unsigned int start_range, const unsigned int end_range) {
-              const auto src_ptr = src.begin();
               const auto tmp_ptr = tmp.begin();
 
               if (relaxation == 1.0)
@@ -1384,27 +1390,24 @@ namespace internal
       (void)transposed;
       using Number = typename VectorType::value_type;
 
+      Number       *dst_ptr = dst.begin();
+      const Number *src_ptr = src.begin();
+
       if (i == 0)
         {
-          Number       *dst_ptr = dst.begin();
-          const Number *src_ptr = src.begin();
-
           preconditioner.vmult(
             dst,
             src,
             [&](const unsigned int start_range, const unsigned int end_range) {
               // zero 'dst' before running the vmult operation
               if (end_range > start_range)
-                std::memset(dst.begin() + start_range,
+                std::memset(dst_ptr + start_range,
                             0,
                             sizeof(Number) * (end_range - start_range));
             },
             [&](const unsigned int start_range, const unsigned int end_range) {
               if (relaxation == 1.0)
                 return; // nothing to do
-
-              const auto src_ptr = src.begin();
-              const auto dst_ptr = dst.begin();
 
               DEAL_II_OPENMP_SIMD_PRAGMA
               for (std::size_t i = start_range; i < end_range; ++i)
@@ -1414,6 +1417,7 @@ namespace internal
       else
         {
           tmp.reinit(src, true);
+          const auto tmp_ptr = tmp.begin();
 
           Assert(transposed == false, ExcNotImplemented());
 
@@ -1424,14 +1428,11 @@ namespace internal
               // zero 'tmp' before running the vmult
               // operation
               if (end_range > start_range)
-                std::memset(tmp.begin() + start_range,
+                std::memset(tmp_ptr + start_range,
                             0,
                             sizeof(Number) * (end_range - start_range));
             },
             [&](const unsigned int start_range, const unsigned int end_range) {
-              const auto src_ptr = src.begin();
-              const auto tmp_ptr = tmp.begin();
-
               if (relaxation == 1.0)
                 {
                   DEAL_II_OPENMP_SIMD_PRAGMA
@@ -1457,14 +1458,19 @@ namespace internal
     }
 
     // 3) specialized implementation for inverse-diagonal preconditioner
-    template <typename MatrixType,
-              typename VectorType,
-              std::enable_if_t<!IsBlockVector<VectorType>::value &&
-                                 !has_vmult_with_std_functions<
-                                   MatrixType,
-                                   VectorType,
-                                   dealii::DiagonalMatrix<VectorType>>,
-                               VectorType> * = nullptr>
+    template <
+      typename MatrixType,
+      typename VectorType,
+      std::enable_if_t<
+        !IsBlockVector<VectorType>::value &&
+          !std::is_same_v<
+            VectorType,
+            LinearAlgebra::distributed::Vector<typename VectorType::value_type,
+                                               MemorySpace::Default>> &&
+          !has_vmult_with_std_functions<MatrixType,
+                                        VectorType,
+                                        dealii::DiagonalMatrix<VectorType>>,
+        VectorType> * = nullptr>
     void
     step_operations(const MatrixType                         &A,
                     const dealii::DiagonalMatrix<VectorType> &preconditioner,
@@ -1501,15 +1507,15 @@ namespace internal
         {
           tmp.reinit(src, true);
 
-          Number       *dst_ptr  = dst.begin();
-          const Number *src_ptr  = src.begin();
-          const Number *tmp_ptr  = tmp.begin();
-          const Number *diag_ptr = preconditioner.get_vector().begin();
-
           if (transposed)
             Tvmult(A, tmp, dst);
           else
             A.vmult(tmp, dst);
+
+          Number       *dst_ptr  = dst.begin();
+          const Number *src_ptr  = src.begin();
+          const Number *tmp_ptr  = tmp.begin();
+          const Number *diag_ptr = preconditioner.get_vector().begin();
 
           if (relaxation == 1.0)
             {
@@ -1989,7 +1995,7 @@ public:
  * underlying solver or eigenvalue algorithm in the given number of
  * iterations, even if the solver did not converge in the requested number of
  * iterations. Finally, the maximum eigenvalue is multiplied by a safety
- * factor of 1.2.
+ * factor.
  *
  * Due to the cost of the eigenvalue estimate, this class is most appropriate
  * if it is applied repeatedly, e.g. in a smoother for a geometric multigrid
@@ -2026,13 +2032,14 @@ public:
  *
  * <h4>Requirements on the templated classes</h4>
  *
- * The class `MatrixType` must be derived from Subscriptor because a
- * SmartPointer to `MatrixType` is held in the class. In particular, this means
- * that the matrix object needs to persist during the lifetime of
- * PreconditionChebyshev. The preconditioner is held in a shared_ptr that is
- * copied into the AdditionalData member variable of the class, so the
- * variable used for initialization can safely be discarded after calling
- * initialize(). Both the matrix and the preconditioner need to provide
+ * The class `MatrixType` must be derived from
+ * EnableObserverPointer because a ObserverPointer to `MatrixType`
+ * is held in the class. In particular, this means that the matrix object needs
+ * to persist during the lifetime of PreconditionChebyshev. The preconditioner
+ * is held in a shared_ptr that is copied into the AdditionalData member
+ * variable of the class, so the variable used for initialization can safely be
+ * discarded after calling initialize(). Both the matrix and the preconditioner
+ * need to provide
  * @p vmult() functions for the matrix-vector product and @p m() functions for
  * accessing the number of rows in the (square) matrix. Furthermore, the
  * matrix must provide <tt>el(i,i)</tt> methods for accessing the matrix
@@ -2101,7 +2108,7 @@ public:
 template <typename MatrixType         = SparseMatrix<double>,
           typename VectorType         = Vector<double>,
           typename PreconditionerType = DiagonalMatrix<VectorType>>
-class PreconditionChebyshev : public Subscriptor
+class PreconditionChebyshev : public EnableObserverPointer
 {
 public:
   /**
@@ -2145,7 +2152,8 @@ public:
       const double              max_eigenvalue      = 1,
       const EigenvalueAlgorithm eigenvalue_algorithm =
         EigenvalueAlgorithm::lanczos,
-      const PolynomialType polynomial_type = PolynomialType::first_kind);
+      const PolynomialType polynomial_type = PolynomialType::first_kind,
+      const double         safety_factor   = 1.2);
 
     /**
      * This determines the degree of the Chebyshev polynomial. The degree of
@@ -2255,7 +2263,7 @@ private:
   /**
    * A pointer to the underlying matrix.
    */
-  SmartPointer<
+  ObserverPointer<
     const MatrixType,
     PreconditionChebyshev<MatrixType, VectorType, PreconditionerType>>
     matrix_ptr;
@@ -2339,10 +2347,11 @@ namespace internal
     vector.add(-mean_value);
   }
 
-  template <typename Number>
+  template <typename Number, typename MemorySpace>
   void
   set_initial_guess(
-    ::dealii::LinearAlgebra::distributed::BlockVector<Number> &vector)
+    ::dealii::LinearAlgebra::distributed::BlockVector<Number, MemorySpace>
+      &vector)
   {
     for (unsigned int block = 0; block < vector.n_blocks(); ++block)
       set_initial_guess(vector.block(block));
@@ -2436,9 +2445,16 @@ namespace internal
     const MatrixType                                            *matrix_ptr,
     VectorType                                                  &solution_old,
     VectorType                                                  &temp_vector1,
-    const unsigned int                                           degree)
+    const unsigned int                                           degree,
+    const double                                                 safety_factor)
   {
     Assert(data.preconditioner.get() != nullptr, ExcNotInitialized());
+
+    Assert(
+      safety_factor >= 1.,
+      ExcMessage(
+        "The safety factor must be at least 1.0 to ensure the maximum eigenvalue is "
+        "not underestimated. Please set safety_factor >= 1.0 in your AdditionalData."));
 
     EigenvalueInformation info{};
 
@@ -2505,7 +2521,7 @@ namespace internal
             // include a safety factor since the CG method will in general not
             // be converged
             info.max_eigenvalue_estimate =
-              1.2 * eigenvalue_tracker.values.back();
+              safety_factor * eigenvalue_tracker.values.back();
           }
       }
     else
@@ -2849,8 +2865,12 @@ PreconditionRelaxation<MatrixType, PreconditionerType>::estimate_eigenvalues(
       solution_old.reinit(src);
       temp_vector1.reinit(src, true);
 
-      info = internal::estimate_eigenvalues<MatrixType>(
-        data, A, solution_old, temp_vector1, data.n_iterations);
+      info = internal::estimate_eigenvalues<MatrixType>(data,
+                                                        A,
+                                                        solution_old,
+                                                        temp_vector1,
+                                                        data.n_iterations,
+                                                        data.safety_factor);
 
       const double alpha =
         (data.smoothing_range > 1. ?
@@ -3027,12 +3047,14 @@ namespace internal
       const unsigned int        eig_cg_n_iterations,
       const double              eig_cg_residual,
       const double              max_eigenvalue,
-      const EigenvalueAlgorithm eigenvalue_algorithm)
+      const EigenvalueAlgorithm eigenvalue_algorithm,
+      const double              safety_factor)
     : smoothing_range(smoothing_range)
     , eig_cg_n_iterations(eig_cg_n_iterations)
     , eig_cg_residual(eig_cg_residual)
     , max_eigenvalue(max_eigenvalue)
     , eigenvalue_algorithm(eigenvalue_algorithm)
+    , safety_factor(safety_factor)
   {}
 
 
@@ -3048,6 +3070,7 @@ namespace internal
     max_eigenvalue       = other_data.max_eigenvalue;
     preconditioner       = other_data.preconditioner;
     eigenvalue_algorithm = other_data.eigenvalue_algorithm;
+    safety_factor        = other_data.safety_factor;
     constraints.copy_from(other_data.constraints);
 
     return *this;
@@ -3062,13 +3085,15 @@ inline PreconditionRelaxation<MatrixType, PreconditionerType>::AdditionalData::
                  const unsigned int        eig_cg_n_iterations,
                  const double              eig_cg_residual,
                  const double              max_eigenvalue,
-                 const EigenvalueAlgorithm eigenvalue_algorithm)
+                 const EigenvalueAlgorithm eigenvalue_algorithm,
+                 const double              safety_factor)
   : internal::EigenvalueAlgorithmAdditionalData<PreconditionerType>(
       smoothing_range,
       eig_cg_n_iterations,
       eig_cg_residual,
       max_eigenvalue,
-      eigenvalue_algorithm)
+      eigenvalue_algorithm,
+      safety_factor)
   , relaxation(relaxation)
   , n_iterations(n_iterations)
 {}
@@ -3157,27 +3182,25 @@ namespace internal
 
       if (iteration_index == 0)
         {
-          const auto solution_old_ptr = solution_old.begin();
-
           // compute t = P^{-1} * (b)
           preconditioner.vmult(solution_old, rhs);
 
           // compute x^{n+1} = f_2 * t
+          const auto solution_old_ptr = solution_old.begin();
           DEAL_II_OPENMP_SIMD_PRAGMA
           for (unsigned int i = 0; i < solution_old.locally_owned_size(); ++i)
             solution_old_ptr[i] = solution_old_ptr[i] * factor2;
         }
       else if (iteration_index == 1)
         {
-          const auto solution_ptr     = solution.begin();
-          const auto solution_old_ptr = solution_old.begin();
-
           // compute t = P^{-1} * (b-A*x^{n})
           temp_vector1.sadd(-1.0, 1.0, rhs);
 
           preconditioner.vmult(solution_old, temp_vector1);
 
           // compute x^{n+1} = x^{n} + f_1 * x^{n} + f_2 * t
+          const auto solution_ptr     = solution.begin();
+          const auto solution_old_ptr = solution_old.begin();
           DEAL_II_OPENMP_SIMD_PRAGMA
           for (unsigned int i = 0; i < solution_old.locally_owned_size(); ++i)
             solution_old_ptr[i] =
@@ -3185,16 +3208,15 @@ namespace internal
         }
       else
         {
-          const auto solution_ptr     = solution.begin();
-          const auto solution_old_ptr = solution_old.begin();
-          const auto temp_vector2_ptr = temp_vector2.begin();
-
           // compute t = P^{-1} * (b-A*x^{n})
           temp_vector1.sadd(-1.0, 1.0, rhs);
 
           preconditioner.vmult(temp_vector2, temp_vector1);
 
           // compute x^{n+1} = x^{n} + f_1 * (x^{n}-x^{n-1}) + f_2 * t
+          const auto solution_ptr     = solution.begin();
+          const auto solution_old_ptr = solution_old.begin();
+          const auto temp_vector2_ptr = temp_vector2.begin();
           DEAL_II_OPENMP_SIMD_PRAGMA
           for (unsigned int i = 0; i < solution_old.locally_owned_size(); ++i)
             solution_old_ptr[i] = factor1_plus_1 * solution_ptr[i] -
@@ -3245,7 +3267,7 @@ namespace internal
             rhs,
             [&](const auto start_range, const auto end_range) {
               if (end_range > start_range)
-                std::memset(solution.begin() + start_range,
+                std::memset(solution_ptr + start_range,
                             0,
                             sizeof(Number) * (end_range - start_range));
             },
@@ -3262,7 +3284,7 @@ namespace internal
             temp_vector1,
             [&](const auto begin, const auto end) {
               if (end > begin)
-                std::memset(temp_vector2.begin() + begin,
+                std::memset(temp_vector2_ptr + begin,
                             0,
                             sizeof(Number) * (end - begin));
 
@@ -3357,7 +3379,7 @@ namespace internal
               // already modified during vmult (in best case, the modified
               // values are not written back to main memory yet so that
               // we do not have to pay additional costs for writing and
-              // read-for-ownershop)
+              // read-for-ownership)
               tmp_vector[i] =
                 factor1_plus_1 * solution[i] - factor1 * solution_old[i] +
                 factor2 * matrix_diagonal_inverse[i] * (rhs[i] - tmp_vector[i]);
@@ -3579,7 +3601,7 @@ namespace internal
           temp_vector1.reinit(rhs, true);
           temp_vector2.reinit(rhs, true);
 
-          // 1) compute rediduum (including operator application)
+          // 1) compute residual (including operator application)
           matrix.vmult(
             temp_vector1,
             solution,
@@ -3704,10 +3726,9 @@ namespace internal
     template <typename MatrixType, typename PreconditionerType>
     inline void
     initialize_preconditioner(
-      const MatrixType                    &matrix,
+      const MatrixType & /*matrix*/,
       std::shared_ptr<PreconditionerType> &preconditioner)
     {
-      (void)matrix;
       (void)preconditioner;
       AssertThrow(preconditioner.get() != nullptr, ExcNotInitialized());
     }
@@ -3751,13 +3772,15 @@ inline PreconditionChebyshev<MatrixType, VectorType, PreconditionerType>::
                                  const double              eig_cg_residual,
                                  const double              max_eigenvalue,
                                  const EigenvalueAlgorithm eigenvalue_algorithm,
-                                 const PolynomialType      polynomial_type)
+                                 const PolynomialType      polynomial_type,
+                                 const double              safety_factor)
   : internal::EigenvalueAlgorithmAdditionalData<PreconditionerType>(
       smoothing_range,
       eig_cg_n_iterations,
       eig_cg_residual,
       max_eigenvalue,
-      eigenvalue_algorithm)
+      eigenvalue_algorithm,
+      safety_factor)
   , degree(degree)
   , polynomial_type(polynomial_type)
 {}
@@ -3823,8 +3846,12 @@ PreconditionChebyshev<MatrixType, VectorType, PreconditionerType>::
   solution_old.reinit(src);
   temp_vector1.reinit(src, true);
 
-  auto info = internal::estimate_eigenvalues<MatrixType>(
-    data, matrix_ptr, solution_old, temp_vector1, data.degree);
+  auto info = internal::estimate_eigenvalues<MatrixType>(data,
+                                                         matrix_ptr,
+                                                         solution_old,
+                                                         temp_vector1,
+                                                         data.degree,
+                                                         data.safety_factor);
 
   const double alpha = (data.smoothing_range > 1. ?
                           info.max_eigenvalue_estimate / data.smoothing_range :

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2024 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,9 +19,11 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/numbers.h>
 #include <deal.II/base/point.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/types.h>
 
 #include <array>
 #include <limits>
@@ -62,7 +64,7 @@ namespace Polynomials
    * TensorProductPolynomials class.
    */
   template <typename number>
-  class Polynomial : public Subscriptor
+  class Polynomial : public EnableObserverPointer
   {
   public:
     /**
@@ -1050,7 +1052,7 @@ namespace Polynomials
   Polynomial<number>::serialize(Archive &ar, const unsigned int)
   {
     // forward to serialization function in the base class.
-    ar &static_cast<Subscriptor &>(*this);
+    ar &static_cast<EnableObserverPointer &>(*this);
     ar &coefficients;
     ar &in_lagrange_product_form;
     ar &lagrange_support_points;

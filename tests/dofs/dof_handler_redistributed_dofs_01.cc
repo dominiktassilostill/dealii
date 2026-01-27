@@ -1,6 +1,6 @@
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -39,7 +39,7 @@ main()
   DoFHandler<dim, spacedim> dh(tria);
   dh.distribute_dofs(fe);
 
-  SmartPointer<const FiniteElement<dim, spacedim>> fe_p(&dh.get_fe());
+  ObserverPointer<const FiniteElement<dim, spacedim>> fe_p(&dh.get_fe());
 
   dh.distribute_dofs(*fe_p);
 

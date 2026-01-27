@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2023 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,7 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/mutex.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -28,6 +28,8 @@
 #include <deal.II/fe/mapping_q.h>
 
 #include <deal.II/grid/tria_iterator.h>
+
+#include <boost/container/small_vector.hpp>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -122,7 +124,12 @@ public:
    * addition to the geometry of the cell.
    */
   virtual boost::container::small_vector<Point<spacedim>,
-                                         GeometryInfo<dim>::vertices_per_cell>
+#ifndef _MSC_VER
+                                         ReferenceCells::max_n_vertices<dim>()
+#else
+                                         GeometryInfo<dim>::vertices_per_cell
+#endif
+                                         >
   get_vertices(const typename Triangulation<dim, spacedim>::cell_iterator &cell)
     const override;
 
@@ -174,14 +181,14 @@ protected:
   /**
    * Reference to the vector of shifts.
    */
-  SmartPointer<const VectorType, MappingQEulerian<dim, VectorType, spacedim>>
+  ObserverPointer<const VectorType, MappingQEulerian<dim, VectorType, spacedim>>
     euler_vector;
 
   /**
    * Pointer to the DoFHandler to which the mapping vector is associated.
    */
-  SmartPointer<const DoFHandler<dim, spacedim>,
-               MappingQEulerian<dim, VectorType, spacedim>>
+  ObserverPointer<const DoFHandler<dim, spacedim>,
+                  MappingQEulerian<dim, VectorType, spacedim>>
     euler_dof_handler;
 
 private:
@@ -207,6 +214,13 @@ private:
    * A member variable holding the quadrature points in the right order.
    */
   const SupportQuadrature support_quadrature;
+
+  /**
+   * A MappingQ object, which is used by the fe_values
+   * member variable to compute the undeformed mapping support
+   * points, before adding any deformation.
+   */
+  const MappingQ<dim, spacedim> mapping_q;
 
   /**
    * FEValues object used to query the given finite element field at the

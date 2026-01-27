@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,19 +38,6 @@
 
 #include "../tests.h"
 
-
-
-template <int dim, typename number, int spacedim>
-void
-reinit_vector(const dealii::DoFHandler<dim, spacedim> &mg_dof,
-              MGLevelObject<dealii::Vector<number>>   &v)
-{
-  for (unsigned int level = v.min_level(); level <= v.max_leve(); ++level)
-    {
-      unsigned int n = mg_dof.n_dofs(level);
-      v[level].reinit(n);
-    }
-}
 
 
 template <typename Transfer>

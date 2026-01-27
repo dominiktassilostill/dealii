@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2022 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <cstddef>
+
+
 DEAL_II_NAMESPACE_OPEN
 
 /**
@@ -25,7 +28,8 @@ DEAL_II_NAMESPACE_OPEN
  * $T_{\text{start}}$ to an end time $T_{\text{end}}$. It also allows adjusting
  * the time step size during the simulation. This class provides the necessary
  * interface to be incorporated in any time-dependent simulation.
- * The usage of this class is demonstrated in step-19 and step-21.
+ * The usage of this class is demonstrated in step-19 (and step-83) as well as
+ * step-21.
  *
  * This class provides a number of invariants that are guaranteed to be
  * true at all times.
@@ -404,6 +408,8 @@ public:
    * Write or read the data of this object to or from a stream for the purpose
    * of serialization using the [BOOST serialization
    * library](https://www.boost.org/doc/libs/1_74_0/libs/serialization/doc/index.html).
+   *
+   * This function is used in step-83.
    */
   template <class Archive>
   void

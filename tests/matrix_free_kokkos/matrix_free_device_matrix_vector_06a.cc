@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,7 +14,7 @@
 
 
 // Same as matrix_free_matrix_vector_06a but uses LA::distributed::Vector
-// instead of CUDAWrappers::Vector
+// instead of Portable::Vector
 
 #include <deal.II/base/function.h>
 

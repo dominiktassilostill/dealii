@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
+// SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2023 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_task_result_h
 #define dealii_task_result_h
@@ -121,7 +120,8 @@ namespace Threads
      * represents the task's result, whereas the old object no longer
      * represents anything and is left as if default-constructed.
      */
-    TaskResult(TaskResult<T> &&other) noexcept;
+    TaskResult(TaskResult<T> &&other) noexcept DEAL_II_CXX20_REQUIRES(
+      std::is_move_constructible_v<T> &&std::is_move_assignable_v<T>);
 
     /**
      * Destructor. If the current object was associated with a task,
@@ -183,6 +183,23 @@ namespace Threads
     ~TaskResult();
 
     /**
+     * Copy operator. Like the copy constructor, this function is deleted
+     * because TaskResult corresponds to the output of a specific task,
+     * not a copy of that tasks's outcome.
+     */
+    TaskResult &
+    operator=(const TaskResult &) = delete;
+
+    /**
+     * Move assignment operator. Following this call, the newly created object
+     * represents the task's result, whereas the old object no longer
+     * represents anything and is left as if default-constructed.
+     */
+    TaskResult &
+    operator=(TaskResult &&other) noexcept DEAL_II_CXX20_REQUIRES(
+      std::is_move_constructible_v<T> &&std::is_move_assignable_v<T>);
+
+    /**
      * Copy assignment operator from a Task object. By assigning the Task
      * object to the current object, the current object is set to represent
      * the result of that task.
@@ -238,9 +255,99 @@ namespace Threads
      * result are not put into the current object, it still means that that task
      * is working on data that is changing as it is working, with obviously
      * unpredictable results.)
+     *
+     * @note As mentioned above, it is a considered a bug to assign a task to
+     *   a TaskResult object that already has a task running. That means that
+     *   you will get in trouble if multiple threads (or multiple tasks running
+     *   concurrently) call this operator at the same time: One of these
+     *   threads will set a task, and the other threads will try the same but
+     *   because the background task is likely still running will encounter
+     *   an error. As a consequence, you cannot easily use this operator
+     *   from multiple threads. Use try_emplace_task() in that case.
      */
     void
     operator=(const Task<T> &t);
+
+    /**
+     * This function is similar to `operator=()` in that it associates a
+     * task with the current object if one has not been associated so far,
+     * but does not do so if a task is already assigned. For this to work,
+     * the object provided as argument to this function must be a "callable"
+     * (i.e., a object `creator` that can be called on a separate task via
+     * its `operator()`), rather than a Task object itself.
+     *
+     * As a consequence, code such as the following will work:
+     * @code
+     *   class LazyInt
+     *   {
+     *     public:
+     *       LazyInt () {} // no task assigned to task_result
+     *
+     *       int get () {
+     *         task_result.try_emplace_task( []() { return 42; } );
+     *         return task_result.value();
+     *       }
+     *
+     *     private:
+     *       TaskResult<int> task_result;
+     *   }
+     * @endcode
+     * In this context, the `LazyInt::get()` function is thread-safe, i.e., it
+     * can be called more than once from multiple threads. One of these threads
+     * -- namely, the first one to get into `try_emplace_task()` -- will create
+     * a task that calls the lambda function that returns `42` whereas all of
+     * the others will simply proceed to the call to `value()` that waits for
+     * the task to finish.
+     *
+     * On the other hand, implementing the `get()` function as
+     * @code
+     *       int get () {
+     *         task_result = Threads::new_task( []() { return 42; } );
+     *         return task_result.value();
+     *       }
+     * @endcode
+     * would have led to the errors mentioned above because `operator=` called
+     * from separate threads would have emplaced a task while another task
+     * is (possibly) still running.
+     *
+     * @note There is nothing that prevents you from concurrently calling
+     *   this function with *different* callables as arguments, i.e., with
+     *   functions that create non-identical objects. That is obviously
+     *   not the intent here since you can't control which callable will
+     *   eventually be turned into a task.
+     */
+    template <typename Callable>
+    void
+    try_emplace_task(const Callable &creator) const
+      DEAL_II_CXX20_REQUIRES((std::is_invocable_r_v<T, Callable>));
+
+    /**
+     * Instead of letting a task compute the object stored by this
+     * instance of Lazy, just copy the object passed as an argument
+     * and use it instead.
+     *
+     * As for several other member functions, this function can only be called
+     * if there is not currently a running task whose result is supposed to
+     * be used.
+     */
+    void
+    emplace_object(const T &t)
+      DEAL_II_CXX20_REQUIRES((std::is_copy_constructible_v<T> ||
+                              std::is_copy_assignable_v<T>));
+
+    /**
+     * Instead of letting a task compute the object stored by this
+     * instance of Lazy, just move the object passed as an argument
+     * and use it instead.
+     *
+     * As for several other member functions, this function can only be called
+     * if there is not currently a running task whose result is supposed to
+     * be used.
+     */
+    void
+    emplace_object(T &&t)
+      DEAL_II_CXX20_REQUIRES((std::is_copy_constructible_v<T> ||
+                              std::is_copy_assignable_v<T>));
 
     /**
      * Reset the current object to a state as if it had been
@@ -249,6 +356,12 @@ namespace Threads
      * assignment operator, this function considers it an
      * error (and throws an exception) if there is still a
      * currently running task associated with the object.
+     * Because you cannot know when a task associated with an
+     * object finishes, the practical realization of there not being
+     * a currently still running task is that you can only call this
+     * function on an object that has an associated task *after* you
+     * have either called join() or asked for the return value by
+     * having called value() (which internally calls join()).
      */
     void
     clear();
@@ -258,7 +371,7 @@ namespace Threads
      * it isn't associated with a task, just return.
      */
     void
-    join();
+    join() const;
 
     /**
      * Return a reference to the object computed by the task. This
@@ -268,6 +381,15 @@ namespace Threads
      */
     const T &
     value() const;
+
+    /**
+     * Return whether the object has an associated task result object or not.
+     * Only objects that are default-initialized, or for which clear() has
+     * been called, or that have been moved from, will return `true` in
+     * this function.
+     */
+    bool
+    empty() const;
 
   private:
     /**
@@ -294,22 +416,17 @@ namespace Threads
      * A lock object that guards access to all of the `mutable` objects above.
      */
     mutable std::mutex mutex;
-
-    /**
-     * Wait for the task to finish, move its result into the `task_result`
-     * object, and then release all information still associated with the
-     * task that originally computed the result.
-     */
-    void
-    wait_and_move_result() const;
   };
 
 
   // ------------------------------- inline functions --------------------------
 
+#ifndef DOXYGEN
 
   template <typename T>
   inline TaskResult<T>::TaskResult(TaskResult<T> &&other) noexcept
+    DEAL_II_CXX20_REQUIRES(
+      std::is_move_constructible_v<T> &&std::is_move_assignable_v<T>)
   {
     // First lock the other object, then move the members of the other
     // object and reset it. Note that we do not have to wait for
@@ -357,85 +474,120 @@ namespace Threads
   }
 
 
+  template <typename T>
+  inline TaskResult<T> &
+  TaskResult<T>::operator=(TaskResult<T> &&other) noexcept
+    DEAL_II_CXX20_REQUIRES(
+      std::is_move_constructible_v<T> &&std::is_move_assignable_v<T>)
+  {
+    // First clear the current object before we put new content into it:
+    clear();
+
+    // Then lock the other object and move the members of the other
+    // object, and finally reset it. Note that we do not have to wait for
+    // the other object's task to finish (nor should we): We may simply
+    // inherit the other object's task.
+    std::lock_guard<std::mutex> lock(other.mutex);
+
+    result_is_available       = other.result_is_available.load();
+    other.result_is_available = false;
+
+    task = std::move(other.task);
+    other.task.reset();
+
+    task_result = std::move(other.task_result);
+    other.task_result.reset();
+
+    return *this;
+  }
+
+
+
+  template <typename T>
+  template <typename Callable>
+  void
+  TaskResult<T>::try_emplace_task(const Callable &creator) const
+    DEAL_II_CXX20_REQUIRES((std::is_invocable_r_v<T, Callable>))
+  {
+    // If the result is already available, simply return.
+    if (result_is_available)
+      return;
+
+    // If the result was not available above, we need to go under a lock
+    // to check that perhaps it has appeared in the meantime. We again use
+    // the double-checking pattern:
+    {
+      std::lock_guard<std::mutex> lock(mutex);
+      if (result_is_available)
+        return;
+      else
+        // If there is no result, but there is a task, some other thread has
+        // emplaced it in the meantime and we can simply return
+        if (task.has_value())
+          return;
+        else
+          // If there is no task object, emplace one:
+          task = Threads::new_task(creator);
+    }
+  }
+
+
+
+  template <typename T>
+  inline void
+  TaskResult<T>::emplace_object(const T &t)
+    DEAL_II_CXX20_REQUIRES((std::is_copy_constructible_v<T> ||
+                            std::is_copy_assignable_v<T>))
+  {
+    clear();
+    task_result         = t;
+    result_is_available = true;
+  }
+
+
+  template <typename T>
+  inline void
+  TaskResult<T>::emplace_object(T &&t)
+    DEAL_II_CXX20_REQUIRES((std::is_copy_constructible_v<T> ||
+                            std::is_copy_assignable_v<T>))
+  {
+    clear();
+    task_result         = std::move(t);
+    result_is_available = true;
+  }
+
 
   template <typename T>
   inline void
   TaskResult<T>::clear()
   {
-    // If we have waited before, then return immediately:
-    if (result_is_available)
-      return;
-    else
-      // If we have not waited, wait now. We need to use the double-checking
-      // pattern to ensure that if two threads get to this place at the same
-      // time, one returns right away while the other does the work. Note
-      // that this happens under the lock, so only one thread gets to be in
-      // this code block at the same time:
-      {
-        std::lock_guard<std::mutex> lock(mutex);
-
-        if (result_is_available)
-          return;
-        else
-          Assert(task.has_value() == false,
-                 ExcMessage("You cannot destroy a TaskResult object "
-                            "while it is still waiting for its associated task "
-                            "to finish. See the documentation of this class' "
-                            "destructor for more information."));
-      }
     std::lock_guard<std::mutex> lock(mutex);
-    // First make clear that the result is no longer available:
-    result_is_available = false;
-    // Then abandon a previous task, should there have been one. Also abandon
-    // any previously available returned object
-    task.reset();
-    task_result.reset();
-  }
 
-
-
-  template <typename T>
-  inline void
-  TaskResult<T>::join()
-  {
-    // If we have waited before, then return immediately:
     if (result_is_available)
-      return;
-    else // If we have not waited, wait now. We need to use the double-checking
-         // pattern to ensure that if two threads get to this place at the same
-         // time, one returns right away while the other does the work. Note
-         // that this happens under the lock, so only one thread gets to be in
-         // this code block at the same time:
       {
-        std::lock_guard<std::mutex> lock(mutex);
-        if (result_is_available)
-          return;
-        else
-          // If there is a task, wait for it to finish. We could then move
-          // the result, but it's fine to postpone that until someone actually
-          // asks for the result.
-          if (task.has_value())
-            task.value().join();
+        // First make clear that the result is no longer available, then
+        // reset the object:
+        result_is_available = false;
+        task_result.reset();
       }
-  }
-
-
-
-  template <typename T>
-  inline const T &
-  TaskResult<T>::value() const
-  {
-    if (!result_is_available)
-      wait_and_move_result();
-    return task_result.value();
+    else
+      Assert(task.has_value() == false,
+             ExcMessage("You cannot destroy a TaskResult object "
+                        "while it is still waiting for its associated task "
+                        "to finish. See the documentation of this class' "
+                        "destructor for more information."));
   }
 
 
 
   template <typename T>
   inline void
-  TaskResult<T>::wait_and_move_result() const
+  TaskResult<T>::join() const
   {
+    Assert(empty() == false,
+           ExcMessage("You can't join a TaskResult object that has not "
+                      "been associated with a task."));
+
     // If we have waited before, then return immediately:
     if (result_is_available)
       return;
@@ -447,14 +599,14 @@ namespace Threads
       // this code block at the same time:
       {
         std::lock_guard<std::mutex> lock(mutex);
-
         if (result_is_available)
           return;
         else
           {
-            Assert(task.has_value(),
-                   ExcMessage("You cannot wait for the result of a TaskResult "
-                              "object that has no task associated with it."));
+            // The object is not empty and it has not received its result yet.
+            // So it must have a task object:
+            Assert(task.has_value(), ExcInternalError());
+
             task.value().join();
             task_result = std::move(task.value().return_value());
             task.reset();
@@ -464,7 +616,62 @@ namespace Threads
       }
   }
 
+
+
+  template <typename T>
+  inline bool
+  TaskResult<T>::empty() const
+  {
+    // If we have waited for a task to complete, then the object is not empty:
+    if (result_is_available)
+      return false;
+    // Otherwise, if result_is_available has not been set, but we have a task
+    // associated (i.e., the task is still running, or at least we haven't
+    // waited for it to complete), then the object is also not empty:
+    else if (task.has_value())
+      return false;
+    else
+      // If when we asked above we had not joined a task, and if there was
+      // no task currently associated with the object, then one of two cases
+      // could have happened: either, there never was a task, and the object
+      // is consequently empty. Or there was a task and somewhere between the
+      // checks above and now, join() has flipped the state to
+      // result_is_available==true and task.has_value()==false. We can
+      // check that, but only under a lock.
+      {
+        std::lock_guard<std::mutex> lock(mutex);
+        if (result_is_available)
+          return false;
+        else
+          // We know from getting into the above 'else that no task was
+          // associated with this object at the time. This cannot have
+          // changed since then in a way that is thread-safe (i.e., by
+          // way of other 'const' functions), so if the result is still
+          // not available, then the object must necessarily be empty:
+          return true;
+      }
+  }
+
+
+
+  template <typename T>
+  inline const T &
+  TaskResult<T>::value() const
+  {
+    Assert(empty() == false,
+           ExcMessage(
+             "You can't ask for the result of a TaskResult object that "
+             "has not been associated with a task."));
+
+    if (!result_is_available)
+      join();
+    return task_result.value();
+  }
+
+#endif
+
 } // namespace Threads
+
 
 /**
  * @}

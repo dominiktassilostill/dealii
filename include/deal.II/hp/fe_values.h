@@ -64,7 +64,7 @@ namespace hp
    * @ingroup hp
    */
   template <int dim, int q_dim, typename FEValuesType>
-  class FEValuesBase : public Subscriptor
+  class FEValuesBase : public EnableObserverPointer
   {
   public:
     /**
@@ -202,14 +202,15 @@ namespace hp
     /**
      * A pointer to the collection of finite elements to be used.
      */
-    const SmartPointer<const FECollection<dim, FEValuesType::space_dimension>,
-                       FEValuesBase<dim, q_dim, FEValuesType>>
+    const ObserverPointer<
+      const FECollection<dim, FEValuesType::space_dimension>,
+      FEValuesBase<dim, q_dim, FEValuesType>>
       fe_collection;
 
     /**
      * A pointer to the collection of mappings to be used.
      */
-    const SmartPointer<
+    const ObserverPointer<
       const MappingCollection<dim, FEValuesType::space_dimension>,
       FEValuesBase<dim, q_dim, FEValuesType>>
       mapping_collection;

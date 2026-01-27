@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2024 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -38,6 +38,7 @@ PolynomialsBernardiRaugel<dim>::create_polynomials_bubble()
   bubble_shapes.push_back(Polynomials::LagrangeEquidistant(1, 1));
   bubble_shapes.push_back(Polynomials::LagrangeEquidistant(2, 1));
 
+  pols.reserve(dim);
   for (unsigned int d = 0; d < dim; ++d)
     pols.push_back(bubble_shapes);
   // In 2d, the only q_ij polynomials we will use are 31,32,13,23
@@ -58,6 +59,7 @@ PolynomialsBernardiRaugel<dim>::create_polynomials_Q()
   std::vector<Polynomials::Polynomial<double>>              Q_shapes;
   Q_shapes.push_back(Polynomials::LagrangeEquidistant(1, 0));
   Q_shapes.push_back(Polynomials::LagrangeEquidistant(1, 1));
+  pols.reserve(dim);
   for (unsigned int d = 0; d < dim; ++d)
     pols.push_back(Q_shapes);
 

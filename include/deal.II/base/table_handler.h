@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -25,7 +25,7 @@
 #include <boost/serialization/string.hpp>
 #include <boost/serialization/vector.hpp>
 
-#include <fstream>
+#include <cstdint>
 #include <map>
 #include <ostream>
 #include <string>
@@ -960,7 +960,7 @@ TableHandler::add_value(const std::string &key, const T value)
 
       while (columns[key].entries.size() + 1 < max_col_length)
         {
-          columns[key].entries.push_back(internal::TableEntry(T()));
+          columns[key].entries.emplace_back(T());
           const internal::TableEntry &entry = columns[key].entries.back();
           entry.cache_string(columns[key].scientific, columns[key].precision);
           columns[key].max_length =
@@ -971,7 +971,7 @@ TableHandler::add_value(const std::string &key, const T value)
     }
 
   // now push the value given to this function
-  columns[key].entries.push_back(internal::TableEntry(value));
+  columns[key].entries.emplace_back(value);
   const internal::TableEntry &entry = columns[key].entries.back();
   entry.cache_string(columns[key].scientific, columns[key].precision);
   columns[key].max_length =

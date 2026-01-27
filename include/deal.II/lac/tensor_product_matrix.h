@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,6 +26,9 @@
 #include <deal.II/lac/lapack_full_matrix.h>
 
 #include <deal.II/matrix_free/tensor_product_kernels.h>
+
+#include <bitset>
+
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -581,7 +584,6 @@ namespace internal
           std::array<AlignedVector<Number>, dim>  &eigenvalues)
     {
       const unsigned int n_rows_1d = mass_matrix[0].n_cols();
-      (void)n_rows_1d;
 
       for (unsigned int dir = 0; dir < dim; ++dir)
         {
@@ -649,16 +651,18 @@ namespace internal
           for (unsigned int vv = 0; vv < macro_size; ++vv)
             offsets_nm[vv] = nm * vv;
 
-          vectorized_transpose_and_store(false,
-                                         nm,
-                                         &(mass_matrix[dir](0, 0)),
-                                         offsets_nm.cbegin(),
-                                         mass_matrix_flat.data());
-          vectorized_transpose_and_store(false,
-                                         nm,
-                                         &(derivative_matrix[dir](0, 0)),
-                                         offsets_nm.cbegin(),
-                                         deriv_matrix_flat.data());
+          vectorized_transpose_and_store<Number, n_lanes>(
+            false,
+            nm,
+            &(mass_matrix[dir](0, 0)),
+            offsets_nm.data(),
+            mass_matrix_flat.data());
+          vectorized_transpose_and_store<Number, n_lanes>(
+            false,
+            nm,
+            &(derivative_matrix[dir](0, 0)),
+            offsets_nm.data(),
+            deriv_matrix_flat.data());
 
           const Number *mass_cbegin    = mass_matrix_flat.data();
           const Number *deriv_cbegin   = deriv_matrix_flat.data();
@@ -677,14 +681,16 @@ namespace internal
           eigenvectors[dir].reinit(n_rows, n_cols);
           for (unsigned int vv = 0; vv < macro_size; ++vv)
             offsets_n[vv] = n_rows * vv;
-          vectorized_load_and_transpose(n_rows,
-                                        eigenvalues_flat.data(),
-                                        offsets_n.cbegin(),
-                                        eigenvalues[dir].begin());
-          vectorized_load_and_transpose(nm,
-                                        eigenvectors_flat.data(),
-                                        offsets_nm.cbegin(),
-                                        &(eigenvectors[dir](0, 0)));
+          vectorized_load_and_transpose<Number, n_lanes>(
+            n_rows,
+            eigenvalues_flat.data(),
+            offsets_n.data(),
+            eigenvalues[dir].begin());
+          vectorized_load_and_transpose<Number, n_lanes>(
+            nm,
+            eigenvectors_flat.data(),
+            offsets_nm.data(),
+            &(eigenvectors[dir](0, 0)));
         }
     }
 
@@ -963,14 +969,14 @@ TensorProductMatrixSymmetricSum<dim, Number, n_rows_1d>::vmult(
 
   const unsigned int n_rows_1d_non_templated = this->mass_matrix[0].n_rows();
 
-  if (n_rows_1d != -1)
-    internal::TensorProductMatrixSymmetricSum::vmult<
-      n_rows_1d == -1 ? 0 : n_rows_1d>(dst,
-                                       src,
-                                       tmp_array,
-                                       n_rows_1d_non_templated,
-                                       mass_matrix,
-                                       derivative_matrix);
+  if constexpr (n_rows_1d != -1)
+    internal::TensorProductMatrixSymmetricSum::vmult<n_rows_1d>(
+      dst,
+      src,
+      tmp_array,
+      n_rows_1d_non_templated,
+      mass_matrix,
+      derivative_matrix);
   else
     internal::TensorProductMatrixSymmetricSum::select_vmult<1>(
       dst,
@@ -1005,9 +1011,8 @@ TensorProductMatrixSymmetricSum<dim, Number, n_rows_1d>::apply_inverse(
 
   const unsigned int n_rows_1d_non_templated = this->mass_matrix[0].n_rows();
 
-  if (n_rows_1d != -1)
-    internal::TensorProductMatrixSymmetricSum::apply_inverse<
-      n_rows_1d == -1 ? 0 : n_rows_1d>(
+  if constexpr (n_rows_1d != -1)
+    internal::TensorProductMatrixSymmetricSum::apply_inverse<n_rows_1d>(
       dst, src, n_rows_1d_non_templated, eigenvectors, eigenvalues);
   else
     internal::TensorProductMatrixSymmetricSum::select_apply_inverse<1>(
@@ -1501,9 +1506,8 @@ TensorProductMatrixSymmetricSumCollection<dim, Number, n_rows_1d>::
             vector_ptr[translated_index + 1] - vector_ptr[translated_index];
         }
 
-      if (n_rows_1d != -1)
-        internal::TensorProductMatrixSymmetricSum::apply_inverse<
-          n_rows_1d == -1 ? 0 : n_rows_1d>(
+      if constexpr (n_rows_1d != -1)
+        internal::TensorProductMatrixSymmetricSum::apply_inverse<n_rows_1d>(
           dst, src, n_rows_1d_non_templated, eigenvectors, eigenvalues);
       else
         internal::TensorProductMatrixSymmetricSum::select_apply_inverse<1>(
@@ -1540,14 +1544,14 @@ TensorProductMatrixSymmetricSumCollection<dim, Number, n_rows_1d>::
             vector_n_rows_1d[translated_index];
       }
 
-      if (n_rows_1d != -1)
-        internal::TensorProductMatrixSymmetricSum::apply_inverse<
-          n_rows_1d == -1 ? 0 : n_rows_1d>(dst,
-                                           src,
-                                           n_rows_1d_non_templated,
-                                           eigenvectors,
-                                           {},
-                                           inverted_eigenvalues);
+      if constexpr (n_rows_1d != -1)
+        internal::TensorProductMatrixSymmetricSum::apply_inverse<n_rows_1d>(
+          dst,
+          src,
+          n_rows_1d_non_templated,
+          eigenvectors,
+          {},
+          inverted_eigenvalues);
       else
         internal::TensorProductMatrixSymmetricSum::select_apply_inverse<1>(
           dst,

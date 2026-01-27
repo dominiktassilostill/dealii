@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2012 - 2024 by the deal.II authors
+// Copyright (C) 2012 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -26,6 +26,8 @@
 #include <deal.II/lac/read_write_vector.h>
 #include <deal.II/lac/trilinos_vector.h>
 #include <deal.II/lac/vector_operations_internal.h>
+
+#include <Kokkos_Core.hpp>
 
 #include <memory>
 
@@ -115,6 +117,14 @@ namespace LinearAlgebra
           const unsigned int /*size*/,
           RealType & /*max*/)
         {}
+
+        static void
+        all_zero_local(
+          const ::dealii::MemorySpace::MemorySpaceData<Number, MemorySpaceType>
+            & /*data*/,
+          const unsigned int /*size*/,
+          bool & /*result*/)
+        {}
       };
 
       template <typename Number>
@@ -132,7 +142,7 @@ namespace LinearAlgebra
         {
           if (comm_shared == MPI_COMM_SELF)
             {
-#if KOKKOS_VERSION >= 30600
+#if DEAL_II_KOKKOS_VERSION_GTE(3, 6, 0)
               Kokkos::resize(Kokkos::WithoutInitializing,
                              data.values,
                              new_alloc_size);
@@ -317,6 +327,18 @@ namespace LinearAlgebra
             max =
               std::max(numbers::NumberTraits<Number>::abs(data.values[i]), max);
         }
+
+        static void
+        all_zero_local(const ::dealii::MemorySpace::MemorySpaceData<
+                         Number,
+                         ::dealii::MemorySpace::Host> &data,
+                       const unsigned int              size,
+                       bool                           &result)
+        {
+          result = std::all_of(&data.values(0),
+                               &data.values(0) + size,
+                               numbers::value_is_zero<Number>);
+        }
       };
 
       template <typename Number>
@@ -332,11 +354,9 @@ namespace LinearAlgebra
           types::global_dof_index      &allocated_size,
           ::dealii::MemorySpace::MemorySpaceData<Number,
                                                  ::dealii::MemorySpace::Default>
-                        &data,
-          const MPI_Comm comm_sm)
+            &data,
+          const MPI_Comm /*comm_sm*/)
         {
-          (void)comm_sm;
-
           static_assert(
             std::is_same_v<Number, float> || std::is_same_v<Number, double>,
             "Number should be float or double for Default memory space");
@@ -347,7 +367,7 @@ namespace LinearAlgebra
                       data.values.size() == 0),
                      ExcInternalError());
 
-#if KOKKOS_VERSION >= 30600
+#if DEAL_II_KOKKOS_VERSION_GTE(3, 6, 0)
               Kokkos::resize(Kokkos::WithoutInitializing,
                              data.values,
                              new_alloc_size);
@@ -490,16 +510,40 @@ namespace LinearAlgebra
               ::dealii::MemorySpace::Default::kokkos_space::execution_space>(
               exec, 0, size),
             KOKKOS_LAMBDA(size_type i, RealType & update) {
-#if KOKKOS_VERSION < 30400
-              update = fmax(update, fabs(data.values(i)));
-#elif KOKKOS_VERSION < 30700
+#if DEAL_II_KOKKOS_VERSION_GTE(3, 7, 0)
+              update = Kokkos::fmax(update, Kokkos::abs(data.values(i)));
+#else
               update = Kokkos::Experimental::fmax(
                 update, Kokkos::Experimental::fabs(data.values(i)));
-#else
-              update = Kokkos::fmax(update, Kokkos::abs(data.values(i)));
 #endif
             },
             Kokkos::Max<RealType, Kokkos::HostSpace>(result));
+        }
+
+        static void
+        all_zero_local(const ::dealii::MemorySpace::MemorySpaceData<
+                         Number,
+                         ::dealii::MemorySpace::Default> &data,
+                       const unsigned int                 size,
+                       bool                              &result)
+        {
+          // TODO: once we require Kokkos 4.0 or newer we can use booleans here
+          // instead of int
+          int int_result = 1;
+          typename ::dealii::MemorySpace::Default::kokkos_space::execution_space
+            exec;
+          Kokkos::parallel_reduce(
+            "dealii::all_zero_local",
+            Kokkos::RangePolicy<
+              ::dealii::MemorySpace::Default::kokkos_space::execution_space>(
+              exec, 0, size),
+            KOKKOS_LAMBDA(size_type i, int &update) {
+              update =
+                (update && numbers::value_is_zero<Number>(data.values(i)));
+            },
+            Kokkos::LAnd<int, Kokkos::HostSpace>(int_result));
+
+          result = static_cast<bool>(int_result);
         }
       };
     } // namespace internal
@@ -730,8 +774,7 @@ namespace LinearAlgebra
     template <typename Number, typename MemorySpaceType>
     Vector<Number, MemorySpaceType>::Vector(
       const Vector<Number, MemorySpaceType> &v)
-      : Subscriptor()
-      , allocated_size(0)
+      : allocated_size(0)
       , vector_is_ghosted(false)
       , comm_sm(MPI_COMM_SELF)
     {
@@ -749,7 +792,8 @@ namespace LinearAlgebra
       Vector<Number, MemorySpaceType> &&v)
       : Vector()
     {
-      static_cast<Subscriptor &>(*this) = static_cast<Subscriptor &&>(v);
+      static_cast<EnableObserverPointer &>(*this) =
+        static_cast<EnableObserverPointer &&>(v);
       this->swap(v);
     }
 
@@ -860,17 +904,15 @@ namespace LinearAlgebra
           // local ranges are also the same if both partitioners are empty
           // (even if they happen to define the empty range as [0,0) or [c,c)
           // for some c!=0 in a different way).
-          int local_ranges_are_identical =
+          const bool local_ranges_are_identical =
             (partitioner->local_range() == c.partitioner->local_range() ||
              (partitioner->local_range().second ==
                 partitioner->local_range().first &&
               c.partitioner->local_range().second ==
                 c.partitioner->local_range().first));
-          if ((c.partitioner->n_mpi_processes() > 1 &&
-               Utilities::MPI::min(local_ranges_are_identical,
-                                   c.partitioner->get_mpi_communicator()) ==
-                 0) ||
-              !local_ranges_are_identical)
+          if (!Utilities::MPI::logical_and(
+                local_ranges_are_identical,
+                c.partitioner->get_mpi_communicator()))
             reinit(c, true);
           else
             must_update_ghost_values |= vector_is_ghosted;
@@ -960,11 +1002,21 @@ namespace LinearAlgebra
     void
     Vector<Number, MemorySpaceType>::zero_out_ghost_values() const
     {
-      Kokkos::pair<size_type, size_type> range(
-        partitioner->locally_owned_size(),
-        partitioner->locally_owned_size() + partitioner->n_ghost_indices());
-      if (data.values.size() > 0)
-        Kokkos::deep_copy(Kokkos::subview(data.values, range), 0);
+      // Avoid some overhead, especially on Kokkos versions before 4.6,
+      // in Kokkos::deep_copy, by directly calling (sequential) memset.
+      if (std::is_same_v<MemorySpaceType, MemorySpace::Host>)
+        std::fill(data.values.data() + partitioner->locally_owned_size(),
+                  data.values.data() + partitioner->locally_owned_size() +
+                    partitioner->n_ghost_indices(),
+                  Number(0));
+      else
+        {
+          Kokkos::pair<size_type, size_type> range(
+            partitioner->locally_owned_size(),
+            partitioner->locally_owned_size() + partitioner->n_ghost_indices());
+          if (data.values.size() > 0)
+            Kokkos::deep_copy(Kokkos::subview(data.values, range), Number(0));
+        }
 
       vector_is_ghosted = false;
     }
@@ -992,7 +1044,7 @@ namespace LinearAlgebra
           if (std::is_same_v<MemorySpaceType, dealii::MemorySpace::Default>)
             {
               if (import_data.values_host_buffer.size() == 0)
-#    if KOKKOS_VERSION >= 30600
+#    if DEAL_II_KOKKOS_VERSION_GTE(3, 6, 0)
                 Kokkos::resize(Kokkos::WithoutInitializing,
                                import_data.values_host_buffer,
                                partitioner->n_import_indices());
@@ -1005,7 +1057,7 @@ namespace LinearAlgebra
 #  endif
             {
               if (import_data.values.size() == 0)
-#  if KOKKOS_VERSION >= 30600
+#  if DEAL_II_KOKKOS_VERSION_GTE(3, 6, 0)
                 Kokkos::resize(Kokkos::WithoutInitializing,
                                import_data.values,
                                partitioner->n_import_indices());
@@ -1024,11 +1076,11 @@ namespace LinearAlgebra
           // uses a view of the array and thus we need the data on the host to
           // outlive the scope of the function.
           data.values_host_buffer =
-#    if KOKKOS_VERSION < 40000
-            Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{},
+#    if DEAL_II_KOKKOS_VERSION_GTE(4, 0, 0)
+            Kokkos::create_mirror_view_and_copy(Kokkos::SharedHostPinnedSpace{},
                                                 data.values);
 #    else
-            Kokkos::create_mirror_view_and_copy(Kokkos::SharedHostPinnedSpace{},
+            Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{},
                                                 data.values);
 #    endif
           partitioner->import_from_ghosted_array_start(
@@ -1152,7 +1204,7 @@ namespace LinearAlgebra
           if (std::is_same_v<MemorySpaceType, MemorySpace::Default>)
             {
               if (import_data.values_host_buffer.size() == 0)
-#    if KOKKOS_VERSION >= 30600
+#    if DEAL_II_KOKKOS_VERSION_GTE(3, 6, 0)
                 Kokkos::resize(Kokkos::WithoutInitializing,
                                import_data.values_host_buffer,
                                partitioner->n_import_indices());
@@ -1165,7 +1217,7 @@ namespace LinearAlgebra
 #  endif
             {
               if (import_data.values.size() == 0)
-#  if KOKKOS_VERSION >= 30600
+#  if DEAL_II_KOKKOS_VERSION_GTE(3, 6, 0)
                 Kokkos::resize(Kokkos::WithoutInitializing,
                                import_data.values,
                                partitioner->n_import_indices());
@@ -1184,11 +1236,11 @@ namespace LinearAlgebra
           // uses a view of the array and thus we need the data on the host to
           // outlive the scope of the function.
           data.values_host_buffer =
-#    if KOKKOS_VERSION < 40000
-            Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{},
+#    if DEAL_II_KOKKOS_VERSION_GTE(4, 0, 0)
+            Kokkos::create_mirror_view_and_copy(Kokkos::SharedHostPinnedSpace{},
                                                 data.values);
 #    else
-            Kokkos::create_mirror_view_and_copy(Kokkos::SharedHostPinnedSpace{},
+            Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{},
                                                 data.values);
 #    endif
 
@@ -1372,40 +1424,41 @@ namespace LinearAlgebra
     {
 #ifdef DEAL_II_WITH_MPI
 
-#  ifdef DEBUG
-      Assert(Utilities::MPI::job_supports_mpi() ||
-               (update_ghost_values_requests.empty() &&
-                compress_requests.empty()),
-             ExcInternalError());
+      if constexpr (running_in_debug_mode())
+        {
+          Assert(Utilities::MPI::job_supports_mpi() ||
+                   (update_ghost_values_requests.empty() &&
+                    compress_requests.empty()),
+                 ExcInternalError());
 
-      // make sure that there are not outstanding requests from updating
-      // ghost values or compress
-      if (update_ghost_values_requests.size() > 0)
-        {
-          int       flag = 1;
-          const int ierr = MPI_Testall(update_ghost_values_requests.size(),
-                                       update_ghost_values_requests.data(),
-                                       &flag,
-                                       MPI_STATUSES_IGNORE);
-          AssertThrowMPI(ierr);
-          Assert(flag == 1,
-                 ExcMessage(
-                   "MPI found unfinished update_ghost_values() requests "
-                   "when calling swap, which is not allowed."));
+          // make sure that there are not outstanding requests from updating
+          // ghost values or compress
+          if (update_ghost_values_requests.size() > 0)
+            {
+              int       flag = 1;
+              const int ierr = MPI_Testall(update_ghost_values_requests.size(),
+                                           update_ghost_values_requests.data(),
+                                           &flag,
+                                           MPI_STATUSES_IGNORE);
+              AssertThrowMPI(ierr);
+              Assert(flag == 1,
+                     ExcMessage(
+                       "MPI found unfinished update_ghost_values() requests "
+                       "when calling swap, which is not allowed."));
+            }
+          if (compress_requests.size() > 0)
+            {
+              int       flag = 1;
+              const int ierr = MPI_Testall(compress_requests.size(),
+                                           compress_requests.data(),
+                                           &flag,
+                                           MPI_STATUSES_IGNORE);
+              AssertThrowMPI(ierr);
+              Assert(flag == 1,
+                     ExcMessage("MPI found unfinished compress() requests "
+                                "when calling swap, which is not allowed."));
+            }
         }
-      if (compress_requests.size() > 0)
-        {
-          int       flag = 1;
-          const int ierr = MPI_Testall(compress_requests.size(),
-                                       compress_requests.data(),
-                                       &flag,
-                                       MPI_STATUSES_IGNORE);
-          AssertThrowMPI(ierr);
-          Assert(flag == 1,
-                 ExcMessage("MPI found unfinished compress() requests "
-                            "when calling swap, which is not allowed."));
-        }
-#  endif
 
       std::swap(compress_requests, v.compress_requests);
       std::swap(update_ghost_values_requests, v.update_ghost_values_requests);
@@ -1427,7 +1480,8 @@ namespace LinearAlgebra
     Vector<Number, MemorySpaceType>::operator=( // NOLINT
       Vector<Number, MemorySpaceType> &&v)
     {
-      static_cast<Subscriptor &>(*this) = static_cast<Subscriptor &&>(v);
+      static_cast<EnableObserverPointer &>(*this) =
+        static_cast<EnableObserverPointer &&>(v);
       this->swap(v);
       return *this;
     }
@@ -1472,6 +1526,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
 
       return *this;
     }
@@ -1494,6 +1550,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
 
       return *this;
     }
@@ -1512,6 +1570,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
     }
 
 
@@ -1550,6 +1610,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
     }
 
 
@@ -1580,6 +1642,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
     }
 
 
@@ -1616,6 +1680,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
     }
 
 
@@ -1654,6 +1720,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
     }
 
 
@@ -1673,6 +1741,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
 
       return *this;
     }
@@ -1702,6 +1772,8 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
     }
 
 
@@ -1726,6 +1798,45 @@ namespace LinearAlgebra
 
       if (vector_is_ghosted)
         update_ghost_values();
+      else
+        assert_no_residual_content_in_ghost_region();
+    }
+
+
+
+    template <typename Number, typename MemorySpaceType>
+    void
+    Vector<Number,
+           MemorySpaceType>::assert_no_residual_content_in_ghost_region() const
+    {
+      if constexpr (running_in_debug_mode())
+        {
+          // This should only be called for non-ghosted vectors
+          Assert(!vector_is_ghosted, ExcInternalError());
+
+          // Run a reduction over the ghost range only to find out whether some
+          // entries are non-zero
+          real_type sum = real_type();
+          dealii::internal::VectorOperations::
+            functions<Number, Number, MemorySpaceType>::norm_1(
+              thread_loop_partitioner,
+              partitioner->n_ghost_indices(),
+              sum,
+              data,
+              partitioner->locally_owned_size());
+
+          Assert(sum == real_type(),
+                 ExcMessage(
+                   "You called a vector space operation like add(), "
+                   "scale(), operator* for a non-ghosted vector, which "
+                   "will not update the content in the memory locations "
+                   "reserved for ghost values. However, a non-zero "
+                   "content was detected for some of those entries, which "
+                   "can lead to an invalid state of the vector. Please "
+                   "call Vector::compress(VectorOperation::add) or "
+                   "Vector::zero_out_ghost_values() before calling a "
+                   "vector space operation to avoid this problem."));
+        }
     }
 
 
@@ -1734,7 +1845,7 @@ namespace LinearAlgebra
     void
     Vector<Number, MemorySpaceType>::extract_subvector_to(
       const ArrayView<const types::global_dof_index> &indices,
-      ArrayView<Number>                              &elements) const
+      const ArrayView<Number>                        &elements) const
     {
       AssertDimension(indices.size(), elements.size());
       for (unsigned int i = 0; i < indices.size(); ++i)
@@ -1748,9 +1859,26 @@ namespace LinearAlgebra
 
     template <typename Number, typename MemorySpaceType>
     bool
+    Vector<Number, MemorySpaceType>::all_zero_local() const
+    {
+      bool result = true;
+
+      const size_type locally_owned_size = partitioner->locally_owned_size();
+      internal::la_parallel_vector_templates_functions<
+        Number,
+        MemorySpaceType>::all_zero_local(data, locally_owned_size, result);
+
+      return result;
+    }
+
+
+
+    template <typename Number, typename MemorySpaceType>
+    bool
     Vector<Number, MemorySpaceType>::all_zero() const
     {
-      return (linfty_norm() == 0) ? true : false;
+      return Utilities::MPI::logical_and(all_zero_local(),
+                                         get_mpi_communicator());
     }
 
 

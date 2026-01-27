@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 - 2024 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,11 +19,13 @@
 
 #ifdef DEAL_II_WITH_PETSC
 #  include <deal.II/base/exceptions.h>
+#  include <deal.II/base/mpi_stub.h>
 
 #  include <deal.II/lac/petsc_precondition.h>
 #  include <deal.II/lac/petsc_ts.h>
 
 #  include <petscdm.h>
+#  include <petscerror.h>
 #  include <petscts.h>
 
 DEAL_II_NAMESPACE_OPEN
@@ -486,7 +488,20 @@ namespace PETScWrappers
 
       const int lineno = __LINE__;
       const int err    = call_and_possibly_capture_ts_exception(
-        user->interpolate, user->pending_exception, {}, all_in, all_out);
+        (user->transfer_solution_vectors_to_new_mesh ?
+              // If we can, call the new callback
+           user->transfer_solution_vectors_to_new_mesh :
+              // otherwise, use the old one where we just ignore the time:
+           [user](const real_type /*t*/,
+                  const std::vector<VectorType> &all_in,
+                  std::vector<VectorType>       &all_out) {
+             user->interpolate(all_in, all_out);
+           }),
+        user->pending_exception,
+        {},
+        user->get_time(),
+        all_in,
+        all_out);
       if (err)
         return PetscError(
           PetscObjectComm((PetscObject)ts),
@@ -1065,8 +1080,24 @@ namespace PETScWrappers
               "the equivalent 'decide_and_prepare_for_remeshing' callback, you "
               "cannot also set the 'decide_for_coarsening_and_refinement' "
               "callback."));
-        AssertThrow(interpolate,
-                    StandardExceptions::ExcFunctionNotProvided("interpolate"));
+
+        // If we have the decide_and_prepare_for_remeshing callback
+        // set, then we also need to have the callback for actually
+        // transferring the solution:
+        AssertThrow(interpolate || transfer_solution_vectors_to_new_mesh,
+                    StandardExceptions::ExcFunctionNotProvided(
+                      "transfer_solution_vectors_to_new_mesh"));
+
+        if (transfer_solution_vectors_to_new_mesh)
+          Assert(
+            !interpolate,
+            ExcMessage(
+              "The 'interpolate' callback name "
+              "of the TimeStepper class is deprecated. If you are setting "
+              "the equivalent 'transfer_solution_vectors_to_new_mesh' callback, you "
+              "cannot also set the 'interpolate' "
+              "callback."));
+
 #  if DEAL_II_PETSC_VERSION_GTE(3, 21, 0)
         (void)ts_poststep_amr;
         AssertPETSc(TSSetResize(ts,
@@ -1295,6 +1326,14 @@ namespace PETScWrappers
 #    undef undefPetscCall
 #  endif
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

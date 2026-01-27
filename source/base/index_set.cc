@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2024 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,10 +17,14 @@
 #include <deal.II/base/mpi.h>
 
 #include <deal.II/lac/exceptions.h>
+#include <deal.II/lac/trilinos_tpetra_types.h>
+
+#include <boost/container/small_vector.hpp>
 
 #include <vector>
 
 #ifdef DEAL_II_WITH_TRILINOS
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  ifdef DEAL_II_WITH_MPI
 #    include <Epetra_MpiComm.h>
 #  endif
@@ -29,6 +33,7 @@
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
 #    include <Tpetra_Map.hpp>
 #  endif
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 #endif
 
 DEAL_II_NAMESPACE_OPEN
@@ -39,9 +44,10 @@ DEAL_II_NAMESPACE_OPEN
 
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
 
+template <typename NodeType>
 IndexSet::IndexSet(
-  const Teuchos::RCP<const Tpetra::Map<int, types::signed_global_dof_index>>
-    &map)
+  const Teuchos::RCP<
+    const Tpetra::Map<int, types::signed_global_dof_index, NodeType>> &map)
   : is_compressed(true)
   , index_space_size(1 + map->getMaxAllGlobalIndex())
   , largest_range(numbers::invalid_unsigned_int)
@@ -198,22 +204,24 @@ IndexSet::do_compress() const
     Assert(next_index == n_elements(), ExcInternalError());
   }
 
-#ifdef DEBUG
-  // A consistency check: We should only ever have added indices
-  // that are within the range of the index set. Instead of doing
-  // this in every one of the many functions that add indices,
-  // do this in the current, central location
-  for (const auto &range : ranges)
-    Assert((range.begin < index_space_size) && (range.end <= index_space_size),
-           ExcMessage("In the process of creating the current IndexSet "
-                      "object, you added indices beyond the size of the index "
-                      "space. Specifically, you added elements that form the "
-                      "range [" +
-                      std::to_string(range.begin) + "," +
-                      std::to_string(range.end) +
-                      "), but the size of the index space is only " +
-                      std::to_string(index_space_size) + "."));
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      // A consistency check: We should only ever have added indices
+      // that are within the range of the index set. Instead of doing
+      // this in every one of the many functions that add indices,
+      // do this in the current, central location
+      for (const auto &range : ranges)
+        Assert((range.begin < index_space_size) &&
+                 (range.end <= index_space_size),
+               ExcMessage(
+                 "In the process of creating the current IndexSet "
+                 "object, you added indices beyond the size of the index "
+                 "space. Specifically, you added elements that form the "
+                 "range [" +
+                 std::to_string(range.begin) + "," + std::to_string(range.end) +
+                 "), but the size of the index space is only " +
+                 std::to_string(index_space_size) + "."));
+    }
 }
 
 
@@ -453,14 +461,15 @@ IndexSet::split_by_block(
       start += n_block_indices;
     }
 
-#ifdef DEBUG
-  types::global_dof_index sum = 0;
-  for (const auto &partition : partitioned)
+  if constexpr (running_in_debug_mode())
     {
-      sum += partition.size();
+      types::global_dof_index sum = 0;
+      for (const auto &partition : partitioned)
+        {
+          sum += partition.size();
+        }
+      AssertDimension(sum, this->size());
     }
-  AssertDimension(sum, this->size());
-#endif
 
   return partitioned;
 }
@@ -939,56 +948,51 @@ IndexSet::get_index_vector() const
 
 
 
-void
-IndexSet::fill_index_vector(std::vector<size_type> &indices) const
-{
-  indices = get_index_vector();
-}
-
-
-
 #ifdef DEAL_II_WITH_TRILINOS
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
 
-Tpetra::Map<int, types::signed_global_dof_index>
+template <typename NodeType>
+Tpetra::Map<int, types::signed_global_dof_index, NodeType>
 IndexSet::make_tpetra_map(const MPI_Comm communicator,
                           const bool     overlapping) const
 {
-  return *make_tpetra_map_rcp(communicator, overlapping);
+  return *make_tpetra_map_rcp<NodeType>(communicator, overlapping);
 }
 
 
 
-Teuchos::RCP<Tpetra::Map<int, types::signed_global_dof_index>>
+template <typename NodeType>
+Teuchos::RCP<Tpetra::Map<int, types::signed_global_dof_index, NodeType>>
 IndexSet::make_tpetra_map_rcp(const MPI_Comm communicator,
                               const bool     overlapping) const
 {
   compress();
   (void)communicator;
 
-#    ifdef DEBUG
-  if (!overlapping)
+  if constexpr (running_in_debug_mode())
     {
-      const size_type n_global_elements =
-        Utilities::MPI::sum(n_elements(), communicator);
-      Assert(n_global_elements == size(),
-             ExcMessage("You are trying to create an Tpetra::Map object "
-                        "that partitions elements of an index set "
-                        "between processors. However, the union of the "
-                        "index sets on different processors does not "
-                        "contain all indices exactly once: the sum of "
-                        "the number of entries the various processors "
-                        "want to store locally is " +
-                        std::to_string(n_global_elements) +
-                        " whereas the total size of the object to be "
-                        "allocated is " +
-                        std::to_string(size()) +
-                        ". In other words, there are "
-                        "either indices that are not spoken for "
-                        "by any processor, or there are indices that are "
-                        "claimed by multiple processors."));
+      if (!overlapping)
+        {
+          const size_type n_global_elements =
+            Utilities::MPI::sum(n_elements(), communicator);
+          Assert(n_global_elements == size(),
+                 ExcMessage("You are trying to create an Tpetra::Map object "
+                            "that partitions elements of an index set "
+                            "between processors. However, the union of the "
+                            "index sets on different processors does not "
+                            "contain all indices exactly once: the sum of "
+                            "the number of entries the various processors "
+                            "want to store locally is " +
+                            std::to_string(n_global_elements) +
+                            " whereas the total size of the object to be "
+                            "allocated is " +
+                            std::to_string(size()) +
+                            ". In other words, there are "
+                            "either indices that are not spoken for "
+                            "by any processor, or there are indices that are "
+                            "claimed by multiple processors."));
+        }
     }
-#    endif
 
   // Find out if the IndexSet is ascending and 1:1. This corresponds to a
   // linear Tpetra::Map. Overlapping IndexSets are never 1:1.
@@ -996,7 +1000,7 @@ IndexSet::make_tpetra_map_rcp(const MPI_Comm communicator,
     overlapping ? false : is_ascending_and_one_to_one(communicator);
   if (linear)
     return Utilities::Trilinos::internal::make_rcp<
-      Tpetra::Map<int, types::signed_global_dof_index>>(
+      Tpetra::Map<int, types::signed_global_dof_index, NodeType>>(
       size(),
       n_elements(),
       0,
@@ -1005,7 +1009,7 @@ IndexSet::make_tpetra_map_rcp(const MPI_Comm communicator,
         communicator)
 #    else
       Utilities::Trilinos::internal::make_rcp<Teuchos::Comm<int>>()
-#    endif // DEAL_WITH_MPI
+#    endif // DEAL_II_WITH_MPI
     );
   else
     {
@@ -1016,7 +1020,7 @@ IndexSet::make_tpetra_map_rcp(const MPI_Comm communicator,
         int_indices);
 
       return Utilities::Trilinos::internal::make_rcp<
-        Tpetra::Map<int, types::signed_global_dof_index>>(
+        Tpetra::Map<int, types::signed_global_dof_index, NodeType>>(
         size(),
         arr_view,
         0,
@@ -1040,29 +1044,30 @@ IndexSet::make_trilinos_map(const MPI_Comm communicator,
   compress();
   (void)communicator;
 
-#  ifdef DEBUG
-  if (!overlapping)
+  if constexpr (running_in_debug_mode())
     {
-      const size_type n_global_elements =
-        Utilities::MPI::sum(n_elements(), communicator);
-      Assert(n_global_elements == size(),
-             ExcMessage("You are trying to create an Epetra_Map object "
-                        "that partitions elements of an index set "
-                        "between processors. However, the union of the "
-                        "index sets on different processors does not "
-                        "contain all indices exactly once: the sum of "
-                        "the number of entries the various processors "
-                        "want to store locally is " +
-                        std::to_string(n_global_elements) +
-                        " whereas the total size of the object to be "
-                        "allocated is " +
-                        std::to_string(size()) +
-                        ". In other words, there are "
-                        "either indices that are not spoken for "
-                        "by any processor, or there are indices that are "
-                        "claimed by multiple processors."));
+      if (!overlapping)
+        {
+          const size_type n_global_elements =
+            Utilities::MPI::sum(n_elements(), communicator);
+          Assert(n_global_elements == size(),
+                 ExcMessage("You are trying to create an Epetra_Map object "
+                            "that partitions elements of an index set "
+                            "between processors. However, the union of the "
+                            "index sets on different processors does not "
+                            "contain all indices exactly once: the sum of "
+                            "the number of entries the various processors "
+                            "want to store locally is " +
+                            std::to_string(n_global_elements) +
+                            " whereas the total size of the object to be "
+                            "allocated is " +
+                            std::to_string(size()) +
+                            ". In other words, there are "
+                            "either indices that are not spoken for "
+                            "by any processor, or there are indices that are "
+                            "claimed by multiple processors."));
+        }
     }
-#  endif
 
   // Find out if the IndexSet is ascending and 1:1. This corresponds to a
   // linear EpetraMap. Overlapping IndexSets are never 1:1.
@@ -1105,15 +1110,27 @@ IndexSet::make_trilinos_map(const MPI_Comm communicator,
 IS
 IndexSet::make_petsc_is(const MPI_Comm communicator) const
 {
-  std::vector<size_type> indices;
-  fill_index_vector(indices);
+  const std::vector<size_type> indices = get_index_vector();
 
-  PetscInt              n = indices.size();
-  std::vector<PetscInt> pindices(indices.begin(), indices.end());
+  // If the size of the index set can be converted to a PetscInt then every
+  // value can also be converted
+  AssertThrowIntegerConversion(static_cast<PetscInt>(size()), size());
+  const auto local_size = static_cast<PetscInt>(n_elements());
+  AssertIntegerConversion(local_size, n_elements());
+
+  size_type             i = 0;
+  std::vector<PetscInt> petsc_indices(n_elements());
+  for (const auto &index : *this)
+    {
+      const auto petsc_index = static_cast<PetscInt>(index);
+      AssertIntegerConversion(petsc_index, index);
+      petsc_indices[i] = petsc_index;
+      ++i;
+    }
 
   IS             is;
-  PetscErrorCode ierr =
-    ISCreateGeneral(communicator, n, pindices.data(), PETSC_COPY_VALUES, &is);
+  PetscErrorCode ierr = ISCreateGeneral(
+    communicator, local_size, petsc_indices.data(), PETSC_COPY_VALUES, &is);
   AssertThrow(ierr == 0, ExcPETScError(ierr));
 
   return is;
@@ -1138,7 +1155,7 @@ IndexSet::is_ascending_and_one_to_one(const MPI_Comm communicator) const
 #ifdef DEAL_II_WITH_MPI
   // Non-contiguous IndexSets can't be linear.
   const bool all_contiguous =
-    (Utilities::MPI::min(is_contiguous() ? 1 : 0, communicator) == 1);
+    Utilities::MPI::logical_and(is_contiguous(), communicator);
   if (!all_contiguous)
     return false;
 
@@ -1197,6 +1214,64 @@ IndexSet::memory_consumption() const
           sizeof(compress_mutex));
 }
 
+// explicit template instantiations
 
+#ifndef DOXYGEN
+#  ifdef DEAL_II_WITH_TRILINOS
+#    ifdef DEAL_II_TRILINOS_WITH_TPETRA
+
+template IndexSet::IndexSet(
+  const Teuchos::RCP<const Tpetra::Map<
+    int,
+    types::signed_global_dof_index,
+    LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Host>>>
+    &);
+
+#      if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || \
+        defined(KOKKOS_ENABLE_SYCL)
+template IndexSet::IndexSet(
+  const Teuchos::RCP<const Tpetra::Map<
+    int,
+    types::signed_global_dof_index,
+    LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Default>>>
+    &);
+#      endif
+
+template LinearAlgebra::TpetraWrappers::TpetraTypes::MapType<MemorySpace::Host>
+dealii::IndexSet::make_tpetra_map<
+  LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Host>>(
+  const MPI_Comm,
+  bool) const;
+
+#      if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || \
+        defined(KOKKOS_ENABLE_SYCL)
+template LinearAlgebra::TpetraWrappers::TpetraTypes::MapType<
+  MemorySpace::Default>
+dealii::IndexSet::make_tpetra_map<
+  LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Default>>(
+  const MPI_Comm,
+  bool) const;
+#      endif
+
+template Teuchos::RCP<
+  LinearAlgebra::TpetraWrappers::TpetraTypes::MapType<MemorySpace::Host>>
+dealii::IndexSet::make_tpetra_map_rcp<
+  LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Host>>(
+  const MPI_Comm,
+  bool) const;
+
+#      if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || \
+        defined(KOKKOS_ENABLE_SYCL)
+template Teuchos::RCP<
+  LinearAlgebra::TpetraWrappers::TpetraTypes::MapType<MemorySpace::Default>>
+dealii::IndexSet::make_tpetra_map_rcp<
+  LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Default>>(
+  const MPI_Comm,
+  bool) const;
+#      endif
+
+#    endif
+#  endif
+#endif
 
 DEAL_II_NAMESPACE_CLOSE

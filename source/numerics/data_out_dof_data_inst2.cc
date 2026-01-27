@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,6 +29,6 @@ DEAL_II_NAMESPACE_OPEN
 
 #define SPLIT_INSTANTIATIONS_COUNT 2
 #define SPLIT_INSTANTIATIONS_INDEX 1
-#include "data_out_dof_data.inst"
+#include "numerics/data_out_dof_data.inst"
 
 DEAL_II_NAMESPACE_CLOSE

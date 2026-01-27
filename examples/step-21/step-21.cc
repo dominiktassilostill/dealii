@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2006 - 2024 by the deal.II authors
+ * Copyright (C) 2006 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -343,7 +343,7 @@ namespace Step21
                                        (0.05 * 0.05));
 
             const double normalized_permeability =
-              std::min(std::max(permeability, 0.01), 4.);
+              std::clamp(permeability, 0.01, 4.);
 
             for (unsigned int d = 0; d < dim; ++d)
               values[p][d][d] = 1. / normalized_permeability;
@@ -409,7 +409,7 @@ namespace Step21
   // maximum number of iterations equal to the maximum of the size of the linear
   // system and 200.
   template <class MatrixType>
-  class InverseMatrix : public Subscriptor
+  class InverseMatrix : public EnableObserverPointer
   {
   public:
     InverseMatrix(const MatrixType &m)
@@ -428,12 +428,12 @@ namespace Step21
     }
 
   private:
-    const SmartPointer<const MatrixType> matrix;
+    const ObserverPointer<const MatrixType> matrix;
   };
 
 
 
-  class SchurComplement : public Subscriptor
+  class SchurComplement : public EnableObserverPointer
   {
   public:
     SchurComplement(const BlockSparseMatrix<double>           &A,
@@ -452,15 +452,15 @@ namespace Step21
     }
 
   private:
-    const SmartPointer<const BlockSparseMatrix<double>>           system_matrix;
-    const SmartPointer<const InverseMatrix<SparseMatrix<double>>> m_inverse;
+    const ObserverPointer<const BlockSparseMatrix<double>> system_matrix;
+    const ObserverPointer<const InverseMatrix<SparseMatrix<double>>> m_inverse;
 
     mutable Vector<double> tmp1, tmp2;
   };
 
 
 
-  class ApproximateSchurComplement : public Subscriptor
+  class ApproximateSchurComplement : public EnableObserverPointer
   {
   public:
     ApproximateSchurComplement(const BlockSparseMatrix<double> &A)
@@ -477,7 +477,7 @@ namespace Step21
     }
 
   private:
-    const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
+    const ObserverPointer<const BlockSparseMatrix<double>> system_matrix;
 
     mutable Vector<double> tmp1, tmp2;
   };

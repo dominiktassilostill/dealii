@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2024 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -61,8 +61,8 @@ FE_DGPNonparametric<dim, spacedim>::FE_DGPNonparametric(
           // implemented so far
           continue;
 
-        const unsigned int nc =
-          GeometryInfo<dim>::n_children(RefinementCase<dim>(ref_case));
+        const unsigned int nc = this->reference_cell().template n_children<dim>(
+          RefinementCase<dim>(ref_case));
         for (unsigned int i = 0; i < nc; ++i)
           {
             this->prolongation[ref_case - 1][i].reinit(n_dofs, n_dofs);
@@ -667,7 +667,7 @@ FE_DGPNonparametric<dim, spacedim>::get_degree() const
 
 
 // explicit instantiations
-#include "fe_dgp_nonparametric.inst"
+#include "fe/fe_dgp_nonparametric.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

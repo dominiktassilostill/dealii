@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2024 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -22,7 +22,7 @@
 #include <deal.II/distributed/tria.h>
 #include <deal.II/distributed/tria_base.h>
 
-#include <deal.II/dofs/dof_accessor.templates.h>
+#include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_handler.h>
 
 #include <deal.II/grid/filtered_iterator.h>
@@ -48,7 +48,7 @@ namespace hp
     void
     full_p_adaptivity(const DoFHandler<dim, spacedim> &dof_handler)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -68,7 +68,7 @@ namespace hp
     p_adaptivity_from_flags(const DoFHandler<dim, spacedim> &dof_handler,
                             const std::vector<bool>         &p_flags)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -117,7 +117,7 @@ namespace hp
       const ComparisonFunction<std_cxx20::type_identity_t<Number>>
         &compare_coarsen)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -156,7 +156,7 @@ namespace hp
       const ComparisonFunction<std_cxx20::type_identity_t<Number>>
         &compare_coarsen)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -208,16 +208,16 @@ namespace hp
         {
           max_criterion_refine =
             Utilities::MPI::max(max_criterion_refine,
-                                parallel_tria->get_communicator());
+                                parallel_tria->get_mpi_communicator());
           min_criterion_refine =
             Utilities::MPI::min(min_criterion_refine,
-                                parallel_tria->get_communicator());
+                                parallel_tria->get_mpi_communicator());
           max_criterion_coarsen =
             Utilities::MPI::max(max_criterion_coarsen,
-                                parallel_tria->get_communicator());
+                                parallel_tria->get_mpi_communicator());
           min_criterion_coarsen =
             Utilities::MPI::min(min_criterion_coarsen,
-                                parallel_tria->get_communicator());
+                                parallel_tria->get_mpi_communicator());
         }
 
       // Absent any better strategies, we will set the threshold by linear
@@ -253,7 +253,7 @@ namespace hp
       const ComparisonFunction<std_cxx20::type_identity_t<Number>>
         &compare_coarsen)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -332,7 +332,7 @@ namespace hp
           // parallel implementation with distributed memory
           //
 
-          MPI_Comm mpi_communicator = parallel_tria->get_communicator();
+          MPI_Comm mpi_communicator = parallel_tria->get_mpi_communicator();
 
           // 2.) Communicate the number of cells scheduled for p-adaptation
           //     globally.
@@ -447,7 +447,7 @@ namespace hp
     p_adaptivity_from_regularity(const DoFHandler<dim, spacedim> &dof_handler,
                                  const Vector<Number> &sobolev_indices)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -509,7 +509,7 @@ namespace hp
       const ComparisonFunction<std_cxx20::type_identity_t<Number>>
         &compare_coarsen)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -550,7 +550,7 @@ namespace hp
                   const double                     gamma_h,
                   const double                     gamma_n)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -600,12 +600,13 @@ namespace hp
               if (future_fe_indices_on_coarsened_cells.find(parent) ==
                   future_fe_indices_on_coarsened_cells.end())
                 {
-#ifdef DEBUG
-                  for (const auto &child : parent->child_iterators())
-                    Assert(child->is_active() && child->coarsen_flag_set(),
-                           typename Triangulation<
-                             dim>::ExcInconsistentCoarseningFlags());
-#endif
+                  if constexpr (running_in_debug_mode())
+                    {
+                      for (const auto &child : parent->child_iterators())
+                        Assert(child->is_active() && child->coarsen_flag_set(),
+                               typename Triangulation<
+                                 dim>::ExcInconsistentCoarseningFlags());
+                    }
 
                   parent_future_fe_index =
                     internal::hp::DoFHandlerImplementation::
@@ -677,7 +678,7 @@ namespace hp
     void
     force_p_over_h(const DoFHandler<dim, spacedim> &dof_handler)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -698,7 +699,7 @@ namespace hp
     void
     choose_p_over_h(const DoFHandler<dim, spacedim> &dof_handler)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return;
 
@@ -811,7 +812,7 @@ namespace hp
                              const unsigned int               max_difference,
                              const unsigned int               contains_fe_index)
     {
-      if (dof_handler.get_fe_collection().size() == 0)
+      if (dof_handler.get_fe_collection().empty())
         // nothing to do
         return false;
 
@@ -1038,7 +1039,7 @@ namespace hp
 
           levels_changed_in_cycle =
             Utilities::MPI::logical_or(levels_changed_in_cycle,
-                                       dof_handler.get_communicator());
+                                       dof_handler.get_mpi_communicator());
           levels_changed |= levels_changed_in_cycle;
         }
       while (levels_changed_in_cycle);
@@ -1069,6 +1070,6 @@ namespace hp
 
 
 // explicit instantiations
-#include "refinement.inst"
+#include "hp/refinement.inst"
 
 DEAL_II_NAMESPACE_CLOSE

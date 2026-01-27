@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2021 by the deal.II authors
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -37,7 +37,7 @@ test()
     std::vector<typename Particles::PropertyPool<dim, spacedim>::Handle>
       particle_handles;
 
-    // Allocate some space in non-contigous locations
+    // Allocate some space in non-contiguous locations
     particle_handles.push_back(pool.register_particle());
     particle_handles.insert(particle_handles.begin(), pool.register_particle());
     particle_handles.push_back(pool.register_particle());

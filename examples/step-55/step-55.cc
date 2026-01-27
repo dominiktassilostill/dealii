@@ -97,7 +97,7 @@ namespace Step55
     // step-31 to convert a run-time exception into a failed assertion
     // should the inner solver not converge.
     template <class Matrix, class Preconditioner>
-    class InverseMatrix : public Subscriptor
+    class InverseMatrix : public EnableObserverPointer
     {
     public:
       InverseMatrix(const Matrix &m, const Preconditioner &preconditioner);
@@ -106,8 +106,8 @@ namespace Step55
       void vmult(VectorType &dst, const VectorType &src) const;
 
     private:
-      const SmartPointer<const Matrix> matrix;
-      const Preconditioner            &preconditioner;
+      const ObserverPointer<const Matrix> matrix;
+      const Preconditioner               &preconditioner;
     };
 
 
@@ -145,7 +145,7 @@ namespace Step55
     // The class A template class for a simple block diagonal preconditioner
     // for 2x2 matrices.
     template <class PreconditionerA, class PreconditionerS>
-    class BlockDiagonalPreconditioner : public Subscriptor
+    class BlockDiagonalPreconditioner : public EnableObserverPointer
     {
     public:
       BlockDiagonalPreconditioner(const PreconditionerA &preconditioner_A,

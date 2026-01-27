@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2014 - 2023 by the deal.II authors
+// Copyright (C) 2014 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,6 @@
 // Tests CellwiseInverseMassMatrix on vector DG elements, similar test as
 // inverse_mass_02 but using different coefficients on different components
 
-#include <deal.II/base/function.h>
 
 #include <deal.II/dofs/dof_handler.h>
 
@@ -26,7 +25,6 @@
 #include <deal.II/fe/mapping_q.h>
 
 #include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/manifold_lib.h>
 #include <deal.II/grid/tria.h>
 
 #include <deal.II/lac/precondition.h>
@@ -188,24 +186,15 @@ template <int dim, int fe_degree>
 void
 test()
 {
-  const SphericalManifold<dim> manifold;
-  Triangulation<dim>           tria;
+  Triangulation<dim> tria;
   GridGenerator::hyper_ball(tria);
-  typename Triangulation<dim>::active_cell_iterator cell = tria.begin_active(),
-                                                    endc = tria.end();
-  for (; cell != endc; ++cell)
-    for (const unsigned int f : GeometryInfo<dim>::face_indices())
-      if (cell->at_boundary(f))
-        cell->face(f)->set_all_manifold_ids(0);
-  tria.set_manifold(0, manifold);
 
   if (dim < 3 || fe_degree < 2)
     tria.refine_global(1);
   tria.begin(tria.n_levels() - 1)->set_refine_flag();
   tria.last()->set_refine_flag();
   tria.execute_coarsening_and_refinement();
-  cell = tria.begin_active();
-  for (; cell != endc; ++cell)
+  for (const auto &cell : tria.active_cell_iterators())
     if (cell->center().norm() < 1e-8)
       cell->set_refine_flag();
   tria.execute_coarsening_and_refinement();

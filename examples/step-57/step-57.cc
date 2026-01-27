@@ -182,7 +182,7 @@ namespace Step57
   // positive definite, we can use CG to solve the corresponding linear
   // system.
   template <class PreconditionerMp>
-  class BlockSchurPreconditioner : public Subscriptor
+  class BlockSchurPreconditioner : public EnableObserverPointer
   {
   public:
     BlockSchurPreconditioner(double                           gamma,
@@ -605,7 +605,7 @@ namespace Step57
     // Transfer solution from coarse to fine mesh and apply boundary value
     // constraints to the new transferred solution. Note that present_solution
     // is still a vector corresponding to the old mesh.
-    solution_transfer.interpolate(present_solution, tmp);
+    solution_transfer.interpolate(tmp);
     nonzero_constraints.distribute(tmp);
 
     // Finally set up matrix and vectors and set the present_solution to the

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #include <deal.II/lac/generic_linear_algebra.h>
 
 #include <deal.II/particles/utilities.h>
+
+#include <vector>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -206,7 +208,7 @@ namespace Particles
       matrix.compress(VectorOperation::add);
     }
 
-#include "utilities.inst"
+#include "particles/utilities.inst"
 
   } // namespace Utilities
 } // namespace Particles

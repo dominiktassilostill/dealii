@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -12,7 +12,8 @@
 //
 // ------------------------------------------------------------------------
 
-#pragma once
+#ifndef dealii_tests_fe_conformity_test_h
+#define dealii_tests_fe_conformity_test_h
 
 #include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/tensor.h>
@@ -86,12 +87,12 @@ namespace FEConforimityTest
                         const Vector<double>         &dof_vector,
                         std::vector<double>          &jumps);
 
-    SmartPointer<const FiniteElement<dim>> fe_ptr;
-    Triangulation<dim>                     triangulation;
-    DoFHandler<dim>                        dof_handler;
-    AffineConstraints<double>              constraints;
+    ObserverPointer<const FiniteElement<dim>> fe_ptr;
+    Triangulation<dim>                        triangulation;
+    DoFHandler<dim>                           dof_handler;
+    AffineConstraints<double>                 constraints;
 
-    Vector<double> random_fe_funtion;
+    Vector<double> random_fe_function;
 
     const unsigned int config_switch;
 
@@ -191,8 +192,9 @@ namespace FEConforimityTest
                  ++line_index)
               {
                 deallog << "      {" << line_index << " -> "
-                        << cell->line_orientation(line_index) << "}"
-                        << std::endl;
+                        << (cell->line_orientation(line_index) ==
+                            numbers::default_geometric_orientation)
+                        << "}" << std::endl;
               } // line_index
           }     // cell
       }         // plot_mesh_properties
@@ -243,8 +245,9 @@ namespace FEConforimityTest
                  ++line_index)
               {
                 deallog << "      {" << line_index << " -> "
-                        << cell->line_orientation(line_index) << "}"
-                        << std::endl;
+                        << (cell->line_orientation(line_index) ==
+                            numbers::default_geometric_orientation)
+                        << "}" << std::endl;
               } // line_index
           }     // cell
       }         // plot_mesh_properties
@@ -266,10 +269,10 @@ namespace FEConforimityTest
       constraints.close();
     }
 
-    random_fe_funtion.reinit(dof_handler.n_dofs());
+    random_fe_function.reinit(dof_handler.n_dofs());
 
     // Fill vector with pseudo-random values
-    fill_vector_randomly(random_fe_funtion, /* min */ -5.0, /* max */ 5.0);
+    fill_vector_randomly(random_fe_function, /* min */ -5.0, /* max */ 5.0);
   } // make_dofs()
 
 
@@ -453,7 +456,7 @@ namespace FEConforimityTest
                 case FiniteElementData<dim>::Conformity::H1:
                   {
                     get_function_jump(fe_interface_values,
-                                      random_fe_funtion,
+                                      random_fe_function,
                                       interface_jumps);
 
                     deallog << "Function jumps (at quad points) in cell   "
@@ -466,7 +469,7 @@ namespace FEConforimityTest
                 case FiniteElementData<dim>::Conformity::Hdiv:
                   {
                     get_normal_jump(fe_interface_values,
-                                    random_fe_funtion,
+                                    random_fe_function,
                                     interface_jumps);
 
                     deallog << "Normal jumps (at quad points) in cell   "
@@ -479,7 +482,7 @@ namespace FEConforimityTest
                 case FiniteElementData<dim>::Conformity::Hcurl:
                   {
                     get_tangential_jump(fe_interface_values,
-                                        random_fe_funtion,
+                                        random_fe_function,
                                         interface_jumps);
 
                     deallog << "Tangential jumps (at quad points) in cell   "
@@ -514,3 +517,5 @@ namespace FEConforimityTest
     run_test();
   }
 } // namespace FEConforimityTest
+
+#endif

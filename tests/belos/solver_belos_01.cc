@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -66,7 +66,7 @@ main(int argc, char *argv[])
   affine_constraints.close();
 
   TrilinosWrappers::SparsityPattern dsp(dof_handler.locally_owned_dofs(),
-                                        dof_handler.get_communicator());
+                                        dof_handler.get_mpi_communicator());
   DoFTools::make_sparsity_pattern(dof_handler, dsp, affine_constraints);
   dsp.compress();
 
@@ -111,15 +111,15 @@ main(int argc, char *argv[])
                      false);
       Teuchos::RCP<Epetra_MultiVector> B, X;
 
-      LinearAlgebra::EpetraWrappers::Vector x_(dof_handler.locally_owned_dofs(),
-                                               dof_handler.get_communicator());
+      LinearAlgebra::EpetraWrappers::Vector x_(
+        dof_handler.locally_owned_dofs(), dof_handler.get_mpi_communicator());
       LinearAlgebra::ReadWriteVector<Number> x_temp(
         dof_handler.locally_owned_dofs());
       x_temp.import_elements(x, VectorOperation::insert);
       x_.import_elements(x_temp, VectorOperation::insert);
 
-      LinearAlgebra::EpetraWrappers::Vector r_(dof_handler.locally_owned_dofs(),
-                                               dof_handler.get_communicator());
+      LinearAlgebra::EpetraWrappers::Vector r_(
+        dof_handler.locally_owned_dofs(), dof_handler.get_mpi_communicator());
       LinearAlgebra::ReadWriteVector<Number> r_temp(
         dof_handler.locally_owned_dofs());
       r_temp.import_elements(r, VectorOperation::insert);

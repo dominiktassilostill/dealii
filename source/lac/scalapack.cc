@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -368,12 +368,15 @@ ScaLAPACKMatrix<NumberType>::copy_from(const LAPACKFullMatrix<NumberType> &B,
   const unsigned int this_mpi_process(
     Utilities::MPI::this_mpi_process(this->grid->mpi_communicator));
 
-#  ifdef DEBUG
-  Assert(Utilities::MPI::max(rank, this->grid->mpi_communicator) == rank,
-         ExcMessage("All processes have to call routine with identical rank"));
-  Assert(Utilities::MPI::min(rank, this->grid->mpi_communicator) == rank,
-         ExcMessage("All processes have to call routine with identical rank"));
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      Assert(Utilities::MPI::max(rank, this->grid->mpi_communicator) == rank,
+             ExcMessage(
+               "All processes have to call routine with identical rank"));
+      Assert(Utilities::MPI::min(rank, this->grid->mpi_communicator) == rank,
+             ExcMessage(
+               "All processes have to call routine with identical rank"));
+    }
 
   // root process has to be active in the grid of A
   if (this_mpi_process == rank)
@@ -441,7 +444,6 @@ ScaLAPACKMatrix<NumberType>::copy_from(const LAPACKFullMatrix<NumberType> &B,
                                    &n_proc_cols_B);
       Assert(n_local_rows_B == n_rows, ExcInternalError());
       Assert(n_local_cols_B == n_columns, ExcInternalError());
-      (void)n_local_cols_B;
 
       int lda  = std::max(1, n_local_rows_B);
       int info = 0;
@@ -538,12 +540,15 @@ ScaLAPACKMatrix<NumberType>::copy_to(LAPACKFullMatrix<NumberType> &B,
   const unsigned int this_mpi_process(
     Utilities::MPI::this_mpi_process(this->grid->mpi_communicator));
 
-#  ifdef DEBUG
-  Assert(Utilities::MPI::max(rank, this->grid->mpi_communicator) == rank,
-         ExcMessage("All processes have to call routine with identical rank"));
-  Assert(Utilities::MPI::min(rank, this->grid->mpi_communicator) == rank,
-         ExcMessage("All processes have to call routine with identical rank"));
-#  endif
+  if constexpr (running_in_debug_mode())
+    {
+      Assert(Utilities::MPI::max(rank, this->grid->mpi_communicator) == rank,
+             ExcMessage(
+               "All processes have to call routine with identical rank"));
+      Assert(Utilities::MPI::min(rank, this->grid->mpi_communicator) == rank,
+             ExcMessage(
+               "All processes have to call routine with identical rank"));
+    }
 
   if (this_mpi_process == rank)
     {
@@ -612,7 +617,6 @@ ScaLAPACKMatrix<NumberType>::copy_to(LAPACKFullMatrix<NumberType> &B,
                                    &n_proc_cols_B);
       Assert(n_local_rows_B == n_rows, ExcInternalError());
       Assert(n_local_cols_B == n_columns, ExcInternalError());
-      (void)n_local_cols_B;
 
       int lda  = std::max(1, n_local_rows_B);
       int info = 0;
@@ -3255,6 +3259,7 @@ ScaLAPACKMatrix<NumberType>::load_parallel(const std::string &filename)
   DEAL_II_ASSERT_UNREACHABLE();
 #  else
 #    ifndef H5_HAVE_PARALLEL
+  (void)filename;
   DEAL_II_ASSERT_UNREACHABLE();
 #    else
 
@@ -3522,7 +3527,7 @@ ScaLAPACKMatrix<NumberType>::scale_rows(const InputVector &factors)
 
 
 // instantiations
-#  include "scalapack.inst"
+#  include "lac/scalapack.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

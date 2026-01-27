@@ -15,7 +15,7 @@
 /**
  * @defgroup auto_symb_diff Automatic and symbolic differentiation
  *
- * @brief A module dedicated to the implementation of functions and classes that relate
+ * @brief A group dedicated to the implementation of functions and classes that relate
  * to automatic and symbolic differentiation.
  *
  * Below we provide a very brief introduction as to what automatic and symbolic differentiation are,
@@ -185,7 +185,7 @@
  * }
  * @endcode
  *
- * @subsection Exploitation of the chain-rule
+ * @subsection auto_diff_1_0 Exploitation of the chain-rule
  *
  * In the most practical sense, any of the above categories exploit the chain-rule to compute the total
  * derivative of a composite function. To perform this action, they typically use one of two mechanisms to

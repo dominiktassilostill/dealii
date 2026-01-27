@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,7 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/types.h>
 #include <deal.II/base/utilities.h>
 
 #include <tuple>
@@ -28,12 +29,12 @@ namespace internal
   /**
    * Combine orientation flags.
    */
-  inline unsigned char
+  inline types::geometric_orientation
   combined_face_orientation(const bool face_orientation,
                             const bool face_rotation,
                             const bool face_flip)
   {
-    return (face_orientation ? 1 : 0) + (face_rotation ? 2 : 0) +
+    return (face_orientation ? 0 : 1) + (face_rotation ? 2 : 0) +
            (face_flip ? 4 : 0);
   }
 
@@ -42,11 +43,17 @@ namespace internal
    * rotation flag, flip flag.
    */
   inline std::tuple<bool, bool, bool>
-  split_face_orientation(const unsigned char combined_face_orientation)
+  split_face_orientation(
+    const types::geometric_orientation combined_orientation)
   {
-    return {Utilities::get_bit(combined_face_orientation, 0),
-            Utilities::get_bit(combined_face_orientation, 1),
-            Utilities::get_bit(combined_face_orientation, 2)};
+    Assert(combined_orientation != numbers::invalid_geometric_orientation,
+           ExcMessage(
+             "The provided orientation value is not valid. This typically "
+             "means this value was initialized to an invalid value and not "
+             "correctly set later."));
+    return {!Utilities::get_bit(combined_orientation, 0),
+            Utilities::get_bit(combined_orientation, 1),
+            Utilities::get_bit(combined_orientation, 2)};
   }
 
 

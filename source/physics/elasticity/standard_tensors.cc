@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2020 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -61,6 +61,6 @@ DEAL_II_CONSTEXPR const SymmetricTensor<4, dim>
 #endif // DOXYGEN
 
 // explicit instantiations
-#include "standard_tensors.inst"
+#include "physics/elasticity/standard_tensors.inst"
 
 DEAL_II_NAMESPACE_CLOSE

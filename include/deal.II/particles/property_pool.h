@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -45,6 +45,10 @@ namespace types
   /**
    * An identifier that denotes the MPI type associated with
    * types::global_dof_index.
+   *
+   * This preprocessor variable is deprecated. Use the variable
+   * `Utilities::MPI::mpi_type_id_for_type<types::particle_index>`
+   * instead.
    */
 #    define DEAL_II_PARTICLE_INDEX_MPI_TYPE MPI_UINT64_T
 #  endif
@@ -157,7 +161,7 @@ namespace Particles
     get_location(const Handle handle) const;
 
     /**
-     * Return a writeable reference to the location of a particle
+     * Return a writable reference to the location of a particle
      * identified by the given `handle`.
      */
     Point<spacedim> &
@@ -202,8 +206,36 @@ namespace Particles
      * Return an ArrayView to the properties that correspond to the given
      * handle @p handle.
      */
-    ArrayView<double>
-    get_properties(const Handle handle);
+    ArrayView<double, dealii::MemorySpace::Host>
+    get_properties(const Handle handle)
+    {
+      // The implementation is up here inside the class declaration because
+      // NVCC (at least in 12.5 and 12.6) otherwise produce a compile error:
+      //
+      // error: no declaration matches ‘dealii::ArrayView<__remove_cv(const
+      // double)> dealii::Particles::PropertyPool<dim,
+      // spacedim>::get_properties(Handle)’
+      //
+      // See https://github.com/dealii/dealii/issues/17148
+
+      const std::vector<double>::size_type data_index =
+        (handle != invalid_handle) ? handle * n_properties : 0;
+
+      // Ideally we would need to assert that 'handle' has not been deallocated
+      // by searching through 'currently_available_handles'. However, this
+      // is expensive and this function is performance critical, so instead
+      // just check against the array range, and rely on the fact
+      // that handles are invalidated when handed over to
+      // deallocate_properties_array().
+      Assert(data_index <= properties.size() - n_properties,
+             ExcMessage(
+               "Invalid property handle. This can happen if the "
+               "handle was duplicated and then one copy was deallocated "
+               "before trying to access the properties."));
+
+      return ArrayView<double>(properties.data() + data_index, n_properties);
+    }
+
 
     /**
      * Reserve the dynamic memory needed for storing the properties of
@@ -455,26 +487,9 @@ namespace Particles
 
 
 
-  template <int dim, int spacedim>
-  inline ArrayView<double>
-  PropertyPool<dim, spacedim>::get_properties(const Handle handle)
-  {
-    const std::vector<double>::size_type data_index =
-      (handle != invalid_handle) ? handle * n_properties : 0;
-
-    // Ideally we would need to assert that 'handle' has not been deallocated
-    // by searching through 'currently_available_handles'. However, this
-    // is expensive and this function is performance critical, so instead
-    // just check against the array range, and rely on the fact
-    // that handles are invalidated when handed over to
-    // deallocate_properties_array().
-    Assert(data_index <= properties.size() - n_properties,
-           ExcMessage("Invalid property handle. This can happen if the "
-                      "handle was duplicated and then one copy was deallocated "
-                      "before trying to access the properties."));
-
-    return ArrayView<double>(properties.data() + data_index, n_properties);
-  }
+  // template <int dim, int spacedim>
+  // inline ArrayView<double, dealii::MemorySpace::Host>
+  //   PropertyPool<dim, spacedim>::get_properties(const Handle handle)
 
 
 

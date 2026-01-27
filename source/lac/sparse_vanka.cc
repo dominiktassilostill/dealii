@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2023 by the deal.II authors
+// Copyright (C) 1999 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -27,6 +27,12 @@ SparseVanka<double>::vmult<float>(Vector<float>       &dst,
 template void
 SparseVanka<double>::vmult<double>(Vector<double>       &dst,
                                    const Vector<double> &src) const;
+template void
+SparseVanka<double>::Tvmult<float>(Vector<float>       &dst,
+                                   const Vector<float> &src) const;
+template void
+SparseVanka<double>::Tvmult<double>(Vector<double>       &dst,
+                                    const Vector<double> &src) const;
 
 
 template class SparseBlockVanka<float>;
@@ -38,5 +44,11 @@ SparseBlockVanka<double>::vmult<float>(Vector<float>       &dst,
 template void
 SparseBlockVanka<double>::vmult<double>(Vector<double>       &dst,
                                         const Vector<double> &src) const;
+template void
+SparseBlockVanka<double>::Tvmult<float>(Vector<float>       &dst,
+                                        const Vector<float> &src) const;
+template void
+SparseBlockVanka<double>::Tvmult<double>(Vector<double>       &dst,
+                                         const Vector<double> &src) const;
 
 DEAL_II_NAMESPACE_CLOSE

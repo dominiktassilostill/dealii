@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -307,7 +307,7 @@ All entries are signed with the names of the author.
        New: The new <code>Polynomial</code> class can
        be used as base class for all 1d polynomials. It stores the
        coefficients of the polynomial and uses the Horner scheme to
-       evaluate values and all derivates.
+       evaluate values and all derivatives.
        <br>
        (RH 2001/03/14)
        </p>

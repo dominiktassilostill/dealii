@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2024 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -59,14 +59,14 @@ namespace dealii
 
     explicit FEEvaluationShift(
       const MatrixFree<dim, Number, VectorizedArrayType> &matrix_free,
-      const unsigned int                                  dof_no  = 0,
-      const unsigned int                                  quad_no = 0,
-      const unsigned int first_selected_component                 = 0,
+      const unsigned int                                  dof_handler_index = 0,
+      const unsigned int                                  quadrature_index  = 0,
+      const unsigned int first_selected_component                           = 0,
       const unsigned int active_fe_index   = numbers::invalid_unsigned_int,
       const unsigned int active_quad_index = numbers::invalid_unsigned_int)
       : BaseClass(matrix_free,
-                  dof_no,
-                  quad_no,
+                  dof_handler_index,
+                  quadrature_index,
                   first_selected_component,
                   active_fe_index,
                   active_quad_index)
@@ -137,13 +137,14 @@ namespace dealii
     else
       this->data = this->shape_info_base;
 
-#ifdef DEBUG
-    this->is_reinitialized           = true;
-    this->dof_values_initialized     = false;
-    this->values_quad_initialized    = false;
-    this->gradients_quad_initialized = false;
-    this->hessians_quad_initialized  = false;
-#endif
+    if constexpr (running_in_debug_mode())
+      {
+        this->is_reinitialized           = true;
+        this->dof_values_initialized     = false;
+        this->values_quad_initialized    = false;
+        this->gradients_quad_initialized = false;
+        this->hessians_quad_initialized  = false;
+      }
   }
 
   template <int dim,
@@ -164,7 +165,7 @@ namespace dealii
            const internal::MatrixFreeFunctions::ShapeInfo<Number> *shape_info)
   {
     Assert(
-      this->quad_no <
+      this->quadrature_index <
         this->matrix_free->get_mapping_info().face_data_by_cells.size(),
       ExcMessage(
         "You must set MatrixFree::AdditionalData::mapping_update_flags_faces_by_cells to use the present reinit method."));
@@ -241,13 +242,14 @@ namespace dealii
     else
       this->data = this->shape_info_base;
 
-#ifdef DEBUG
-    this->is_reinitialized           = true;
-    this->dof_values_initialized     = false;
-    this->values_quad_initialized    = false;
-    this->gradients_quad_initialized = false;
-    this->hessians_quad_initialized  = false;
-#endif
+    if constexpr (running_in_debug_mode())
+      {
+        this->is_reinitialized           = true;
+        this->dof_values_initialized     = false;
+        this->values_quad_initialized    = false;
+        this->gradients_quad_initialized = false;
+        this->hessians_quad_initialized  = false;
+      }
   }
 } // namespace dealii
 

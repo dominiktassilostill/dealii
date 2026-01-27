@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2016 by the deal.II authors
+## Copyright (C) 2016 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -12,6 +12,6 @@
 ##
 ## ------------------------------------------------------------------------
 
-__doc__ = 'PyDealII is just an empty shell. You need to either\n\
+__doc__ = "PyDealII is just an empty shell. You need to either\n\
            import PyDealII.Debug or PyDealII.Release. Do not\n\
-           import both of them.'
+           import both of them."

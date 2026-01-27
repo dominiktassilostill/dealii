@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,6 +13,8 @@
 // ------------------------------------------------------------------------
 
 #include <deal.II/base/convergence_table.h>
+#include <deal.II/base/exceptions.h>
+#include <deal.II/base/table_handler.h>
 
 #include <cmath>
 
@@ -69,7 +71,7 @@ ConvergenceTable::evaluate_convergence_rates(
             if (i == 0)
               {
                 // no value available for the first row
-                add_value(rate_key, std::string("-"));
+                add_value(rate_key, "-");
               }
             else
               {
@@ -88,7 +90,7 @@ ConvergenceTable::evaluate_convergence_rates(
             if (i == 0)
               {
                 // no value available for the first row
-                add_value(rate_key, std::string("-"));
+                add_value(rate_key, "-");
               }
             else
               {
@@ -159,7 +161,7 @@ ConvergenceTable::evaluate_convergence_rates(const std::string &data_column_key,
             if (i == 0)
               {
                 // no value available for the first row
-                add_value(rate_key, std::string("-"));
+                add_value(rate_key, "-");
               }
             else
               {
@@ -177,7 +179,7 @@ ConvergenceTable::evaluate_convergence_rates(const std::string &data_column_key,
             if (i == 0)
               {
                 // no value available for the first row
-                add_value(rate_key, std::string("-"));
+                add_value(rate_key, "-");
               }
             else
               {

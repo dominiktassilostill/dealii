@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2007 - 2023 by the deal.II authors
+// Copyright (C) 2007 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,7 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-#include "full_matrix.inst"
+#include "lac/full_matrix.inst"
 
 #ifndef DOXYGEN
 

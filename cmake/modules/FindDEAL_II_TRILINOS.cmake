@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2023 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -196,4 +196,3 @@ else()
       EPETRA_CONFIG_H ${_libraries} TRILINOS_CXX_SUPPORTS_SACADO_COMPLEX_RAD
     )
 endif()
-

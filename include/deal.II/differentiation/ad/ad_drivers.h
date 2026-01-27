@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -28,6 +28,8 @@
 
 #ifdef DEAL_II_WITH_ADOLC
 
+#  include <adolc/adouble.h> // Taped double
+#  include <adolc/adtl.h>    // Tapeless double
 #  include <adolc/internal/usrparms.h>
 
 #endif // DEAL_II_WITH_ADOLC

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,9 +18,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/patterns.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <boost/archive/basic_archive.hpp>
 #include <boost/property_tree/ptree_fwd.hpp>
@@ -29,6 +29,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -625,7 +626,7 @@ class MultipleParameterLoop;
  *     prm.parse_input ("prmtest.prm");
  *     // print parameters to std::cout as ASCII text
  *     std::cout << "\n\n";
- *     prm.print_parameters (std::cout, ParameterHandler::Text);
+ *     prm.print_parameters (std::cout, ParameterHandler::PRM);
  *     // get parameters into the program
  *     std::cout << "\n\n" << "Getting parameters:" << std::endl;
  *     p.get_parameters (prm);
@@ -851,7 +852,7 @@ class MultipleParameterLoop;
  *
  * @ingroup input
  */
-class ParameterHandler : public Subscriptor
+class ParameterHandler : public EnableObserverPointer
 {
 public:
   /**
@@ -895,14 +896,6 @@ public:
     PRM = 0x0010,
 
     /**
-     * Write human readable output suitable to be read by
-     * ParameterHandler::parse_input() again.
-     *
-     * @deprecated Use `PRM` instead of `Text`.
-     */
-    Text = PRM,
-
-    /**
      * Write parameters as a LaTeX table.
      */
     LaTeX = 0x0020,
@@ -938,14 +931,6 @@ public:
 
     /**
      * Write the content of ParameterHandler without comments or changed default
-     * values.
-     *
-     * @deprecated Use `ShortPRM` instead of `ShortText`.
-     */
-    ShortText = ShortPRM,
-
-    /**
-     * Write the content of ParameterHandler without comments or changed default
      * values as a XML file.
      */
     ShortXML = XML | Short,
@@ -961,6 +946,11 @@ public:
      * values as a LaTeX file.
      */
     ShortLaTeX = LaTeX | Short,
+
+    /**
+     * Write out only parameters with changed values.
+     */
+    KeepOnlyChanged = 0x0200,
   };
 
 
@@ -1126,6 +1116,26 @@ public:
                 const Patterns::PatternBase &pattern = Patterns::Anything(),
                 const std::string           &documentation = "",
                 const bool                   has_to_be_set = false);
+
+  /**
+   * Mark a previously declared parameter as deprecated. This will cause an
+   * exception of type ExcEncounteredDeprecatedEntries to be thrown if
+   * the parameter is used in an input file that is parsed by the
+   * parse_input() function.
+   *
+   * The exception message will list the name of the parameter(s) that
+   * were encountered in the input file.
+   *
+   * @param entry The name of the parameter to be marked as deprecated.
+   * @param is_deprecated An optional parameter that can be used to
+   *  set the deprecation status of the parameter. If set to true, the
+   *  parameter will be marked as deprecated. This is the default behavior.
+   *  If set to false, the parameter will be marked as not deprecated.
+   *  This is useful if a parameter is marked as deprecated by
+   *  one function, but another function wants to keep using it.
+   */
+  void
+  mark_as_deprecated(const std::string &entry, const bool is_deprecated = true);
 
   /**
    * Attach an action to the parameter with name @p entry in the current
@@ -1659,6 +1669,25 @@ public:
   DeclException1(ExcEntryAlreadyExists,
                  std::string,
                  << "The following entry already exists: " << arg1 << '.');
+
+  /**
+   * Exception
+   */
+  DeclException3(ExcEntryIsDeprecated,
+                 int,
+                 std::string,
+                 std::string,
+                 << "Line <" << arg1 << "> of file <" << arg2 << ">: "
+                 << "Entry <" << arg3 << "> is deprecated.");
+
+  /**
+   * Exception
+   */
+  DeclException1(ExcEncounteredDeprecatedEntries,
+                 std::string,
+                 << "The following deprecated entries were encountered:\n\n"
+                 << arg1);
+
   /**
    * Exception
    */
@@ -1674,6 +1703,7 @@ public:
     ExcAlreadyAtTopLevel,
     "You can't leave a subsection if you are already at the top level "
     "of the subsection hierarchy.");
+
   /**
    * Exception
    */
@@ -1692,8 +1722,9 @@ public:
                  std::string,
                  std::string,
                  << "There are unequal numbers of 'subsection' and 'end' "
-                    "statements in the parameter file <"
-                 << arg1 << ">." << (arg2.size() > 0 ? "\n" + arg2 : ""));
+                    "statements in the parameter file"
+                 << (arg1.empty() ? "" : (" <" + arg1 + ">")) << "."
+                 << (arg2.empty() ? "" : ("\n" + arg2)));
 
   /**
    * Exception for when, during parsing of a parameter file, the parser
@@ -1703,8 +1734,9 @@ public:
                  int,
                  std::string,
                  std::string,
-                 << "Line <" << arg1 << "> of file <" << arg2
-                 << ">: You are trying to enter a subsection '" << arg3
+                 << "Line <" << arg1 << ">"
+                 << (arg2.empty() ? "" : (" of file <" + arg2 + ">"))
+                 << ": You are trying to enter a subsection '" << arg3
                  << "', but the ParameterHandler object does "
                  << "not know of any such subsection.");
 
@@ -1717,27 +1749,28 @@ public:
                  int,
                  std::string,
                  std::string,
-                 << "Line <" << arg1 << "> of file <" << arg2 << ">: " << arg3);
+                 << "Line <" << arg1 << ">"
+                 << (arg2.empty() ? "" : (" of file <" + arg2 + ">")) << ": "
+                 << arg3);
 
   /**
    * Exception for an entry in a parameter file that does not match the
    * provided pattern. The arguments are, in order, the line number, file
    * name, entry value, entry name, and a description of the pattern.
    */
-  DeclException5(ExcInvalidEntryForPattern,
-                 int,
-                 std::string,
-                 std::string,
-                 std::string,
-                 std::string,
-                 << "Line <" << arg1 << "> of file <" << arg2
-                 << ">:\n"
-                    "    The entry value \n"
-                 << "        " << arg3 << '\n'
-                 << "    for the entry named\n"
-                 << "        " << arg4 << '\n'
-                 << "    does not match the given pattern:\n"
-                 << "        " << arg5);
+  DeclException5(
+    ExcInvalidEntryForPattern,
+    int,
+    std::string,
+    std::string,
+    std::string,
+    std::string,
+    << "In line <" << arg1 << ">"
+    << (arg2.empty() ? "" : (" of file <" + arg2 + ">")) << ": The value <"
+    << arg3 << "> for the parameter entry named <" << arg4
+    << "> does not match the pattern expected for this parameter.\n"
+       "The expected pattern for this parameter is:\n"
+    << arg5);
 
   /**
    * Exception for when an XML file cannot be read at all. This happens when
@@ -1759,8 +1792,9 @@ public:
     int,
     std::string,
     std::string,
-    << "Line <" << arg1 << "> of file <" << arg2
-    << ">: This line "
+    << "Line <" << arg1 << ">"
+    << (arg2.empty() ? "" : (" of file <" + arg2 + ">"))
+    << ": This line "
        "contains an 'include' or 'INCLUDE' statement, but the given "
        "file to include <"
     << arg3 << "> cannot be opened.");
@@ -2301,7 +2335,7 @@ ParameterHandler::save(Archive &ar, const unsigned int) const
 {
   // Forward to serialization
   // function in the base class.
-  ar &static_cast<const Subscriptor &>(*this);
+  ar &static_cast<const EnableObserverPointer &>(*this);
 
   ar &*entries.get();
 
@@ -2321,7 +2355,7 @@ ParameterHandler::load(Archive &ar, const unsigned int)
 {
   // Forward to serialization
   // function in the base class.
-  ar &static_cast<Subscriptor &>(*this);
+  ar &static_cast<EnableObserverPointer &>(*this);
 
   ar &*entries.get();
 

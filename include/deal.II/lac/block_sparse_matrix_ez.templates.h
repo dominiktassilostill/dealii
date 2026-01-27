@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2018 by the deal.II authors
+// Copyright (C) 2002 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -82,7 +82,7 @@ BlockSparseMatrixEZ<number>::operator=(const double d)
 template <typename number>
 BlockSparseMatrixEZ<number>::BlockSparseMatrixEZ(
   const BlockSparseMatrixEZ<number> &m)
-  : Subscriptor(m)
+  : EnableObserverPointer(m)
   , row_indices(m.row_indices)
   , column_indices(m.column_indices)
   , blocks(m.blocks)

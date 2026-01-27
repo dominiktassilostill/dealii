@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -141,7 +141,7 @@ do_test(const hp::FECollection<dim> &fe_fine,
 
 #if 0
   data_out.write_vtu_with_pvtu_record(
-    "./", "result", counter++, tria.get_communicator(), 3, 1);
+    "./", "result", counter++, tria.get_mpi_communicator(), 3, 1);
 #else
   deallog << std::endl;
   data_out.write_vtk(deallog.get_file_stream());

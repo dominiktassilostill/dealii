@@ -27,7 +27,7 @@
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_values.h>
 
-#include "deal.II/grid/filtered_iterator.h"
+#include <deal.II/grid/filtered_iterator.h>
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/manifold_lib.h>
 
@@ -101,7 +101,7 @@ test()
   const IndexSet &owned_set    = dof.locally_owned_dofs();
   const IndexSet  relevant_set = DoFTools::extract_locally_relevant_dofs(dof);
 
-  AffineConstraints<double> constraints(relevant_set);
+  AffineConstraints<double> constraints(owned_set, relevant_set);
   DoFTools::make_hanging_node_constraints(dof, constraints);
   VectorTools::interpolate_boundary_values(dof,
                                            0,

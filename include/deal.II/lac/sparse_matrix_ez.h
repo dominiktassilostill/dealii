@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2002 - 2023 by the deal.II authors
+// Copyright (C) 2002 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,8 +18,11 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/exceptions.h>
+#include <deal.II/base/numbers.h>
+#include <deal.II/base/observer_pointer.h>
+#include <deal.II/base/types.h>
 
 #include <deal.II/lac/exceptions.h>
 
@@ -100,7 +103,7 @@ class FullMatrix;
  *   where "EZ" is pronounced the same way as the word "easy".
  */
 template <typename number>
-class SparseMatrixEZ : public Subscriptor
+class SparseMatrixEZ : public EnableObserverPointer
 {
 public:
   /**
@@ -160,7 +163,7 @@ public:
      */
     unsigned short length;
     /**
-     * Position of the diagonal element relative tor the start index.
+     * Position of the diagonal element relative to the start index.
      */
     unsigned short diagonal;
     /**
@@ -351,11 +354,11 @@ public:
    * efficient assembling of the matrix.
    */
   void
-  reinit(const size_type n_rows,
-         const size_type n_columns,
-         size_type       default_row_length = 0,
-         unsigned int    default_increment  = 1,
-         size_type       reserve            = 0);
+  reinit(const size_type    n_rows,
+         const size_type    n_columns,
+         const size_type    default_row_length = 0,
+         const unsigned int default_increment  = 1,
+         const size_type    reserve            = 0);
 
   /**
    * Release all memory and return to a state just like after having called

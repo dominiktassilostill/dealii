@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2024 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,16 +20,14 @@
 
 #ifdef DEAL_II_WITH_PETSC
 
-#  include <deal.II/base/smartpointer.h>
+#  include <deal.II/base/mpi_stub.h>
+#  include <deal.II/base/observer_pointer.h>
 
 #  include <deal.II/lac/exceptions.h>
 #  include <deal.II/lac/solver_control.h>
 
 #  include <petscksp.h>
 
-#  ifdef DEAL_II_WITH_SLEPC
-#    include <deal.II/lac/slepc_spectral_transformation.h>
-#  endif
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -172,7 +170,7 @@ namespace PETScWrappers
      * copy the data from this object before starting the solution process,
      * and copy the data back into it afterwards.
      */
-    SmartPointer<SolverControl, SolverBase> solver_control;
+    ObserverPointer<SolverControl, SolverBase> solver_control;
 
     /**
      * Utility to create the KSP object and attach convergence test.
@@ -263,17 +261,6 @@ namespace PETScWrappers
     SolverRichardson(SolverControl        &cn,
                      const AdditionalData &data = AdditionalData());
 
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverRichardson(SolverControl        &cn,
-                     const MPI_Comm        mpi_communicator,
-                     const AdditionalData &data = AdditionalData());
-
   protected:
     /**
      * Store a copy of the flags for this particular solver.
@@ -315,17 +302,6 @@ namespace PETScWrappers
     SolverChebychev(SolverControl        &cn,
                     const AdditionalData &data = AdditionalData());
 
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverChebychev(SolverControl        &cn,
-                    const MPI_Comm        mpi_communicator,
-                    const AdditionalData &data = AdditionalData());
-
   protected:
     /**
      * Store a copy of the flags for this particular solver.
@@ -365,17 +341,6 @@ namespace PETScWrappers
      */
     SolverCG(SolverControl &cn, const AdditionalData &data = AdditionalData());
 
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverCG(SolverControl        &cn,
-             const MPI_Comm        mpi_communicator,
-             const AdditionalData &data = AdditionalData());
-
   protected:
     /**
      * Store a copy of the flags for this particular solver.
@@ -414,17 +379,6 @@ namespace PETScWrappers
      * flags for tuning.
      */
     SolverBiCG(SolverControl        &cn,
-               const AdditionalData &data = AdditionalData());
-
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverBiCG(SolverControl        &cn,
-               const MPI_Comm        mpi_communicator,
                const AdditionalData &data = AdditionalData());
 
   protected:
@@ -484,17 +438,6 @@ namespace PETScWrappers
     SolverGMRES(SolverControl        &cn,
                 const AdditionalData &data = AdditionalData());
 
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverGMRES(SolverControl        &cn,
-                const MPI_Comm        mpi_communicator,
-                const AdditionalData &data = AdditionalData());
-
   protected:
     /**
      * Store a copy of the flags for this particular solver.
@@ -534,17 +477,6 @@ namespace PETScWrappers
      * flags for tuning.
      */
     SolverBicgstab(SolverControl        &cn,
-                   const AdditionalData &data = AdditionalData());
-
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverBicgstab(SolverControl        &cn,
-                   const MPI_Comm        mpi_communicator,
                    const AdditionalData &data = AdditionalData());
 
   protected:
@@ -587,17 +519,6 @@ namespace PETScWrappers
      */
     SolverCGS(SolverControl &cn, const AdditionalData &data = AdditionalData());
 
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverCGS(SolverControl        &cn,
-              const MPI_Comm        mpi_communicator,
-              const AdditionalData &data = AdditionalData());
-
   protected:
     /**
      * Store a copy of the flags for this particular solver.
@@ -636,17 +557,6 @@ namespace PETScWrappers
      * flags for tuning.
      */
     SolverTFQMR(SolverControl        &cn,
-                const AdditionalData &data = AdditionalData());
-
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverTFQMR(SolverControl        &cn,
-                const MPI_Comm        mpi_communicator,
                 const AdditionalData &data = AdditionalData());
 
   protected:
@@ -694,17 +604,6 @@ namespace PETScWrappers
     SolverTCQMR(SolverControl        &cn,
                 const AdditionalData &data = AdditionalData());
 
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverTCQMR(SolverControl        &cn,
-                const MPI_Comm        mpi_communicator,
-                const AdditionalData &data = AdditionalData());
-
   protected:
     /**
      * Store a copy of the flags for this particular solver.
@@ -743,17 +642,6 @@ namespace PETScWrappers
      * flags for tuning.
      */
     SolverCR(SolverControl &cn, const AdditionalData &data = AdditionalData());
-
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverCR(SolverControl        &cn,
-             const MPI_Comm        mpi_communicator,
-             const AdditionalData &data = AdditionalData());
 
   protected:
     /**
@@ -794,17 +682,6 @@ namespace PETScWrappers
      * flags for tuning.
      */
     SolverLSQR(SolverControl        &cn,
-               const AdditionalData &data = AdditionalData());
-
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverLSQR(SolverControl        &cn,
-               const MPI_Comm        mpi_communicator,
                const AdditionalData &data = AdditionalData());
 
   protected:
@@ -850,17 +727,6 @@ namespace PETScWrappers
      * flags for tuning.
      */
     SolverPreOnly(SolverControl        &cn,
-                  const AdditionalData &data = AdditionalData());
-
-    /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SolverPreOnly(SolverControl        &cn,
-                  const MPI_Comm        mpi_communicator,
                   const AdditionalData &data = AdditionalData());
 
   protected:
@@ -916,17 +782,6 @@ namespace PETScWrappers
                       const AdditionalData &data = AdditionalData());
 
     /**
-     * Constructor. This constructor is deprecated and ignores the MPI
-     * communicator argument. Use the other constructor instead.
-     *
-     * @deprecated
-     */
-    DEAL_II_DEPRECATED
-    SparseDirectMUMPS(SolverControl        &cn,
-                      const MPI_Comm        mpi_communicator,
-                      const AdditionalData &data = AdditionalData());
-
-    /**
      * The method to solve the linear system.
      */
     void
@@ -975,6 +830,14 @@ namespace PETScWrappers
   };
 } // namespace PETScWrappers
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

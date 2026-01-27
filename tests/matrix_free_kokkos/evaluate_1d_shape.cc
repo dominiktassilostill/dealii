@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -15,16 +15,15 @@
 
 
 // this function tests the correctness of the 1d evaluation functions used in
-// CUDAWrappers::FEEvaluation. These functions are marked 'internal' but it is
+// Portable::FEEvaluation. These functions are marked 'internal' but it is
 // much easier to check their correctness directly rather than from the results
 // in dependent functions
 
 #include <deal.II/base/memory_space.h>
 
-#include <deal.II/lac/cuda_vector.h>
 #include <deal.II/lac/read_write_vector.h>
 
-#include <deal.II/matrix_free/cuda_fe_evaluation.h>
+#include <deal.II/matrix_free/portable_tensor_product_kernels.h>
 
 #include <fstream>
 #include <iostream>
@@ -45,13 +44,23 @@ evaluate_tensor_product(
   Kokkos::View<double *, MemorySpace::Default::kokkos_space> dst,
   Kokkos::View<double *, MemorySpace::Default::kokkos_space> src)
 {
-  CUDAWrappers::internal::EvaluatorTensorProduct<
-    CUDAWrappers::internal::evaluate_general,
+  Kokkos::View<
+    double *,
+    MemorySpace::Default::kokkos_space::execution_space::scratch_memory_space,
+    Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+    dummy_scratch(team_member.team_shmem(), 0);
+
+  Portable::internal::EvaluatorTensorProduct<
+    Portable::internal::evaluate_general,
     1,
-    M - 1,
+    M,
     N,
     double>
-    evaluator(team_member, shape_values, shape_gradients, co_shape_gradients);
+    evaluator(team_member,
+              shape_values,
+              shape_gradients,
+              co_shape_gradients,
+              dummy_scratch);
 
   if (type == 0)
     evaluator.template values<0, dof_to_quad, add, false>(src, dst);
@@ -198,19 +207,19 @@ main()
   deallog.push("values");
   test<4, 4, 0, false>();
   test<3, 3, 0, false>();
+  test<3, 4, 0, false>();
+  test<3, 5, 0, false>();
   // Not supported right now
   // test<4,3,0,false>();
-  // test<3,4,0,false>();
-  // test<3,5,0,false>();
   deallog.pop();
 
   deallog.push("gradients");
   test<4, 4, 1, false>();
   test<3, 3, 1, false>();
+  test<3, 4, 1, false>();
+  test<3, 5, 1, false>();
   // Not supported right now
   // test<4,3,1,false>();
-  // test<3,4,1,false>();
-  // test<3,5,1,false>();
   deallog.pop();
 
   deallog.push("add");
@@ -218,19 +227,19 @@ main()
   deallog.push("values");
   test<4, 4, 0, true>();
   test<3, 3, 0, true>();
+  test<3, 4, 0, true>();
+  test<3, 5, 0, true>();
   // Not supported right now
   // test<4,3,0,true>();
-  // test<3,4,0,true>();
-  // test<3,5,0,true>();
   deallog.pop();
 
   deallog.push("gradients");
   test<4, 4, 1, true>();
   test<3, 3, 1, true>();
+  test<3, 4, 1, true>();
+  test<3, 5, 1, true>();
   // Not supported right now
   // test<4,3,1,true>();
-  // test<3,4,1,true>();
-  // test<3,5,1,true>();
   deallog.pop();
 
   deallog.pop();

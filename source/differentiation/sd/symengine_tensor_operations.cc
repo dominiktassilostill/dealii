@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -65,8 +65,8 @@ namespace Differentiation
               {
                 const TableIndices<rank> indices(
                   out.unrolled_to_component_indices(i));
-                out[indices] = Expression(sym + std::string("_") +
-                                          internal::make_index_string(indices));
+                out[indices] =
+                  Expression(sym + "_" + internal::make_index_string(indices));
               }
             return out;
           }
@@ -99,8 +99,8 @@ namespace Differentiation
               {
                 const TableIndices<rank> indices(
                   out.unrolled_to_component_indices(i));
-                out[indices] = Expression(sym + std::string("_") +
-                                          internal::make_index_string(indices));
+                out[indices] =
+                  Expression(sym + "_" + internal::make_index_string(indices));
               }
             return out;
           }
@@ -123,9 +123,8 @@ namespace Differentiation
                 {
                   const TableIndices<4> indices =
                     make_rank_4_tensor_indices<dim>(i, j);
-                  out[indices] =
-                    Expression(sym + std::string("_") +
-                               internal::make_index_string(indices));
+                  out[indices] = Expression(
+                    sym + "_" + internal::make_index_string(indices));
                 }
             return out;
           }
@@ -151,8 +150,7 @@ namespace Differentiation
                 const TableIndices<rank> indices(
                   out.unrolled_to_component_indices(i));
                 out[indices] =
-                  Expression(sym + std::string("_") +
-                               internal::make_index_string(indices),
+                  Expression(sym + "_" + internal::make_index_string(indices),
                              args);
               }
             return out;
@@ -191,8 +189,7 @@ namespace Differentiation
                 const TableIndices<rank> indices(
                   out.unrolled_to_component_indices(i));
                 out[indices] =
-                  Expression(sym + std::string("_") +
-                               internal::make_index_string(indices),
+                  Expression(sym + "_" + internal::make_index_string(indices),
                              args);
               }
             return out;
@@ -220,8 +217,7 @@ namespace Differentiation
                   const TableIndices<4> indices =
                     make_rank_4_tensor_indices<dim>(i, j);
                   out[indices] =
-                    Expression(sym + std::string("_") +
-                                 internal::make_index_string(indices),
+                    Expression(sym + "_" + internal::make_index_string(indices),
                                args);
                 }
             return out;
@@ -293,7 +289,7 @@ namespace Differentiation
 
 /* --- Explicit instantiations --- */
 
-#  include "symengine_tensor_operations.inst"
+#  include "differentiation/sd/symengine_tensor_operations.inst"
 
 DEAL_II_NAMESPACE_CLOSE
 

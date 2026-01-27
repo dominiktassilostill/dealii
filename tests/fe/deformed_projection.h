@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2023 by the deal.II authors
+// Copyright (C) 2006 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -365,17 +365,10 @@ create_mass_matrix(const Mapping<dim>        &mapping,
                     }
             }
         }
-      // transfer everything into the
-      // global object. lock the
-      // matrix meanwhile
+      // transfer everything into the global object
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
         for (unsigned int j = 0; j < dofs_per_cell; ++j)
-          if ((n_components == 1) || (cell_matrix(i, j) != 0.0))
-            /*
-              (fe.system_to_component_index(i).first ==
-              fe.system_to_component_index(j).first))
-            */
-            matrix.add(dof_indices[i], dof_indices[j], cell_matrix(i, j));
+          matrix.add(dof_indices[i], dof_indices[j], cell_matrix(i, j));
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
         rhs_vector(dof_indices[i]) += cell_vector(i);

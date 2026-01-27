@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2022 by the deal.II authors
+// Copyright (C) 2008 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,8 +18,8 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/lac/sparsity_pattern.h>
 
@@ -241,7 +241,7 @@ namespace ChunkSparsityPatternIterators
  *
  * The use of this class is demonstrated in step-51.
  */
-class ChunkSparsityPattern : public Subscriptor
+class ChunkSparsityPattern : public EnableObserverPointer
 {
 public:
   /**
@@ -306,8 +306,12 @@ public:
   /**
    * Initialize a rectangular matrix.
    *
-   * @arg m number of rows @arg n number of columns @arg max_per_row maximum
-   * number of nonzero entries per row
+   * @param[in] m The number of rows.
+   * @param[in] n The number of columns.
+   * @param[in] max_chunks_per_row The maximum number of nonzero chunks per row
+   *   that is to be allocated.
+   * @param[in] chunk_size The number of rows/columns that should be chunked
+   *   together.
    */
   ChunkSparsityPattern(const size_type m,
                        const size_type n,
@@ -317,9 +321,12 @@ public:
   /**
    * Initialize a rectangular matrix.
    *
-   * @arg m number of rows @arg n number of columns @arg row_lengths possible
-   * number of nonzero entries for each row.  This vector must have one entry
-   * for each row.
+   * @param[in] m The number of rows.
+   * @param[in] n The number of columns.
+   * @param[in] row_lengths The possible number of nonzero entries for each row.
+   *   This vector must have one entry for each row.
+   * @param[in] chunk_size The number of rows/columns that should be chunked
+   *   together.
    */
   ChunkSparsityPattern(const size_type               m,
                        const size_type               n,
@@ -341,9 +348,11 @@ public:
   /**
    * Initialize a quadratic matrix.
    *
-   * @arg m number of rows and columns @arg row_lengths possible number of
-   * nonzero entries for each row.  This vector must have one entry for each
-   * row.
+   * @param[in] m The number of rows and columns.
+   * @param[in] row_lengths The possible number of nonzero entries for each row.
+   *   This vector must have one entry for each row.
+   * @param[in] chunk_size The number of rows/columns that should be chunked
+   *   together.
    */
   ChunkSparsityPattern(const size_type               m,
                        const std::vector<size_type> &row_lengths,
@@ -422,7 +431,7 @@ public:
 
   /**
    * This function can be used as a replacement for reinit(), subsequent calls
-   * to add() and a final call to close() if you know exactly in advance the
+   * to add() and a final call to compress() if you know exactly in advance the
    * entries that will form the matrix sparsity pattern.
    *
    * The first two parameters determine the size of the matrix. For the two

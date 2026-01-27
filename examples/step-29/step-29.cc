@@ -123,7 +123,7 @@ namespace Step29
   // <code>declare_parameters</code> that declares all the necessary
   // parameters and a <code>read_parameters</code> function that is called
   // from outside to initiate the parameter reading process.
-  class ParameterReader : public Subscriptor
+  class ParameterReader : public EnableObserverPointer
   {
   public:
     ParameterReader(ParameterHandler &);
@@ -598,7 +598,7 @@ namespace Step29
                 // but this information is not relevant here. If you want to
                 // know more about this function and the underlying scheme
                 // behind primitive vector valued elements, take a look at
-                // step-8 or the @ref vector_valued module, where these topics
+                // step-8 or the @ref vector_valued topic, where these topics
                 // are explained in depth.
                 if (fe.system_to_component_index(i).first ==
                     fe.system_to_component_index(j).first)
@@ -737,7 +737,7 @@ namespace Step29
   // symmetric nor definite, and so it is not quite obvious how to come up
   // with an iterative solver and a preconditioner that do a good job on this
   // matrix. (For more on this topic, see also the
-  // <a href="#extensions">Possibilities for extensions</a> section below.)
+  // @ref step_29-Extensions "Possibilities for extensions" section below.)
   // We chose instead to go a different way and solve the linear
   // system with the sparse LU decomposition provided by UMFPACK. This is
   // often a good first choice for 2d problems and works reasonably well even

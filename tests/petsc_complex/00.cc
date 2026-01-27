@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,7 @@
 #include "../tests.h"
 
 // These tests were used while building extensions for
-// PetscSclar=complex. They check that std::complex<double> and
+// PetscScalar=complex. They check that std::complex<double> and
 // PetscScalar complex are compatible without explicitly casting.
 //
 // These tests look archaic - they are the original tests used to

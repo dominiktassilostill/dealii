@@ -19,7 +19,7 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/mutex.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/lac/vector.h>
 
@@ -101,7 +101,7 @@ DEAL_II_NAMESPACE_OPEN
  * <i>always</i> returned.
  */
 template <typename VectorType = dealii::Vector<double>>
-class VectorMemory : public Subscriptor
+class VectorMemory : public EnableObserverPointer
 {
 public:
   /**

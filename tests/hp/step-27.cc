@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -30,6 +30,7 @@
 #include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_series.h>
 
+#include <deal.II/grid/cell_data.h>
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_refinement.h>
 #include <deal.II/grid/tria.h>
@@ -58,6 +59,7 @@
 #include <fstream>
 #include <iostream>
 
+#include "../tests.h"
 
 namespace Step27
 {

@@ -129,7 +129,7 @@ namespace Step31
   namespace LinearSolvers
   {
     template <class MatrixType, class PreconditionerType>
-    class InverseMatrix : public Subscriptor
+    class InverseMatrix : public EnableObserverPointer
     {
     public:
       InverseMatrix(const MatrixType         &m,
@@ -139,8 +139,8 @@ namespace Step31
       vmult(VectorType &dst, const VectorType &src) const;
 
     private:
-      const SmartPointer<const MatrixType> matrix;
-      const PreconditionerType            &preconditioner;
+      const ObserverPointer<const MatrixType> matrix;
+      const PreconditionerType               &preconditioner;
     };
     template <class MatrixType, class PreconditionerType>
     InverseMatrix<MatrixType, PreconditionerType>::InverseMatrix(
@@ -169,7 +169,7 @@ namespace Step31
         }
     }
     template <class PreconditionerTypeA, class PreconditionerTypeMp>
-    class BlockSchurPreconditioner : public Subscriptor
+    class BlockSchurPreconditioner : public EnableObserverPointer
     {
     public:
       BlockSchurPreconditioner(
@@ -182,10 +182,10 @@ namespace Step31
             const TrilinosWrappers::MPI::BlockVector &src) const;
 
     private:
-      const SmartPointer<const TrilinosWrappers::BlockSparseMatrix>
+      const ObserverPointer<const TrilinosWrappers::BlockSparseMatrix>
         stokes_matrix;
-      const SmartPointer<const InverseMatrix<TrilinosWrappers::SparseMatrix,
-                                             PreconditionerTypeMp>>
+      const ObserverPointer<const InverseMatrix<TrilinosWrappers::SparseMatrix,
+                                                PreconditionerTypeMp>>
                                             m_inverse;
       const PreconditionerTypeA            &a_preconditioner;
       mutable TrilinosWrappers::MPI::Vector tmp;
@@ -600,14 +600,23 @@ namespace Step31
     deallog << "   Rebuilding Stokes preconditioner..." << std::flush;
     assemble_stokes_preconditioner();
     Amg_preconditioner = std::make_shared<TrilinosWrappers::PreconditionAMG>();
-    std::vector<std::vector<bool>>   constant_modes;
     const FEValuesExtractors::Vector velocity_components(0);
-    DoFTools::extract_constant_modes(stokes_dof_handler,
-                                     stokes_fe.component_mask(
-                                       velocity_components),
-                                     constant_modes);
+    const auto constant_modes = DoFTools::extract_constant_modes(
+      stokes_dof_handler, stokes_fe.component_mask(velocity_components));
+
+    std::vector<std::vector<double>> constant_modes_values(
+      constant_modes.size());
+
+    for (unsigned int i = 0; i < constant_modes.size(); ++i)
+      {
+        constant_modes_values[i].resize(constant_modes[i].size());
+
+        for (unsigned int j = 0; j < constant_modes[i].size(); ++j)
+          constant_modes_values[i][j] = constant_modes[i][j];
+      }
+
     TrilinosWrappers::PreconditionAMG::AdditionalData amg_data;
-    amg_data.constant_modes        = constant_modes;
+    amg_data.constant_modes_values = constant_modes_values;
     amg_data.elliptic              = true;
     amg_data.higher_order_elements = true;
     amg_data.smoother_sweeps       = 2;
@@ -1013,12 +1022,12 @@ namespace Step31
     std::vector<TrilinosWrappers::MPI::Vector> tmp(2);
     tmp[0].reinit(temperature_solution);
     tmp[1].reinit(temperature_solution);
-    temperature_trans.interpolate(x_temperature, tmp);
+    temperature_trans.interpolate(tmp);
     temperature_solution     = tmp[0];
     old_temperature_solution = tmp[1];
     temperature_constraints.distribute(temperature_solution);
     temperature_constraints.distribute(old_temperature_solution);
-    stokes_trans.interpolate(x_stokes, stokes_solution);
+    stokes_trans.interpolate(stokes_solution);
     stokes_constraints.distribute(stokes_solution);
     rebuild_stokes_matrix         = true;
     rebuild_temperature_matrices  = true;

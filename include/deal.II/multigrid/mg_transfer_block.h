@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2023 by the deal.II authors
+// Copyright (C) 2001 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -141,7 +141,7 @@ private:
 protected:
   /**
    * The actual prolongation matrix. column indices belong to the dof indices
-   * of the mother cell, i.e. the coarse level. while row indices belong to
+   * of the parent cell, i.e. the coarse level. while row indices belong to
    * the child cell, i.e. the fine level.
    */
   std::vector<std::shared_ptr<BlockSparseMatrix<double>>> prolongation_matrices;
@@ -159,7 +159,7 @@ protected:
    * The mg_constrained_dofs of the level systems.
    */
 
-  SmartPointer<const MGConstrainedDoFs, MGTransferBlockBase>
+  ObserverPointer<const MGConstrainedDoFs, MGTransferBlockBase>
     mg_constrained_dofs;
 };
 
@@ -277,7 +277,7 @@ private:
    * Memory pool required if additional multiplication using #factors is
    * desired.
    */
-  SmartPointer<VectorMemory<Vector<number>>, MGTransferBlock<number>> memory;
+  ObserverPointer<VectorMemory<Vector<number>>, MGTransferBlock<number>> memory;
 };
 
 

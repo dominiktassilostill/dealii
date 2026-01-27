@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -139,7 +139,16 @@ namespace Polynomials
         else
           {
             const double offset = step * interval;
-            if (x < offset || x > offset + step)
+            // ROCm 5.7 throws a floating point exception in debug mode when
+            // trying to evaluate (x < offset || x > offset + step). Separating
+            // the conditions fixes the issue.
+            if (x < offset)
+              {
+                for (unsigned int k = 0; k <= n_derivatives; ++k)
+                  values[k] = 0;
+                return;
+              }
+            else if (x > offset + step)
               {
                 for (unsigned int k = 0; k <= n_derivatives; ++k)
                   values[k] = 0;

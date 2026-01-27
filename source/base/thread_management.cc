@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2021 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -12,6 +12,7 @@
 //
 // ------------------------------------------------------------------------
 
+#include <deal.II/base/mutex.h>
 #include <deal.II/base/thread_management.h>
 
 #include <atomic>

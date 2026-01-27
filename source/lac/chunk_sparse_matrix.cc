@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2018 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,5 +16,5 @@
 #include <deal.II/lac/chunk_sparse_matrix.templates.h>
 
 DEAL_II_NAMESPACE_OPEN
-#include "chunk_sparse_matrix.inst"
+#include "lac/chunk_sparse_matrix.inst"
 DEAL_II_NAMESPACE_CLOSE

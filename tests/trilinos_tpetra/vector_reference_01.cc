@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,7 +31,7 @@
 void
 test()
 {
-  LinearAlgebra::TpetraWrappers::Vector<double> v;
+  LinearAlgebra::TpetraWrappers::Vector<double, MemorySpace::Default> v;
   v.reinit(complete_index_set(3), MPI_COMM_WORLD);
   v(0) = 0;
   v(1) = 1;
@@ -68,7 +68,6 @@ main(int argc, char **argv)
   Utilities::MPI::MPI_InitFinalize mpi_initialization(
     argc, argv, testing_max_num_threads());
   initlog();
-  ;
 
   test();
 }

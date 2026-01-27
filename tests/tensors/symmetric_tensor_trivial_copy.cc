@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2018 by the deal.II authors
+// Copyright (C) 2017 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,7 +16,7 @@
 // Verify that SymmetricTensor is trivially copyable.
 
 // TODO not all compilers that support enough of a subset of C++11 to compile
-// the library (notably GCC 4.8) implement std::is_trivally_copyable. At some
+// the library (notably GCC 4.8) implement std::is_trivially_copyable. At some
 // point in the future we should use that instead of the boost equivalent.
 
 #include <deal.II/base/symmetric_tensor.h>

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2024 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -383,7 +383,8 @@ MappingCartesian<dim, spacedim>::maybe_update_normal_vectors(
       Assert(face_no < GeometryInfo<dim>::faces_per_cell, ExcInternalError());
       std::fill(normal_vectors.begin(),
                 normal_vectors.end(),
-                GeometryInfo<dim>::unit_normal_vector[face_no]);
+                ReferenceCells::get_hypercube<dim>()
+                  .template face_normal_vector<dim>(face_no));
     }
 }
 
@@ -1261,7 +1262,7 @@ MappingCartesian<dim, spacedim>::clone() const
 
 //---------------------------------------------------------------------------
 // explicit instantiations
-#include "mapping_cartesian.inst"
+#include "fe/mapping_cartesian.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

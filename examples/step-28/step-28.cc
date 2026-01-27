@@ -591,7 +591,7 @@ namespace Step28
 
     system_rhs.reinit(n_dofs);
 
-    if (solution.size() == 0)
+    if (solution.empty())
       {
         solution.reinit(n_dofs);
         solution_old.reinit(n_dofs);
@@ -1081,7 +1081,7 @@ namespace Step28
     setup_linear_system();
 
     solution.reinit(dof_handler.n_dofs());
-    soltrans.interpolate(solution_old, solution);
+    soltrans.interpolate(solution);
 
     // enforce constraints to make the interpolated solution conforming on
     // the new mesh:
@@ -1104,7 +1104,7 @@ namespace Step28
   template <int dim>
   void EnergyGroup<dim>::output_results(const unsigned int cycle) const
   {
-    const std::string filename = std::string("solution-") +
+    const std::string filename = "solution-" +
                                  Utilities::int_to_string(group, 2) + "." +
                                  Utilities::int_to_string(cycle, 2) + ".vtu";
 
@@ -1131,7 +1131,7 @@ namespace Step28
   // several places, we have to do something for all energy groups, in which
   // case we will start tasks for each group to let these things run in
   // parallel if deal.II was configured for multithreading.  For strategies of
-  // parallelization, take a look at the @ref threads module.
+  // parallelization, take a look at the @ref threads topic.
   //
   // The biggest difference to previous example programs is that we also
   // declare a nested class that has member variables for all the run-time

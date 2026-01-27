@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2020 by the deal.II authors
+// Copyright (C) 2016 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,9 +21,9 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/derivative_form.h>
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/point.h>
 #include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/grid/manifold.h>
 #include <deal.II/grid/tria.h>
@@ -112,7 +112,7 @@ private:
   /**
    * The first ChartManifold.
    */
-  SmartPointer<
+  ObserverPointer<
     const ChartManifold<dim1, intermediate_dim, chartdim>,
     CompositionManifold<dim, spacedim, chartdim, dim1, dim2, intermediate_dim>>
     F;
@@ -121,7 +121,7 @@ private:
   /**
    * The second ChartManifold.
    */
-  SmartPointer<
+  ObserverPointer<
     const ChartManifold<dim2, spacedim, intermediate_dim>,
     CompositionManifold<dim, spacedim, chartdim, dim1, dim2, intermediate_dim>>
     G;

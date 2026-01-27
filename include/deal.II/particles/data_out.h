@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2022 by the deal.II authors
+// Copyright (C) 2019 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -78,8 +78,8 @@ namespace Particles
 
   protected:
     /**
-     * Returns the patches built by the data_out class which was previously
-     * built using a particle handler
+     * Return the patches previously built by the build_patches() function
+     * from a particle handler.
      */
     virtual const std::vector<DataOutBase::Patch<0, spacedim>> &
     get_patches() const override;

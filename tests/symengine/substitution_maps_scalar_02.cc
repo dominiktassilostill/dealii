@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2020 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -125,33 +125,34 @@ main()
     SD::merge_substitution_maps(substitution_map, substitution_map_1);
   }
 
-#ifdef DEBUG
-  // Check that exceptions are raised when duplicate symbols
-  // associated with unequal values are found in a substitution map
-  deal_II_exceptions::disable_abort_on_exception();
-  try
+  if constexpr (running_in_debug_mode())
     {
-      {
-        SD::types::substitution_map substitution_map;
-        SD::add_to_substitution_map(substitution_map,
-                                    SD::Expression("x1"),
-                                    SD::Expression(1));
+      // Check that exceptions are raised when duplicate symbols
+      // associated with unequal values are found in a substitution map
+      deal_II_exceptions::disable_abort_on_exception();
+      try
+        {
+          {
+            SD::types::substitution_map substitution_map;
+            SD::add_to_substitution_map(substitution_map,
+                                        SD::Expression("x1"),
+                                        SD::Expression(1));
 
-        SD::types::substitution_map substitution_map_1;
-        SD::add_to_substitution_map(substitution_map_1,
-                                    SD::Expression("x1"),
-                                    SD::Expression(2));
+            SD::types::substitution_map substitution_map_1;
+            SD::add_to_substitution_map(substitution_map_1,
+                                        SD::Expression("x1"),
+                                        SD::Expression(2));
 
-        SD::merge_substitution_maps(substitution_map, substitution_map_1);
-      }
+            SD::merge_substitution_maps(substitution_map, substitution_map_1);
+          }
 
-      deallog
-        << "Duplicate symbol with non-equal value in map did not raise an error."
-        << std::endl;
+          deallog
+            << "Duplicate symbol with non-equal value in map did not raise an error."
+            << std::endl;
+        }
+      catch (const ExcMessage &)
+        {}
     }
-  catch (const ExcMessage &)
-    {}
-#endif
 
   deallog << "OK" << std::endl;
 }

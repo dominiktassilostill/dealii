@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2024 by the deal.II authors
+// Copyright (C) 2024 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,6 +24,8 @@
 #  include <deal.II/lac/trilinos_index_access.h>
 #  include <deal.II/lac/trilinos_tpetra_sparsity_pattern.h>
 
+#  include <Teuchos_FancyOStream.hpp>
+
 #  include <limits>
 
 DEAL_II_NAMESPACE_OPEN
@@ -41,7 +43,7 @@ namespace LinearAlgebra
       {
         // if we are asked to visit the past-the-end line, then simply
         // release all our caches and go on with life
-        if (static_cast<size_t>(this->a_row) == sparsity_pattern->n_rows())
+        if (static_cast<std::size_t>(this->a_row) == sparsity_pattern->n_rows())
           {
             colnum_cache.reset();
             return;
@@ -59,14 +61,10 @@ namespace LinearAlgebra
           {
             // get a representation of the present row
             std::size_t ncols;
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
             typename TpetraTypes::GraphType<
               MemorySpace>::nonconst_global_inds_host_view_type
               column_indices_view(colnum_cache->data(), colnum_cache->size());
-#  else
-            Teuchos::ArrayView<dealii::types::signed_global_dof_index>
-              column_indices_view(colnum_cache->data(), colnum_cache->size());
-#  endif
+
             sparsity_pattern->graph->getGlobalRowCopy(this->a_row,
                                                       column_indices_view,
                                                       ncols);
@@ -409,7 +407,6 @@ namespace LinearAlgebra
             "that. Either use more MPI processes or recompile Trilinos "
             "with 'local ordinate = long long' "));
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(12, 16, 0)
         if (row_map->getComm()->getSize() > 1)
           graph = Utilities::Trilinos::internal::make_rcp<
             TpetraTypes::GraphType<MemorySpace>>(row_map, n_entries_per_row);
@@ -418,20 +415,11 @@ namespace LinearAlgebra
             TpetraTypes::GraphType<MemorySpace>>(row_map,
                                                  col_map,
                                                  n_entries_per_row);
-#  else
-        if (row_map->getComm()->getSize() > 1)
-          graph = Utilities::Trilinos::internal::make_rcp<
-            TpetraTypes::GraphType<MemorySpace>>(
-            row_map, Teuchos::arcpFromArray(n_entries_per_row));
-        else
-          graph = Utilities::Trilinos::internal::make_rcp<
-            TpetraTypes::GraphType<MemorySpace>>(
-            row_map, col_map, Teuchos::arcpFromArray(n_entries_per_row));
 
-#  endif
-
+        // We can't check for equality of sp.n_cols() and
+        // graph->getGlobalNumCols() here since we don't necessarily have a
+        // column map at this point.
         AssertDimension(sp.n_rows(), graph->getGlobalNumRows());
-        AssertDimension(sp.n_cols(), graph->getGlobalNumEntries());
 
         std::vector<TrilinosWrappers::types::int_type> row_indices;
 
@@ -471,7 +459,9 @@ namespace LinearAlgebra
       SparsityPatternBase::resize(parallel_partitioning.size(),
                                   parallel_partitioning.size());
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> map =
-        parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       SparsityPatternImpl::reinit_sp<MemorySpace>(
         map, map, n_entries_per_row, column_space_map, graph, nonlocal_graph);
     }
@@ -488,7 +478,9 @@ namespace LinearAlgebra
       SparsityPatternBase::resize(parallel_partitioning.size(),
                                   parallel_partitioning.size());
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> map =
-        parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       SparsityPatternImpl::reinit_sp<MemorySpace>(
         map, map, n_entries_per_row, column_space_map, graph, nonlocal_graph);
     }
@@ -506,9 +498,13 @@ namespace LinearAlgebra
       SparsityPatternBase::resize(row_parallel_partitioning.size(),
                                   col_parallel_partitioning.size());
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> row_map =
-        row_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        row_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> col_map =
-        col_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        col_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       SparsityPatternImpl::reinit_sp<MemorySpace>(row_map,
                                                   col_map,
                                                   n_entries_per_row,
@@ -530,9 +526,13 @@ namespace LinearAlgebra
       SparsityPatternBase::resize(row_parallel_partitioning.size(),
                                   col_parallel_partitioning.size());
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> row_map =
-        row_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        row_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> col_map =
-        col_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        col_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       SparsityPatternImpl::reinit_sp<MemorySpace>(row_map,
                                                   col_map,
                                                   n_entries_per_row,
@@ -555,9 +555,13 @@ namespace LinearAlgebra
       SparsityPatternBase::resize(row_parallel_partitioning.size(),
                                   col_parallel_partitioning.size());
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> row_map =
-        row_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        row_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> col_map =
-        col_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        col_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       SparsityPatternImpl::reinit_sp<MemorySpace>(row_map,
                                                   col_map,
                                                   n_entries_per_row,
@@ -568,20 +572,23 @@ namespace LinearAlgebra
       IndexSet nonlocal_partitioner = writable_rows;
       AssertDimension(nonlocal_partitioner.size(),
                       row_parallel_partitioning.size());
-#  ifdef DEBUG
-      {
-        IndexSet tmp = writable_rows & row_parallel_partitioning;
-        Assert(tmp == row_parallel_partitioning,
-               ExcMessage(
-                 "The set of writable rows passed to this method does not "
-                 "contain the locally owned rows, which is not allowed."));
-      }
-#  endif
+      if constexpr (running_in_debug_mode())
+        {
+          {
+            IndexSet tmp = writable_rows & row_parallel_partitioning;
+            Assert(tmp == row_parallel_partitioning,
+                   ExcMessage(
+                     "The set of writable rows passed to this method does not "
+                     "contain the locally owned rows, which is not allowed."));
+          }
+        }
       nonlocal_partitioner.subtract_set(row_parallel_partitioning);
       if (Utilities::MPI::n_mpi_processes(communicator) > 1)
         {
           Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> nonlocal_map =
-            nonlocal_partitioner.make_tpetra_map_rcp(communicator, true);
+            nonlocal_partitioner
+              .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+                communicator, true);
           nonlocal_graph = Utilities::Trilinos::internal::make_rcp<
             TpetraTypes::GraphType<MemorySpace>>(nonlocal_map, col_map, 0);
         }
@@ -604,9 +611,13 @@ namespace LinearAlgebra
       SparsityPatternBase::resize(row_parallel_partitioning.size(),
                                   col_parallel_partitioning.size());
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> row_map =
-        row_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        row_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> col_map =
-        col_parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        col_parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       SparsityPatternImpl::reinit_sp<SparsityPatternType, MemorySpace>(
         row_map,
         col_map,
@@ -635,7 +646,9 @@ namespace LinearAlgebra
       SparsityPatternBase::resize(parallel_partitioning.size(),
                                   parallel_partitioning.size());
       Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> map =
-        parallel_partitioning.make_tpetra_map_rcp(communicator, false);
+        parallel_partitioning
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, false);
       SparsityPatternImpl::reinit_sp<SparsityPatternType, MemorySpace>(
         map,
         map,
@@ -804,7 +817,6 @@ namespace LinearAlgebra
     SparsityPattern<MemorySpace>::exists(const size_type i,
                                          const size_type j) const
     {
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       if (!row_is_stored_locally(i))
         return false;
 
@@ -825,13 +837,7 @@ namespace LinearAlgebra
                   trilinos_j) -
         col_indices.data();
 
-      return static_cast<size_t>(local_col_index) != col_indices.size();
-#  else
-      (void)i;
-      (void)j;
-      DEAL_II_NOT_IMPLEMENTED();
-      return false;
-#  endif
+      return static_cast<std::size_t>(local_col_index) != col_indices.size();
     }
 
 
@@ -997,7 +1003,11 @@ namespace LinearAlgebra
       const bool    write_extended_trilinos_info) const
     {
       if (write_extended_trilinos_info)
-        out << *graph;
+        {
+          auto fancy_stream =
+            Teuchos::getFancyOStream(Teuchos::RCP(&out, false));
+          graph->describe(*fancy_stream);
+        }
       else
         {
 #  if DEAL_II_TRILINOS_VERSION_GTE(14, 0, 0)
@@ -1030,7 +1040,7 @@ namespace LinearAlgebra
     void
     SparsityPattern<MemorySpace>::print_gnuplot(std::ostream &out) const
     {
-      Assert(graph->isFillComplete() == true, ExcInternalError());
+      Assert(graph->isFillComplete(), ExcInternalError());
 
       for (unsigned int row = 0; row < local_size(); ++row)
         {
@@ -1113,6 +1123,46 @@ namespace LinearAlgebra
       const dealii::DynamicSparsityPattern &,
       const MPI_Comm,
       bool);
+
+
+    template class SparsityPattern<dealii::MemorySpace::Default>;
+
+    template void
+    SparsityPattern<dealii::MemorySpace::Default>::copy_from(
+      const dealii::SparsityPattern &);
+    template void
+    SparsityPattern<dealii::MemorySpace::Default>::copy_from(
+      const dealii::DynamicSparsityPattern &);
+
+    template void
+    SparsityPattern<dealii::MemorySpace::Default>::reinit(
+      const IndexSet &,
+      const dealii::SparsityPattern &,
+      const MPI_Comm,
+      bool);
+    template void
+    SparsityPattern<dealii::MemorySpace::Default>::reinit(
+      const IndexSet &,
+      const dealii::DynamicSparsityPattern &,
+      const MPI_Comm,
+      bool);
+
+
+    template void
+    SparsityPattern<dealii::MemorySpace::Default>::reinit(
+      const IndexSet &,
+      const IndexSet &,
+      const dealii::SparsityPattern &,
+      const MPI_Comm,
+      bool);
+    template void
+    SparsityPattern<dealii::MemorySpace::Default>::reinit(
+      const IndexSet &,
+      const IndexSet &,
+      const dealii::DynamicSparsityPattern &,
+      const MPI_Comm,
+      bool);
+
 #  endif
 
   } // namespace TpetraWrappers

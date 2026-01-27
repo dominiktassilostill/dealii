@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2022 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,6 +19,6 @@
 DEAL_II_NAMESPACE_OPEN
 
 // explicit instantiations
-#include "cell_data_transfer.inst"
+#include "numerics/cell_data_transfer.inst"
 
 DEAL_II_NAMESPACE_CLOSE

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2022 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -82,7 +82,6 @@ main()
         for (unsigned int i = 0; i < 3; ++i)
           {
             u.block(i)[0] = 0;
-            ;
             v.block(i)[0] = 0;
           }
         u.block(j)[0] = 1;
@@ -103,7 +102,6 @@ main()
             v.block(i)[0] = 0;
           }
         u.block(j)[0] = 1;
-        ;
 
         inverse_op_a.vmult(v, u);
 
@@ -118,11 +116,9 @@ main()
         for (unsigned int i = 0; i < 3; ++i)
           {
             u.block(i)[0] = 0;
-            ;
             v.block(i)[0] = 0;
           }
         u.block(j)[0] = 1;
-        ;
 
         identity.vmult(v, u);
 
@@ -175,7 +171,6 @@ main()
         for (unsigned int i = 0; i < 3; ++i)
           {
             u.block(i)[0] = 0;
-            ;
             v.block(i)[0] = 0;
           }
         u.block(j)[0] = 1;
@@ -196,7 +191,6 @@ main()
             v.block(i)[0] = 0;
           }
         u.block(j)[0] = 1;
-        ;
 
         inverse_op_a.vmult(v, u);
 
@@ -211,11 +205,9 @@ main()
         for (unsigned int i = 0; i < 3; ++i)
           {
             u.block(i)[0] = 0;
-            ;
             v.block(i)[0] = 0;
           }
         u.block(j)[0] = 1;
-        ;
 
         identity.vmult(v, u);
 

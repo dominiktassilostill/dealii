@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2024 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -148,7 +148,7 @@ namespace FEInterfaceViews
            const unsigned int                      component);
 
     /**
-     * @name Access to shape functions
+     * @name Access to shape functions and their derivatives
      */
     /** @{ */
 
@@ -175,6 +175,25 @@ namespace FEInterfaceViews
     value(const bool         here_or_there,
           const unsigned int interface_dof_index,
           const unsigned int q_point) const;
+
+    /**
+     * Return the gradient of the shape function
+     * with interface dof index @p interface_dof_index in
+     * quadrature point @p q_point of the component selected by this view.
+     *
+     * The argument @p here_or_there selects between the upstream gradient and
+     * the downstream gradient as defined by the direction of the normal vector
+     * in this quadrature point. If @p here_or_there is true, the gradient of the
+     * shape functions from the first cell of the interface is used.
+     *
+     * In other words, this function returns the limit of the gradient of the
+     * shape function in the given quadrature point when approaching it from one
+     * of the two cells of the interface.
+     */
+    gradient_type
+    gradient(const bool         here_or_there,
+             const unsigned int interface_dof_index,
+             const unsigned int q_point) const;
 
     /** @} */
 
@@ -701,7 +720,7 @@ namespace FEInterfaceViews
            const unsigned int                      first_vector_component);
 
     /**
-     * @name Access to shape functions
+     * @name Access to shape functions and their derivatives
      */
     /** @{ */
 
@@ -728,6 +747,26 @@ namespace FEInterfaceViews
     value(const bool         here_or_there,
           const unsigned int interface_dof_index,
           const unsigned int q_point) const;
+
+    /**
+     * Return the gradient of the shape function
+     * with interface dof index @p interface_dof_index in
+     * quadrature point @p q_point of the component selected by this view.
+     *
+     * The argument @p here_or_there selects between the upstream gradient and
+     * the downstream gradient as defined by the direction of the normal vector
+     * in this quadrature point. If @p here_or_there is true, the gradient of the
+     * shape functions from the first cell of the interface is used.
+     *
+     * In other words, this function returns the limit of the gradient of the
+     * shape function in the given quadrature point when approaching it from one
+     * of the two cells of the interface.
+     */
+    gradient_type
+    gradient(const bool         here_or_there,
+             const unsigned int interface_dof_index,
+             const unsigned int q_point) const;
+
 
     /** @} */
 
@@ -1606,6 +1645,31 @@ public:
   get_JxW_values() const;
 
   /**
+   * Return the normal in a given quadrature point.
+   *
+   * The normal points in outwards direction as seen from the first cell of
+   * this interface.
+   *
+   * @deprecated Use the function normal_vector().
+   *
+   * @dealiiRequiresUpdateFlags{update_normal_vectors}
+   */
+  DEAL_II_DEPRECATED_WITH_COMMENT("Use the function normal_vector().")
+  Tensor<1, spacedim>
+  normal(const unsigned int q_point_index) const;
+
+  /**
+   * Return the normal in a given quadrature point.
+   *
+   * The normal points in outwards direction as seen from the first cell of
+   * this interface.
+   *
+   * @dealiiRequiresUpdateFlags{update_normal_vectors}
+   */
+  Tensor<1, spacedim>
+  normal_vector(const unsigned int q_point_index) const;
+
+  /**
    * Return the normal vector of the interface in each quadrature point.
    *
    * The return value is identical to get_fe_face_values(0).get_normal_vectors()
@@ -1626,6 +1690,15 @@ public:
    */
   std_cxx20::ranges::iota_view<unsigned int, unsigned int>
   quadrature_point_indices() const;
+
+  /**
+   * Return the location of the <tt>q_point</tt>th quadrature point in
+   * real space.
+   *
+   * @dealiiRequiresUpdateFlags{update_quadrature_points}
+   */
+  const Point<spacedim> &
+  quadrature_point(const unsigned int q_point) const;
 
   /**
    * Return a reference to the quadrature points in real space.
@@ -1707,22 +1780,11 @@ public:
   interface_dof_to_dof_indices(const unsigned int interface_dof_index) const;
 
   /**
-   * Return the normal in a given quadrature point.
-   *
-   * The normal points in outwards direction as seen from the first cell of
-   * this interface.
-   *
-   * @dealiiRequiresUpdateFlags{update_normal_vectors}
-   */
-  Tensor<1, spacedim>
-  normal(const unsigned int q_point_index) const;
-
-  /**
    * @}
    */
 
   /**
-   * @name Access to shape functions
+   * @name Access to shape functions and their derivatives
    * @{
    */
 
@@ -1752,6 +1814,21 @@ public:
               const unsigned int interface_dof_index,
               const unsigned int q_point,
               const unsigned int component = 0) const;
+
+  /**
+   * Return component @p component of the gradient of the shape function
+   * with interface dof index @p interface_dof_index in
+   * quadrature point @p q_point.
+   *
+   * Similar to @p shape_value() , the argument @p here_or_there selects between
+   * the gradient on cell 0 (here, @p true) and cell 1 (there, @p false)
+   * at this quadrature point.
+   */
+  Tensor<1, spacedim>
+  shape_grad(const bool         here_or_there,
+             const unsigned int interface_dof_index,
+             const unsigned int q_point,
+             const unsigned int component = 0) const;
 
   /**
    * @}
@@ -2339,6 +2416,9 @@ FEInterfaceValues<dim, spacedim>::reinit(
     std::is_same_v<DoFCellAccessor<dim, spacedim, false>,
                    typename CellNeighborIteratorType::AccessorType>;
 
+  unsigned int active_fe_index          = 0;
+  unsigned int active_fe_index_neighbor = 0;
+
   if (internal_fe_face_values)
     {
       if (sub_face_no == numbers::invalid_unsigned_int)
@@ -2373,8 +2453,8 @@ FEInterfaceValues<dim, spacedim>::reinit(
     }
   else if (internal_hp_fe_face_values)
     {
-      unsigned int active_fe_index = fe_index_in;
-      unsigned int active_fe_index_neighbor =
+      active_fe_index = fe_index_in;
+      active_fe_index_neighbor =
         (fe_index_neighbor_in != numbers::invalid_unsigned_int) ?
           fe_index_neighbor_in :
           fe_index_in;
@@ -2421,37 +2501,42 @@ FEInterfaceValues<dim, spacedim>::reinit(
 
       // Third check, if the above did not already suffice. We see if we
       // can get somewhere via the dominated's finite element index.
-      const unsigned int dominated_fe_index =
-        ((used_q_index == numbers::invalid_unsigned_int) ||
-             (used_mapping_index == numbers::invalid_unsigned_int) ?
-           internal_hp_fe_face_values->get_fe_collection().find_dominated_fe(
-             {active_fe_index, active_fe_index_neighbor}) :
-           numbers::invalid_unsigned_int);
-
-      if (used_q_index == numbers::invalid_unsigned_int)
+      if ((used_q_index == numbers::invalid_unsigned_int) ||
+          (used_mapping_index == numbers::invalid_unsigned_int))
         {
-          Assert(dominated_fe_index != numbers::invalid_fe_index,
-                 ExcMessage(
-                   "You called this function with 'q_index' left at its "
-                   "default value, but this can only work if one of "
-                   "the two finite elements adjacent to this face "
-                   "dominates the other. See the documentation "
-                   "of this function for more information of how "
-                   "to deal with this situation."));
-          used_q_index = dominated_fe_index;
-        }
+          const unsigned int dominated_fe_index =
+            ((used_q_index == numbers::invalid_unsigned_int) ||
+                 (used_mapping_index == numbers::invalid_unsigned_int) ?
+               internal_hp_fe_face_values->get_fe_collection()
+                 .find_dominated_fe(
+                   {active_fe_index, active_fe_index_neighbor}) :
+               numbers::invalid_unsigned_int);
 
-      if (used_mapping_index == numbers::invalid_unsigned_int)
-        {
-          Assert(dominated_fe_index != numbers::invalid_fe_index,
-                 ExcMessage(
-                   "You called this function with 'mapping_index' left "
-                   "at its default value, but this can only work if one "
-                   "of the two finite elements adjacent to this face "
-                   "dominates the other. See the documentation "
-                   "of this function for more information of how "
-                   "to deal with this situation."));
-          used_mapping_index = dominated_fe_index;
+          if (used_q_index == numbers::invalid_unsigned_int)
+            {
+              Assert(dominated_fe_index != numbers::invalid_fe_index,
+                     ExcMessage(
+                       "You called this function with 'q_index' left at its "
+                       "default value, but this can only work if one of "
+                       "the two finite elements adjacent to this face "
+                       "dominates the other. See the documentation "
+                       "of this function for more information of how "
+                       "to deal with this situation."));
+              used_q_index = dominated_fe_index;
+            }
+
+          if (used_mapping_index == numbers::invalid_unsigned_int)
+            {
+              Assert(dominated_fe_index != numbers::invalid_fe_index,
+                     ExcMessage(
+                       "You called this function with 'mapping_index' left "
+                       "at its default value, but this can only work if one "
+                       "of the two finite elements adjacent to this face "
+                       "dominates the other. See the documentation "
+                       "of this function for more information of how "
+                       "to deal with this situation."));
+              used_mapping_index = dominated_fe_index;
+            }
         }
 
       // Same as if above, but when hp is enabled.
@@ -2550,6 +2635,28 @@ FEInterfaceValues<dim, spacedim>::reinit(
           ++idx;
         }
     }
+  else
+    {
+      const unsigned int n_dofs_per_cell_1 = fe_face_values->dofs_per_cell;
+      const unsigned int n_dofs_per_cell_2 =
+        fe_face_values_neighbor->dofs_per_cell;
+
+      interface_dof_indices.resize(n_dofs_per_cell_1 + n_dofs_per_cell_2);
+      dofmap.resize(n_dofs_per_cell_1 + n_dofs_per_cell_2);
+
+      for (unsigned int i = 0; i < n_dofs_per_cell_1; ++i)
+        {
+          interface_dof_indices[i] = numbers::invalid_dof_index;
+          dofmap[i]                = {{i, numbers::invalid_unsigned_int}};
+        }
+
+      for (unsigned int i = 0; i < n_dofs_per_cell_2; ++i)
+        {
+          interface_dof_indices[i + n_dofs_per_cell_1] =
+            numbers::invalid_dof_index;
+          dofmap[i + n_dofs_per_cell_1] = {{numbers::invalid_unsigned_int, i}};
+        }
+    }
 }
 
 
@@ -2584,35 +2691,29 @@ FEInterfaceValues<dim, spacedim>::reinit(const CellIteratorType &cell,
     {
       internal_hp_fe_face_values->reinit(
         cell, face_no, q_index, mapping_index, fe_index);
-      fe_face_values = &const_cast<FEFaceValues<dim> &>(
+      fe_face_values = &const_cast<FEFaceValues<dim, spacedim> &>(
         internal_hp_fe_face_values->get_present_fe_values());
       fe_face_values_neighbor = nullptr;
     }
+
+  interface_dof_indices.resize(fe_face_values->get_fe().n_dofs_per_cell());
 
   if constexpr (std::is_same_v<typename CellIteratorType::AccessorType,
                                DoFCellAccessor<dim, spacedim, true>> ||
                 std::is_same_v<typename CellIteratorType::AccessorType,
                                DoFCellAccessor<dim, spacedim, false>>)
     {
-      if (internal_fe_face_values)
-        {
-          interface_dof_indices.resize(
-            fe_face_values->get_fe().n_dofs_per_cell());
-          cell->get_active_or_mg_dof_indices(interface_dof_indices);
-        }
-      else if (internal_hp_fe_face_values)
-        {
-          interface_dof_indices.resize(
-            fe_face_values->get_fe().n_dofs_per_cell());
-          cell->get_active_or_mg_dof_indices(interface_dof_indices);
-        }
-
-      dofmap.resize(interface_dof_indices.size());
-      for (unsigned int i = 0; i < interface_dof_indices.size(); ++i)
-        {
-          dofmap[i] = {{i, numbers::invalid_unsigned_int}};
-        }
+      cell->get_active_or_mg_dof_indices(interface_dof_indices);
     }
+  else
+    {
+      for (auto &i : interface_dof_indices)
+        i = numbers::invalid_dof_index;
+    }
+
+  dofmap.resize(interface_dof_indices.size());
+  for (unsigned int i = 0; i < interface_dof_indices.size(); ++i)
+    dofmap[i] = {{i, numbers::invalid_unsigned_int}};
 }
 
 
@@ -2744,7 +2845,20 @@ template <int dim, int spacedim>
 inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FEInterfaceValues<dim, spacedim>::quadrature_point_indices() const
 {
-  return {0U, n_quadrature_points};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, n_quadrature_points);
+}
+
+
+
+template <int dim, int spacedim>
+const Point<spacedim> &
+FEInterfaceValues<dim, spacedim>::quadrature_point(
+  const unsigned int q_point) const
+{
+  Assert(fe_face_values != nullptr,
+         ExcMessage("This call requires a call to reinit() first."));
+  return fe_face_values->quadrature_point(q_point);
 }
 
 
@@ -2862,6 +2976,16 @@ template <int dim, int spacedim>
 Tensor<1, spacedim>
 FEInterfaceValues<dim, spacedim>::normal(const unsigned int q_point_index) const
 {
+  return normal_vector(q_point_index);
+}
+
+
+
+template <int dim, int spacedim>
+Tensor<1, spacedim>
+FEInterfaceValues<dim, spacedim>::normal_vector(
+  const unsigned int q_point_index) const
+{
   return fe_face_values->normal_vector(q_point_index);
 }
 
@@ -2875,7 +2999,7 @@ FEInterfaceValues<dim, spacedim>::shape_value(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   if (here_or_there && dof_pair[0] != numbers::invalid_unsigned_int)
     return get_fe_face_values(0).shape_value_component(dof_pair[0],
@@ -2890,6 +3014,29 @@ FEInterfaceValues<dim, spacedim>::shape_value(
 }
 
 
+template <int dim, int spacedim>
+Tensor<1, spacedim>
+FEInterfaceValues<dim, spacedim>::shape_grad(
+  const bool         here_or_there,
+  const unsigned int interface_dof_index,
+  const unsigned int q_point,
+  const unsigned int component) const
+{
+  const auto &dof_pair = dofmap[interface_dof_index];
+
+  Tensor<1, dim> value;
+
+  if (here_or_there && dof_pair[0] != numbers::invalid_unsigned_int)
+    value = get_fe_face_values(0).shape_grad_component(dof_pair[0],
+                                                       q_point,
+                                                       component);
+  if (!here_or_there && dof_pair[1] != numbers::invalid_unsigned_int)
+    value = get_fe_face_values(1).shape_grad_component(dof_pair[1],
+                                                       q_point,
+                                                       component);
+
+  return value;
+}
 
 template <int dim, int spacedim>
 double
@@ -2898,7 +3045,7 @@ FEInterfaceValues<dim, spacedim>::jump_in_shape_values(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   double value = 0.0;
 
@@ -2922,7 +3069,7 @@ FEInterfaceValues<dim, spacedim>::average_of_shape_values(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   if (at_boundary())
     return get_fe_face_values(0).shape_value_component(dof_pair[0],
@@ -2952,7 +3099,7 @@ FEInterfaceValues<dim, spacedim>::average_of_shape_gradients(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   if (at_boundary())
     return get_fe_face_values(0).shape_grad_component(dof_pair[0],
@@ -2982,7 +3129,7 @@ FEInterfaceValues<dim, spacedim>::average_of_shape_hessians(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   if (at_boundary())
     return get_fe_face_values(0).shape_hessian_component(dof_pair[0],
@@ -3012,7 +3159,7 @@ FEInterfaceValues<dim, spacedim>::jump_in_shape_gradients(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   if (at_boundary())
     return get_fe_face_values(0).shape_grad_component(dof_pair[0],
@@ -3042,7 +3189,7 @@ FEInterfaceValues<dim, spacedim>::jump_in_shape_hessians(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   if (at_boundary())
     return get_fe_face_values(0).shape_hessian_component(dof_pair[0],
@@ -3072,7 +3219,7 @@ FEInterfaceValues<dim, spacedim>::jump_in_shape_3rd_derivatives(
   const unsigned int q_point,
   const unsigned int component) const
 {
-  const auto dof_pair = dofmap[interface_dof_index];
+  const auto &dof_pair = dofmap[interface_dof_index];
 
   if (at_boundary())
     return get_fe_face_values(0).shape_3rd_derivative_component(dof_pair[0],
@@ -3290,7 +3437,7 @@ namespace FEInterfaceViews
                                const unsigned int interface_dof_index,
                                const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (here_or_there && dof_pair[0] != numbers::invalid_unsigned_int)
       return (*(this->fe_interface->fe_face_values))[extractor].value(
@@ -3306,11 +3453,34 @@ namespace FEInterfaceViews
 
 
   template <int dim, int spacedim>
+  typename Scalar<dim, spacedim>::gradient_type
+  Scalar<dim, spacedim>::gradient(const bool         here_or_there,
+                                  const unsigned int interface_dof_index,
+                                  const unsigned int q_point) const
+  {
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
+
+    gradient_type value;
+
+    if (here_or_there && dof_pair[0] != numbers::invalid_unsigned_int)
+      return (*(this->fe_interface->fe_face_values))[extractor].gradient(
+        dof_pair[0], q_point);
+
+    if (!here_or_there && dof_pair[1] != numbers::invalid_unsigned_int)
+      return (*(this->fe_interface->fe_face_values_neighbor))[extractor]
+        .gradient(dof_pair[1], q_point);
+
+    return value;
+  }
+
+
+
+  template <int dim, int spacedim>
   typename Scalar<dim, spacedim>::value_type
   Scalar<dim, spacedim>::jump_in_values(const unsigned int interface_dof_index,
                                         const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     value_type value = 0.0;
 
@@ -3335,7 +3505,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].value(
@@ -3365,7 +3535,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].gradient(
@@ -3394,7 +3564,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].gradient(
@@ -3423,7 +3593,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].hessian(
@@ -3452,7 +3622,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor]
@@ -3480,7 +3650,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].hessian(
@@ -3855,7 +4025,7 @@ namespace FEInterfaceViews
                                const unsigned int interface_dof_index,
                                const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (here_or_there && dof_pair[0] != numbers::invalid_unsigned_int)
       return (*(this->fe_interface->fe_face_values))[extractor].value(
@@ -3871,11 +4041,34 @@ namespace FEInterfaceViews
 
 
   template <int dim, int spacedim>
+  typename Vector<dim, spacedim>::gradient_type
+  Vector<dim, spacedim>::gradient(const bool         here_or_there,
+                                  const unsigned int interface_dof_index,
+                                  const unsigned int q_point) const
+  {
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
+
+    gradient_type value;
+
+    if (here_or_there && dof_pair[0] != numbers::invalid_unsigned_int)
+      return (*(this->fe_interface->fe_face_values))[extractor].gradient(
+        dof_pair[0], q_point);
+
+    if (!here_or_there && dof_pair[1] != numbers::invalid_unsigned_int)
+      return (*(this->fe_interface->fe_face_values_neighbor))[extractor]
+        .gradient(dof_pair[1], q_point);
+
+    return value;
+  }
+
+
+
+  template <int dim, int spacedim>
   typename Vector<dim, spacedim>::value_type
   Vector<dim, spacedim>::jump_in_values(const unsigned int interface_dof_index,
                                         const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     value_type value;
 
@@ -3900,7 +4093,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].value(
@@ -3930,7 +4123,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].gradient(
@@ -3959,7 +4152,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].gradient(
@@ -3998,7 +4191,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].hessian(
@@ -4037,7 +4230,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor].hessian(
@@ -4076,7 +4269,7 @@ namespace FEInterfaceViews
     const unsigned int interface_dof_index,
     const unsigned int q_point) const
   {
-    const auto dof_pair = this->fe_interface->dofmap[interface_dof_index];
+    const auto &dof_pair = this->fe_interface->dofmap[interface_dof_index];
 
     if (this->fe_interface->at_boundary())
       return (*(this->fe_interface->fe_face_values))[extractor]

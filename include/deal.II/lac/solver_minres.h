@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2024 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,9 +18,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/logstream.h>
 #include <deal.II/base/signaling_nan.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/template_constraints.h>
 
 #include <deal.II/lac/solver.h>
@@ -117,7 +117,12 @@ public:
   /**
    * Exception
    */
-  DeclException0(ExcPreconditionerNotDefinite);
+  DeclExceptionMsg(ExcPreconditionerNotDefinite,
+                   "The preconditioner for MinRes must be a symmetric and "
+                   "definite operator, even though MinRes can solve linear "
+                   "systems with symmetric and *indefinite* operators. "
+                   "During iterations, MinRes has detected that the "
+                   "preconditioner is apparently not definite.");
   /** @} */
 
 protected:

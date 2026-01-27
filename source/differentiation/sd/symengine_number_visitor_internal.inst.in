@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 by the deal.II authors
+// Copyright (C) 2020 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,23 +24,10 @@ for (number : REAL_SCALARS)
 
           template class CSEDictionaryVisitor<number, SD::Expression>;
           template class DictionarySubstitutionVisitor<number, SD::Expression>;
-
-        \}
-      \}
-    \}
-  }
-
-for (number : COMPLEX_SCALARS)
-  {
-    namespace Differentiation
-    \{
-      namespace SD
-      \{
-        namespace internal
-        \{
-
-          template class CSEDictionaryVisitor<number, SD::Expression>;
-          template class DictionarySubstitutionVisitor<number, SD::Expression>;
+          template class CSEDictionaryVisitor<std::complex<number>,
+                                              SD::Expression>;
+          template class DictionarySubstitutionVisitor<std::complex<number>,
+                                                       SD::Expression>;
 
         \}
       \}

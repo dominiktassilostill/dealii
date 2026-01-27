@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -30,7 +30,7 @@ namespace internal
   ensure_kokkos_initialized()
   {
     if (!Kokkos::is_initialized()
-#if KOKKOS_VERSION >= 30700
+#if DEAL_II_KOKKOS_VERSION_GTE(3, 7, 0)
         && !Kokkos::is_finalized()
 #endif
     )
@@ -38,7 +38,7 @@ namespace internal
         // only execute once
         static bool dummy = []() {
           dealii_initialized_kokkos = true;
-#if KOKKOS_VERSION >= 30700
+#if DEAL_II_KOKKOS_VERSION_GTE(3, 7, 0)
           const auto settings =
             Kokkos::InitializationSettings().set_num_threads(
               MultithreadInfo::n_threads());

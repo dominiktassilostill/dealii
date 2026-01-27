@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1999 - 2024 by the deal.II authors
+// Copyright (C) 1999 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -60,11 +60,11 @@ DataOutStack<dim, spacedim>::new_parameter_value(const double p,
   for (typename std::vector<DataVector>::const_iterator i = dof_data.begin();
        i != dof_data.end();
        ++i)
-    Assert(i->data.size() == 0, ExcDataNotCleared());
+    Assert(i->data.empty(), ExcDataNotCleared());
   for (typename std::vector<DataVector>::const_iterator i = cell_data.begin();
        i != cell_data.end();
        ++i)
-    Assert(i->data.size() == 0, ExcDataNotCleared());
+    Assert(i->data.empty(), ExcDataNotCleared());
 }
 
 
@@ -94,26 +94,27 @@ DataOutStack<dim, spacedim>::declare_data_vector(
   const std::vector<std::string> &names,
   const VectorType                vector_type)
 {
-#ifdef DEBUG
-  // make sure this function is
-  // not called after some parameter
-  // values have already been
-  // processed
-  Assert(patches.empty(), ExcDataAlreadyAdded());
-
-  // also make sure that no name is
-  // used twice
-  for (const auto &name : names)
+  if constexpr (running_in_debug_mode())
     {
-      for (const auto &data_set : dof_data)
-        for (const auto &data_set_name : data_set.names)
-          Assert(name != data_set_name, ExcNameAlreadyUsed(name));
+      // make sure this function is
+      // not called after some parameter
+      // values have already been
+      // processed
+      Assert(patches.empty(), ExcDataAlreadyAdded());
 
-      for (const auto &data_set : cell_data)
-        for (const auto &data_set_name : data_set.names)
-          Assert(name != data_set_name, ExcNameAlreadyUsed(name));
+      // also make sure that no name is
+      // used twice
+      for (const auto &name : names)
+        {
+          for (const auto &data_set : dof_data)
+            for (const auto &data_set_name : data_set.names)
+              Assert(name != data_set_name, ExcNameAlreadyUsed(name));
+
+          for (const auto &data_set : cell_data)
+            for (const auto &data_set_name : data_set.names)
+              Assert(name != data_set_name, ExcNameAlreadyUsed(name));
+        }
     }
-#endif
 
   switch (vector_type)
     {
@@ -183,7 +184,6 @@ DataOutStack<dim, spacedim>::add_data_vector(
            names.size(), dof_handler->get_fe(0).n_components()));
   for (const auto &name : names)
     {
-      (void)name;
       Assert(name.find_first_not_of("abcdefghijklmnopqrstuvwxyz"
                                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                                     "0123456789_<>()") == std::string::npos,
@@ -493,7 +493,7 @@ DataOutStack<dim, spacedim>::get_dataset_names() const
 
 
 // explicit instantiations
-#include "data_out_stack.inst"
+#include "numerics/data_out_stack.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

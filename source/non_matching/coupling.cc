@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -221,7 +221,7 @@ namespace NonMatching
            ExcNotImplemented());
 
     const bool tria_is_parallel =
-      (dynamic_cast<const parallel::TriangulationBase<dim1, spacedim> *>(
+      (dynamic_cast<const parallel::TriangulationBase<dim0, spacedim> *>(
          &space_dh.get_triangulation()) != nullptr);
     const auto &space_fe    = space_dh.get_fe();
     const auto &immersed_fe = immersed_dh.get_fe();
@@ -411,7 +411,7 @@ namespace NonMatching
            ExcNotImplemented());
 
     const bool tria_is_parallel =
-      (dynamic_cast<const parallel::TriangulationBase<dim1, spacedim> *>(
+      (dynamic_cast<const parallel::TriangulationBase<dim0, spacedim> *>(
          &space_dh.get_triangulation()) != nullptr);
 
     const auto &space_fe    = space_dh.get_fe();
@@ -955,7 +955,7 @@ namespace NonMatching
       }
   }
 #ifndef DOXYGEN
-#  include "coupling.inst"
+#  include "non_matching/coupling.inst"
 #endif
 } // namespace NonMatching
 

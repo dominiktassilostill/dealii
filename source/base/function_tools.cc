@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2023 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -67,6 +67,6 @@ namespace FunctionTools
 
 } // namespace FunctionTools
 
-#include "function_tools.inst"
+#include "base/function_tools.inst"
 
 DEAL_II_NAMESPACE_CLOSE

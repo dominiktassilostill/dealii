@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2024 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,9 +18,13 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/memory_space.h>
 #include <deal.II/base/mpi_stub.h>
 #include <deal.II/base/mutex.h>
 #include <deal.II/base/trilinos_utilities.h>
+#include <deal.II/base/types.h>
+
+#include <deal.II/lac/trilinos_tpetra_types.h>
 
 #include <boost/container/small_vector.hpp>
 
@@ -29,10 +33,14 @@
 
 
 #ifdef DEAL_II_WITH_TRILINOS
+
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_Map.h>
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
 #    include <Tpetra_Map.hpp>
 #  endif
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
+
 #endif
 
 #ifdef DEAL_II_WITH_PETSC
@@ -136,9 +144,10 @@ public:
   /**
    * Constructor from a Trilinos Teuchos::RCP<Tpetra::Map>.
    */
+  template <typename NodeType>
   explicit IndexSet(
-    const Teuchos::RCP<const Tpetra::Map<int, types::signed_global_dof_index>>
-      &map);
+    const Teuchos::RCP<
+      const Tpetra::Map<int, types::signed_global_dof_index, NodeType>> &map);
 #  endif // DEAL_II_TRILINOS_WITH_TPETRA
 
   /**
@@ -480,14 +489,24 @@ public:
   /**
    * Remove and return the last element of the last range.
    * This function throws an exception if the IndexSet is empty.
+   *
+   * @deprecated This function is deprecated. Conceptually, an index set is a
+   *   set; it should not be seen as a sorted container in which it is clear
+   *   what element is stored "last".
    */
+  DEAL_II_DEPRECATED
   size_type
   pop_back();
 
   /**
    * Remove and return the first element of the first range.
    * This function throws an exception if the IndexSet is empty.
+   *
+   * @deprecated This function is deprecated. Conceptually, an index set is a
+   *   set; it should not be seen as a sorted container in which it is clear
+   *   what element is stored "first".
    */
+  DEAL_II_DEPRECATED
   size_type
   pop_front();
 
@@ -501,16 +520,6 @@ public:
    */
   std::vector<size_type>
   get_index_vector() const;
-
-  /**
-   * Fill the given vector with all indices contained in this IndexSet.
-   *
-   * This function is equivalent to calling get_index_vector() and
-   * assigning the result to the @p indices argument.
-   */
-  DEAL_II_DEPRECATED
-  void
-  fill_index_vector(std::vector<size_type> &indices) const;
 
   /**
    * Fill the given vector with either zero or one elements, providing a
@@ -608,11 +617,17 @@ public:
                     const bool     overlapping  = false) const;
 
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
-  Tpetra::Map<int, types::signed_global_dof_index>
+  template <
+    typename NodeType =
+      LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Host>>
+  Tpetra::Map<int, types::signed_global_dof_index, NodeType>
   make_tpetra_map(const MPI_Comm communicator = MPI_COMM_WORLD,
                   const bool     overlapping  = false) const;
 
-  Teuchos::RCP<Tpetra::Map<int, types::signed_global_dof_index>>
+  template <
+    typename NodeType =
+      LinearAlgebra::TpetraWrappers::TpetraTypes::NodeType<MemorySpace::Host>>
+  Teuchos::RCP<Tpetra::Map<int, types::signed_global_dof_index, NodeType>>
   make_tpetra_map_rcp(const MPI_Comm communicator = MPI_COMM_WORLD,
                       const bool     overlapping  = false) const;
 #  endif
@@ -1933,12 +1948,13 @@ IndexSet::n_elements() const
       v              = r.nth_index_in_set + r.end - r.begin;
     }
 
-#ifdef DEBUG
-  size_type s = 0;
-  for (const auto &range : ranges)
-    s += (range.end - range.begin);
-  Assert(s == v, ExcInternalError());
-#endif
+  if constexpr (running_in_debug_mode())
+    {
+      size_type s = 0;
+      for (const auto &range : ranges)
+        s += (range.end - range.begin);
+      Assert(s == v, ExcInternalError());
+    }
 
   return v;
 }

@@ -1,0 +1,86 @@
+// ------------------------------------------------------------------------
+//
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2025 by the deal.II authors
+//
+// This file is part of the deal.II library.
+//
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
+//
+// ------------------------------------------------------------------------
+
+
+// It is very inefficient in the module system to have repeated
+// #includes in many module partition files because when you 'import'
+// those partitions, you also have to load everything they
+// #included. In other words, you get the same content *many times*,
+// once from each imported partition, rather than only once via the
+// old-style #include system. We deal with this by wrapping all of our
+// external packages into partitions that we can 'import' wherever we
+// need.
+
+// This is the file that wraps everything we need from VTK into one
+// module partition.
+
+
+module;
+
+#include <deal.II/base/config.h>
+
+#ifdef DEAL_II_WITH_VTK
+#include <vtkVersion.h>
+
+// VTK_VERSION_CHECK is defined by the header above for 9.3.0 and above, but
+// we provide a fallback older versions.
+#ifndef VTK_VERSION_CHECK
+#  define VTK_VERSION_CHECK(major, minor, build) \
+    (10000000000ULL * (major) + 100000000ULL * (minor) + (build))
+#endif
+// Normalize the version macro name to cover both the quick (>=9.3) and
+// legacy (<9.3) headers.
+#if defined(VTK_VERSION_NUMBER_QUICK)
+#  define DEAL_II_VTK_VERSION_NUMBER VTK_VERSION_NUMBER_QUICK
+#elif defined(VTK_VERSION_NUMBER)
+#  define DEAL_II_VTK_VERSION_NUMBER VTK_VERSION_NUMBER
+#else
+#  define DEAL_II_VTK_VERSION_NUMBER 0
+#endif
+#if DEAL_II_VTK_VERSION_NUMBER >= VTK_VERSION_CHECK(9, 3, 0)
+#  include <vtkCleanUnstructuredGrid.h>
+#endif
+#include <vtkCellData.h>
+#include <vtkCellType.h>
+#include <vtkDataArray.h>
+#include <vtkDoubleArray.h>
+#include <vtkPointData.h>
+#include <vtkSmartPointer.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkUnstructuredGridReader.h>
+#endif
+
+
+export module dealii.external.vtk;
+
+#ifdef DEAL_II_WITH_VTK
+
+export
+{
+  using ::vtkCell;
+  using ::vtkCellData;
+  using ::VTKCellType;
+#if DEAL_II_VTK_VERSION_NUMBER >= VTK_VERSION_CHECK(9, 3, 0)
+  using ::vtkCleanUnstructuredGrid;
+#endif
+  using ::vtkDataArray;
+  using ::vtkDoubleArray;
+  using ::vtkPointData;
+  using ::vtkPoints;
+  using ::vtkSmartPointer;
+  using ::vtkUnstructuredGrid;
+  using ::vtkUnstructuredGridReader;
+}
+
+#endif

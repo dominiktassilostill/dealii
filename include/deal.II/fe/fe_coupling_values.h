@@ -1,17 +1,16 @@
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 //
-// Copyright (C) 2023 - 2024 by the deal.II authors
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
-// The deal.II library is free software; you can use it, redistribute
-// it, and/or modify it under the terms of the GNU Lesser General
-// Public License as published by the Free Software Foundation; either
-// version 2.1 of the License, or (at your option) any later version.
-// The full text of the license can be found in the file LICENSE.md at
-// the top level directory of deal.II.
+// Part of the source code is dual licensed under Apache-2.0 WITH
+// LLVM-exception OR LGPL-2.1-or-later. Detailed license information
+// governing the source code and code contributions can be found in
+// LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
 //
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------------
 
 #ifndef dealii_fe_coupling_values_h
 #define dealii_fe_coupling_values_h
@@ -20,8 +19,9 @@
 
 #include <deal.II/algorithms/general_data_storage.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/point.h>
 #include <deal.II/base/std_cxx20/iota_view.h>
-#include <deal.II/base/subscriptor.h>
 #include <deal.II/base/thread_local_storage.h>
 #include <deal.II/base/utilities.h>
 
@@ -414,7 +414,7 @@ namespace FEValuesViews
  * When computing the approximation of double integrals of the form
  *
  * \f[
- * \int_{T_1} \int{T_2} K(x_1, x_2) f(x_1) g(x_2) dT_1 dT_2,
+ * \int_{T_1} \int_{T_2} K(x_1, x_2) f(x_1) g(x_2) dT_1 dT_2,
  * \f]
  *
  * where $T_1$ and $T_2$ are two arbitrary sets (cells, faces, edges, or any
@@ -494,7 +494,7 @@ enum class QuadratureCouplingType
  * When computing the approximation of double integrals of the form
  *
  * \f[
- * \int_{T_1} \int{T_2} K(x_1, x_2) v_i(x_1) w_j(x_2) dT_1 dT_2,
+ * \int_{T_1} \int_{T_2} K(x_1, x_2) v_i(x_1) w_j(x_2) dT_1 dT_2,
  * \f]
  *
  * where $T_1$ and $T_2$ are two arbitrary sets (cells, faces, edges, or any
@@ -566,7 +566,7 @@ enum class DoFCouplingType
  * abstract operation:
  *
  * \f[
- * \int_{T_1} \int{T_2} K(x_1, x_2) \phi^1_i(x_1) \phi^2_j(x_2) dT_1 dT_2
+ * \int_{T_1} \int_{T_2} K(x_1, x_2) \phi^1_i(x_1) \phi^2_j(x_2) dT_1 dT_2
  * \f]
  *
  * for three different types of Kernels $K$:
@@ -583,7 +583,7 @@ enum class DoFCouplingType
  * For the first case, one may think that the only natural way to proceed is to
  * compute the double integral by simply nesting two loops:
  * \f[
- * \int_{T_1} \int{T_2} K(x_1, x_2) \phi^1_i(x_1) \phi^2_j(x_2) dT_1 dT_2
+ * \int_{T_1} \int_{T_2} K(x_1, x_2) \phi^1_i(x_1) \phi^2_j(x_2) dT_1 dT_2
  * \approx \sum_{q_1} \sum_{q_2} K(x_1^{q_1}, x_2^{q_2}) \phi^1_i(x_1^{q_1})
  * \phi^2_j(x_2^{q_2}) w_1^{q_1} w_2^{q_2},
  * \f]
@@ -604,7 +604,7 @@ enum class DoFCouplingType
  * approximate the integral as follows:
  *
  * \f[
- * \int_{T_1} \int{T_2} K(x_1, x_2) \phi^1_i(x_1) \phi^2_j(x_2) dT_1 dT_2
+ * \int_{T_1} \int_{T_2} K(x_1, x_2) \phi^1_i(x_1) \phi^2_j(x_2) dT_1 dT_2
  * \approx \sum_{i=1}^{N_q} K(x_1^{i}, x_2^{i}) \phi^1_i(x_1^{i})
  * \phi^2_j(x_2^{i}) w_1^{i} w_2^i,
  * \f]
@@ -639,8 +639,8 @@ enum class DoFCouplingType
  *
  * As an example usage of this class, consider the a bilinear form of the form:
  * \f[
- * \int_{T_1} \int{T_2} K_1(x_1, x_2) v_i(x_1) u_j(x_2) dT_1 dT_2 +
- * \int_{T_1} \int{T_2} K_2(x_1, x_2) p_i(x_1) q_j(x_2) dT_1 dT_2
+ * \int_{T_1} \int_{T_2} K_1(x_1, x_2) v_i(x_1) u_j(x_2) dT_1 dT_2 +
+ * \int_{T_1} \int_{T_2} K_2(x_1, x_2) p_i(x_1) q_j(x_2) dT_1 dT_2
  * \f]
  * where the finite dimensional space has two scalar components. We indicate
  * with $v_i$ and $p_i$ the trial functions, and with $u_j$ and
@@ -1034,12 +1034,12 @@ private:
   /**
    * Pointer to first FEValuesBase object.
    */
-  SmartPointer<const FEValuesBase<dim1, spacedim>> first_fe_values;
+  ObserverPointer<const FEValuesBase<dim1, spacedim>> first_fe_values;
 
   /**
    * Pointer to second FEValuesBase object.
    */
-  SmartPointer<const FEValuesBase<dim2, spacedim>> second_fe_values;
+  ObserverPointer<const FEValuesBase<dim2, spacedim>> second_fe_values;
 
   /**
    * Renumbering data for the first FEValuesBase object.
@@ -1086,17 +1086,18 @@ namespace FEValuesViews
     , dof_renumbering(dof_renumbering)
     , quadrature_renumbering(quadrature_renumbering)
   {
-// Check that the renumbering vectors are valid.
-#  ifdef DEBUG
-    // While for dofs we admit invalid values, this is not the case for
-    // quadrature points.
-    for (const auto i : dof_renumbering)
-      Assert(i < n_inner_dofs || i == numbers::invalid_unsigned_int,
-             ExcIndexRange(i, 0, n_inner_dofs));
+    // Check that the renumbering vectors are valid.
+    if constexpr (running_in_debug_mode())
+      {
+        // While for dofs we admit invalid values, this is not the case for
+        // quadrature points.
+        for (const auto i : dof_renumbering)
+          Assert(i < n_inner_dofs || i == numbers::invalid_unsigned_int,
+                 ExcIndexRange(i, 0, n_inner_dofs));
 
-    for (const auto q : quadrature_renumbering)
-      AssertIndexRange(q, n_inner_quadrature_points);
-#  endif
+        for (const auto q : quadrature_renumbering)
+          AssertIndexRange(q, n_inner_quadrature_points);
+      }
   }
 
 
@@ -1395,12 +1396,6 @@ FECouplingValues<dim1, dim2, spacedim>::reinit(
     fe_values_2.n_quadrature_points;
 
   // Initialize counters and renumbering vectors to zero
-  unsigned int first_n_dofs  = 0;
-  unsigned int second_n_dofs = 0;
-
-  unsigned int first_n_quadrature_points  = 0;
-  unsigned int second_n_quadrature_points = 0;
-
   std::vector<unsigned int> first_dofs_map;
   std::vector<unsigned int> second_dofs_map;
 
@@ -1420,17 +1415,12 @@ FECouplingValues<dim1, dim2, spacedim>::reinit(
           n_coupling_dofs_ = numbers::invalid_unsigned_int;
           first_dofs_map.clear();
           second_dofs_map.clear();
-          first_n_dofs  = first_fe_values->dofs_per_cell;
-          second_n_dofs = second_fe_values->dofs_per_cell;
           break;
         }
       case DoFCouplingType::contiguous:
         {
           n_coupling_dofs_ =
             fe_values_1.dofs_per_cell + fe_values_2.dofs_per_cell;
-
-          first_n_dofs  = n_coupling_dofs_;
-          second_n_dofs = n_coupling_dofs_;
 
           first_dofs_map.resize(n_coupling_dofs_);
           second_dofs_map.resize(n_coupling_dofs_);
@@ -1464,9 +1454,6 @@ FECouplingValues<dim1, dim2, spacedim>::reinit(
           n_quadrature_points_ =
             quadrature_points_1.size() * quadrature_points_2.size();
 
-          first_n_quadrature_points  = n_quadrature_points_;
-          second_n_quadrature_points = n_quadrature_points_;
-
           first_quad_map.resize(n_quadrature_points_);
           second_quad_map.resize(n_quadrature_points_);
 
@@ -1488,9 +1475,6 @@ FECouplingValues<dim1, dim2, spacedim>::reinit(
                             "number of quadrature points"));
 
           n_quadrature_points_ = fe_values_1.get_quadrature_points().size();
-
-          first_n_quadrature_points  = n_quadrature_points_;
-          second_n_quadrature_points = n_quadrature_points_;
 
           first_quad_map.clear();
           second_quad_map.clear();
@@ -1517,9 +1501,6 @@ FECouplingValues<dim1, dim2, spacedim>::reinit(
 
           n_quadrature_points_ = fe_values_1.get_quadrature_points().size();
 
-          first_n_quadrature_points  = n_quadrature_points_;
-          second_n_quadrature_points = n_quadrature_points_;
-
           first_quad_map.clear();
           second_quad_map.clear();
 
@@ -1535,9 +1516,6 @@ FECouplingValues<dim1, dim2, spacedim>::reinit(
                             "number of quadrature points"));
 
           n_quadrature_points_ = fe_values_1.get_quadrature_points().size();
-
-          first_n_quadrature_points  = n_quadrature_points_;
-          second_n_quadrature_points = n_quadrature_points_;
 
           // The first is the id. The second is renumbered.
           first_quad_map.clear();
@@ -1583,8 +1561,6 @@ FECouplingValues<dim1, dim2, spacedim>::reinit(
             }
           n_quadrature_points_ = first_quad_map.size();
 
-          first_n_quadrature_points  = n_quadrature_points_;
-          second_n_quadrature_points = n_quadrature_points_;
           break;
         }
       default:
@@ -1634,7 +1610,8 @@ template <int dim1, int dim2, int spacedim>
 inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FECouplingValues<dim1, dim2, spacedim>::quadrature_point_indices() const
 {
-  return {0U, n_quadrature_points_};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, n_quadrature_points_);
 }
 
 
@@ -1646,7 +1623,8 @@ FECouplingValues<dim1, dim2, spacedim>::coupling_dof_indices() const
   AssertThrow(n_coupling_dofs_ != numbers::invalid_unsigned_int,
               ExcMessage(
                 "Dofs are independent. You cannot ask for coupling dofs."));
-  return {0U, n_coupling_dofs_};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, n_coupling_dofs_);
 }
 
 
@@ -1655,7 +1633,8 @@ template <int dim1, int dim2, int spacedim>
 inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FECouplingValues<dim1, dim2, spacedim>::first_dof_indices() const
 {
-  return {0U, n_first_dofs()};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, n_first_dofs());
 }
 
 
@@ -1664,7 +1643,8 @@ template <int dim1, int dim2, int spacedim>
 inline std_cxx20::ranges::iota_view<unsigned int, unsigned int>
 FECouplingValues<dim1, dim2, spacedim>::second_dof_indices() const
 {
-  return {0U, n_second_dofs()};
+  return std_cxx20::ranges::iota_view<unsigned int, unsigned int>(
+    0U, n_second_dofs());
 }
 
 

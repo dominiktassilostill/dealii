@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2023 by the deal.II authors
+// Copyright (C) 2010 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,8 +17,10 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/mg_level_object.h>
-#include <deal.II/base/subscriptor.h>
+
+#include <deal.II/fe/component_mask.h>
 
 #include <deal.II/lac/affine_constraints.h>
 
@@ -41,7 +43,7 @@ class DoFHandler;
  *
  * @ingroup mg
  */
-class MGConstrainedDoFs : public Subscriptor
+class MGConstrainedDoFs : public EnableObserverPointer
 {
 public:
   using size_dof = std::vector<std::set<types::global_dof_index>>::size_type;
@@ -231,7 +233,7 @@ public:
    * @param add_boundary_indices Add boundary indices.
    * @param add_refinement_edge_indices Add refinement-edge indices.
    * @param add_level_constraints Add level constraints including the one passed
-   *   during initialize() and periodicy constraints.
+   *   during initialize() and periodicity constraints.
    * @param add_user_constraints Add user constraints.
    */
   template <typename Number>

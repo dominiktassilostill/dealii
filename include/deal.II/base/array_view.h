@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2024 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -505,12 +505,14 @@ template <typename ElementType, typename MemorySpaceType>
 inline ArrayView<ElementType, MemorySpaceType>::ArrayView(
   value_type       *starting_element,
   const std::size_t n_elements)
-  :
-#ifdef DEBUG
-  starting_element(n_elements > 0 ? starting_element : nullptr)
-#else
-  starting_element(starting_element)
-#endif
+  : // In debug mode, make sure that n_elements>0 and if it is not, set
+    // the pointer to a nullptr to trigger segfaults if anyone ever wanted
+    // to access elements of the array. In release mode, just take the
+    // pointer as given.
+  starting_element((library_build_mode == LibraryBuildMode::release) ||
+                       (n_elements > 0) ?
+                     starting_element :
+                     nullptr)
   , n_elements(n_elements)
 {}
 
@@ -521,14 +523,17 @@ inline void
 ArrayView<ElementType, MemorySpaceType>::reinit(value_type *starting_element,
                                                 const std::size_t n_elements)
 {
-#ifdef DEBUG
-  if (n_elements > 0)
-    this->starting_element = starting_element;
+  if constexpr (running_in_debug_mode())
+    {
+      if (n_elements > 0)
+        this->starting_element = starting_element;
+      else
+        this->starting_element = nullptr;
+    }
   else
-    this->starting_element = nullptr;
-#else
-  this->starting_element = starting_element;
-#endif
+    {
+      this->starting_element = starting_element;
+    }
   this->n_elements = n_elements;
 }
 
@@ -1026,137 +1031,6 @@ inline ArrayView<Number, MemorySpaceType>
 make_array_view(ArrayView<Number, MemorySpaceType> &array_view)
 {
   return make_array_view(array_view.begin(), array_view.end());
-}
-
-
-
-/**
- * Create a view to an entire Tensor object. This is equivalent to initializing
- * an ArrayView object with a pointer to the first element and the size of the
- * given argument.
- *
- * This function is used for @p const references to objects of Tensor type
- * because they contain immutable elements. Consequently, the return type of
- * this function is a view to a set of @p const objects.
- *
- * @param[in] tensor The Tensor for which we want to have an array view
- * object. The array view corresponds to the <em>entire</em> object but the
- * order in which the entries are presented in the array is an implementation
- * detail and should not be relied upon.
- *
- * @deprecated This function suggests that the elements of a Tensor
- *   object are stored as a contiguous array, but this is not in fact true
- *   and one should not pretend that this so. As a consequence, this function
- *   is deprecated.
- *
- * @relatesalso ArrayView
- */
-template <int rank, int dim, typename Number>
-DEAL_II_DEPRECATED inline ArrayView<const Number>
-make_array_view(const Tensor<rank, dim, Number> &tensor)
-{
-  static_assert(rank == 1,
-                "This function is only available for rank-1 tensors "
-                "because higher-rank tensors may not store their elements "
-                "in a contiguous array.");
-
-  return make_array_view(tensor.begin_raw(), tensor.end_raw());
-}
-
-
-
-/**
- * Create a view to an entire Tensor object. This is equivalent to initializing
- * an ArrayView object with a pointer to the first element and the size of the
- * given argument.
- *
- * This function is used for non-@p const references to objects of Tensor type.
- * Such objects contain elements that can be written to. Consequently,
- * the return type of this function is a view to a set of writable objects.
- *
- * @param[in] tensor The Tensor for which we want to have an array view
- * object. The array view corresponds to the <em>entire</em> object but the
- * order in which the entries are presented in the array is an implementation
- * detail and should not be relied upon.
- *
- * @deprecated This function suggests that the elements of a Tensor
- *   object are stored as a contiguous array, but this is not in fact true
- *   and one should not pretend that this so. As a consequence, this function
- *   is deprecated.
- *
- * @relatesalso ArrayView
- */
-template <int rank, int dim, typename Number>
-DEAL_II_DEPRECATED inline ArrayView<Number>
-make_array_view(Tensor<rank, dim, Number> &tensor)
-{
-  static_assert(rank == 1,
-                "This function is only available for rank-1 tensors "
-                "because higher-rank tensors may not store their elements "
-                "in a contiguous array.");
-
-  return make_array_view(tensor.begin_raw(), tensor.end_raw());
-}
-
-
-
-/**
- * Create a view to an entire SymmetricTensor object. This is equivalent to
- * initializing an ArrayView object with a pointer to the first element and the
- * size of the given argument.
- *
- * This function is used for @p const references to objects of SymmetricTensor
- * type because they contain immutable elements. Consequently, the return type
- * of this function is a view to a set of @p const objects.
- *
- * @param[in] tensor The SymmetricTensor for which we want to have an array
- * view object. The array view corresponds to the <em>entire</em> object but
- * the order in which the entries are presented in the array is an
- * implementation detail and should not be relied upon.
- *
- * @deprecated This function suggests that the elements of a SymmetricTensor
- *   object are stored as a contiguous array, but this is not in fact true
- *   and one should not pretend that this so. As a consequence, this function
- *   is deprecated.
- *
- * @relatesalso ArrayView
- */
-template <int rank, int dim, typename Number>
-DEAL_II_DEPRECATED inline ArrayView<const Number>
-make_array_view(const SymmetricTensor<rank, dim, Number> &tensor)
-{
-  return make_array_view(tensor.begin_raw(), tensor.end_raw());
-}
-
-
-
-/**
- * Create a view to an entire SymmetricTensor object. This is equivalent to
- * initializing an ArrayView object with a pointer to the first element and the
- * size of the given argument.
- *
- * This function is used for non-@p const references to objects of
- * SymmetricTensor type. Such objects contain elements that can be written to.
- * Consequently, the return type of this function is a view to a set of writable
- * objects.
- *
- * @param[in] tensor The SymmetricTensor for which we want to have an array
- * view object. The array view corresponds to the <em>entire</em> object but
- * the order in which the entries are presented in the array is an
- * implementation detail and should not be relied upon.
- *
- * @deprecated This function suggests that the elements of a SymmetricTensor
- *   object are stored as a contiguous array, but this is not in fact true
- *   and one should not pretend that this so. As a consequence, this function
- *   is deprecated.
- *
- * @relatesalso ArrayView
- */
-template <int rank, int dim, typename Number>
-DEAL_II_DEPRECATED inline ArrayView<Number>
-make_array_view(SymmetricTensor<rank, dim, Number> &tensor)
-{
-  return make_array_view(tensor.begin_raw(), tensor.end_raw());
 }
 
 

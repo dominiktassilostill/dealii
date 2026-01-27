@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2024 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -270,27 +270,6 @@ namespace GridTools
          Triangulation<dim, 3>      &triangulation);
 
   /**
-   * Rotate all vertices of the given @p triangulation in counter-clockwise
-   * direction around the axis with the given index. Otherwise like the
-   * function above; in particular, this function calls the transform() function
-   * and so the discussion about manifolds there also applies here.
-   *
-   * @param[in] angle Angle in radians to rotate the Triangulation by.
-   * @param[in] axis Index of the coordinate axis to rotate around, keeping
-   * that coordinate fixed (0=x axis, 1=y axis, 2=z axis).
-   * @param[in,out] triangulation The Triangulation object to rotate.
-   *
-   * @note Implemented for dim=1, 2, and 3.
-   *
-   * @deprecated Use the alternative with the unit vector instead.
-   */
-  template <int dim>
-  DEAL_II_DEPRECATED void
-  rotate(const double           angle,
-         const unsigned int     axis,
-         Triangulation<dim, 3> &triangulation);
-
-  /**
    * Transform the given triangulation smoothly to a different domain where,
    * typically, each of the vertices at the boundary of the triangulation is
    * mapped to the corresponding points in the @p new_points map.
@@ -438,7 +417,7 @@ namespace GridTools
    * </p>
    *
    * The four cells that were originally the corners of a square will give you
-   * some troubles during computations, as the jacobian of the transformation
+   * some troubles during computations, as the Jacobian of the transformation
    * from the reference cell to those cells will go to zero, affecting the error
    * constants of the finite element estimates.
    *
@@ -455,7 +434,7 @@ namespace GridTools
    * GridTools::regularize_corner_cells(tria);
    * tria.refine_global(2);
    * @endcode
-   * generates a mesh that has a much better behavior w.r.t. the jacobian of
+   * generates a mesh that has a much better behavior w.r.t. the Jacobian of
    * the Mapping:
    *
    * <p ALIGN="center">
@@ -1845,6 +1824,40 @@ namespace GridTools
   compute_local_to_global_vertex_index_map(
     const Triangulation<dim, spacedim> &triangulation);
 
+  /**
+   * Map vertex indices in a coarse parallel::fullydistributed::Triangulation to
+   * the corresponding vertex indices in the coarse serial Triangulation that
+   * was used to the generate the parallel one.
+   *
+   * For objects of type parallel::distributed::Triangulation and
+   * parallel::shared::Triangulation this function returns the identity map
+   * (i.e., each processor knows about all vertices of the coarse Triangulation,
+   * and those vertices do not change). This function is mainly useful for
+   * objects of type parallel::fullydistributed::Triangulation where each
+   * processor only knows about the vertices that are locally owned or ghost
+   * vertices.
+   *
+   * This function returns a vector that has size parallel_tria.n_vertices().
+   * For each locally owned vertex that belongs to a locally owned cell, it
+   * contains the corresponding vertex index of the serial Triangulation. If a
+   * vertex is not locally owned, or it is locally owned but it belongs to a
+   * ghost cell, the corresponding serial index is
+   * `numbers::invalid_unsigned_int`. In other words, the returned vector has
+   * valid indices in a subset of the `true` entries of the vector returned by
+   * GridTools::get_locally_owned_vertices().
+   *
+   * The parallel Triangulation must have been generated from the serial one for
+   * this function to be any meaningful at all.
+   *
+   * @param serial_tria The serial Triangulation
+   * @param parallel_tria The parallel Triangulation
+   */
+  template <int dim, int spacedim>
+  std::vector<types::global_vertex_index>
+  parallel_to_serial_vertex_indices(
+    const Triangulation<dim, spacedim> &serial_tria,
+    const Triangulation<dim, spacedim> &parallel_tria);
+
   /** @} */
   /**
    * @name Partitions and subdomains of triangulations
@@ -2085,41 +2098,6 @@ namespace GridTools
 
   /** @} */
   /**
-   * @name Dealing with distorted cells
-   */
-  /** @{ */
-
-  /**
-   * Given a triangulation and a list of cells whose children have become
-   * distorted as a result of mesh refinement, try to fix these cells up by
-   * moving the center node around.
-   *
-   * The function returns a list of cells with distorted children that
-   * couldn't be fixed up for whatever reason. The returned list is therefore
-   * a subset of the input argument.
-   *
-   * For a definition of the concept of distorted cells, see the
-   * @ref GlossDistorted "glossary entry".
-   * The first argument passed to the current function is typically the
-   * exception thrown by the Triangulation::execute_coarsening_and_refinement
-   * function.
-   *
-   * @deprecated This function predates deal.II's use of manifolds and use of
-   * cell-local transfinite interpolation to place new points and is no longer
-   * necessary. See Manifolds::get_default_points_and_weights() for more
-   * information.
-   */
-  template <int dim, int spacedim>
-  DEAL_II_DEPRECATED typename Triangulation<dim, spacedim>::DistortedCellList
-  fix_up_distorted_child_cells(
-    const typename Triangulation<dim, spacedim>::DistortedCellList
-                                 &distorted_cells,
-    Triangulation<dim, spacedim> &triangulation);
-
-
-
-  /** @} */
-  /**
    * @name Extracting and creating patches of cells
    *
    * These functions extract and create patches of cells surrounding a single
@@ -2347,7 +2325,7 @@ namespace GridTools
      * face as described in orthogonal_equality() and
      * DoFTools::make_periodicity_constraints().
      */
-    unsigned char orientation;
+    types::geometric_orientation orientation;
 
     /**
      * A @p dim $\times$ @p dim rotation matrix that describes how vector
@@ -2379,28 +2357,31 @@ namespace GridTools
    * If no such relation exists then the returned std::optional object is empty
    * (i.e., has_value() will return `false`).
    *
-   * Here, two vertices <tt>v_1</tt> and <tt>v_2</tt> are considered equal, if
-   * $M\cdot v_1 + offset - v_2$ is parallel to the unit vector in unit
-   * direction @p direction. If the parameter @p matrix is a reference to a
-   * spacedim x spacedim matrix, $M$ is set to @p matrix, otherwise $M$ is the
-   * identity matrix.
+   * Here, two vertices <tt>v_1</tt> and <tt>v_2</tt> are considered equal, to
+   * the nearest tolerance, e.g. distance < abs_tol, if $M\cdot v_1 + offset -
+   * v_2$ is parallel to the
+   * unit vector in unit direction @p direction. Note that this tolerance is not
+   * scaled with the mesh, it's an absolute tolerance. If the parameter @p matrix
+   * is a reference to a spacedim x spacedim matrix, $M$ is set to @p matrix,
+   * otherwise $M$ is the identity matrix.
    *
    * If the matching was successful, the _relative_ orientation of @p face1 with
-   * respect to @p face2 is returned a std::optional<unsigned char>, in which
-   * the stored value is the same orientation bit format used elsewhere in the
-   * library. More information on that topic can be found in the
-   * @ref GlossFaceOrientation "glossary"
-   * article.
+   * respect to @p face2 is returned a
+   * std::optional<types::geometric_orientation>. More
+   * information on that topic can be found in the
+   * @ref GlossCombinedOrientation
+   * "glossary" article.
    */
   template <typename FaceIterator>
-  std::optional<unsigned char>
+  std::optional<types::geometric_orientation>
   orthogonal_equality(
     const FaceIterator                                           &face1,
     const FaceIterator                                           &face2,
     const unsigned int                                            direction,
     const Tensor<1, FaceIterator::AccessorType::space_dimension> &offset =
       Tensor<1, FaceIterator::AccessorType::space_dimension>(),
-    const FullMatrix<double> &matrix = FullMatrix<double>());
+    const FullMatrix<double> &matrix  = FullMatrix<double>(),
+    const double              abs_tol = 1e-10);
 
   /**
    * This function will collect periodic face pairs on the coarsest mesh level
@@ -2415,17 +2396,18 @@ namespace GridTools
    * with faces belonging to the second boundary with the help of
    * orthogonal_equality().
    *
-   * The unsigned char that is returned inside of PeriodicFacePair encodes the
-   * _relative_ orientation of the first face with respect to the second face,
-   * see the documentation of orthogonal_equality() for further details.
+   * The value returned inside of PeriodicFacePair encodes the _relative_
+   * orientation of the first face with respect to the second face, see the
+   * documentation of orthogonal_equality() for further details.
    *
    * The @p direction refers to the space direction in which periodicity is
    * enforced. When matching periodic faces this vector component is ignored.
    *
    * The @p offset is a vector tangential to the faces that is added to the
    * location of vertices of the 'first' boundary when attempting to match
-   * them to the corresponding vertices of the 'second' boundary. This can be
-   * used to implement conditions such as $u(0,y)=u(1,y+1)$.
+   * them (to the nearest absolute tolerance, distance < abs_tol) to the
+   * corresponding vertices of the 'second' boundary. This can be used to
+   * implement conditions such as $u(0,y)=u(1,y+1)$.
    *
    * Optionally, a $dim\times dim$ rotation @p matrix can be specified that
    * describes how vector valued DoFs of the first face should be modified
@@ -2471,14 +2453,11 @@ namespace GridTools
                                                &matched_pairs,
     const Tensor<1, MeshType::space_dimension> &offset =
       dealii::Tensor<1, MeshType::space_dimension>(),
-    const FullMatrix<double> &matrix = FullMatrix<double>());
+    const FullMatrix<double> &matrix  = FullMatrix<double>(),
+    const double              abs_tol = 1e-10);
 
 
   /**
-   * This compatibility version of collect_periodic_faces() only works on
-   * grids with cells in
-   * @ref GlossFaceOrientation "standard orientation".
-   *
    * Instead of defining a 'first' and 'second' boundary with the help of two
    * boundary_ids this function defines a 'left' boundary as all faces with
    * local face index <code>2*direction</code> and boundary indicator @p b_id
@@ -2492,9 +2471,9 @@ namespace GridTools
    *
    * See above function for further details.
    *
-   * @note This version of collect_periodic_faces() will not work on
-   * meshes with cells not in
-   * @ref GlossFaceOrientation "standard orientation".
+   * @warning This version of collect_periodic_faces() will not work on
+   * meshes with faces not in the
+   * @ref GlossCombinedOrientation "default orientation".
    *
    * @dealiiConceptRequires{concepts::is_triangulation_or_dof_handler<MeshType>}
    */
@@ -2508,7 +2487,8 @@ namespace GridTools
                                                        &matched_pairs,
     const dealii::Tensor<1, MeshType::space_dimension> &offset =
       dealii::Tensor<1, MeshType::space_dimension>(),
-    const FullMatrix<double> &matrix = FullMatrix<double>());
+    const FullMatrix<double> &matrix  = FullMatrix<double>(),
+    const double              abs_tol = 1e-10);
 
   /** @} */
   /**
@@ -3104,19 +3084,6 @@ namespace GridTools
 
 
 
-  // This specialization is defined here so that the general template in the
-  // source file doesn't need to have further 1d overloads for the internal
-  // functions it calls.
-  template <>
-  inline Triangulation<1, 1>::DistortedCellList
-  fix_up_distorted_child_cells(const Triangulation<1, 1>::DistortedCellList &,
-                               Triangulation<1, 1> &)
-  {
-    return {};
-  }
-
-
-
   template <int dim, typename Transformation, int spacedim>
   DEAL_II_CXX20_REQUIRES(
     (std::invocable<Transformation, Point<spacedim>> &&
@@ -3166,7 +3133,7 @@ namespace GridTools
                 // this line has children
                 cell->face(face)->child(0)->vertex(1) =
                   (cell->face(face)->vertex(0) + cell->face(face)->vertex(1)) /
-                  2;
+                  2.0;
               }
       }
     else if (dim == 3)
@@ -3179,29 +3146,52 @@ namespace GridTools
             if (cell->face(face)->has_children() &&
                 !cell->face(face)->at_boundary())
               {
-                Assert(cell->reference_cell() ==
-                         ReferenceCells::get_hypercube<dim>(),
-                       ExcNotImplemented());
+                if (static_cast<std::uint8_t>(
+                      cell->face(face)->refinement_case()) ==
+                    RefinementCase<dim - 1>::isotropic_refinement)
+                  {
+                    Assert(cell->reference_cell() ==
+                             ReferenceCells::get_hypercube<dim>(),
+                           ExcNotImplemented());
 
-                // this face has hanging nodes
-                cell->face(face)->child(0)->vertex(1) =
-                  (cell->face(face)->vertex(0) + cell->face(face)->vertex(1)) /
-                  2.0;
-                cell->face(face)->child(0)->vertex(2) =
-                  (cell->face(face)->vertex(0) + cell->face(face)->vertex(2)) /
-                  2.0;
-                cell->face(face)->child(1)->vertex(3) =
-                  (cell->face(face)->vertex(1) + cell->face(face)->vertex(3)) /
-                  2.0;
-                cell->face(face)->child(2)->vertex(3) =
-                  (cell->face(face)->vertex(2) + cell->face(face)->vertex(3)) /
-                  2.0;
+                    // this face has hanging nodes
+                    cell->face(face)->child(0)->vertex(1) =
+                      (cell->face(face)->vertex(0) +
+                       cell->face(face)->vertex(1)) /
+                      2.0;
+                    cell->face(face)->child(0)->vertex(2) =
+                      (cell->face(face)->vertex(0) +
+                       cell->face(face)->vertex(2)) /
+                      2.0;
+                    cell->face(face)->child(1)->vertex(3) =
+                      (cell->face(face)->vertex(1) +
+                       cell->face(face)->vertex(3)) /
+                      2.0;
+                    cell->face(face)->child(2)->vertex(3) =
+                      (cell->face(face)->vertex(2) +
+                       cell->face(face)->vertex(3)) /
+                      2.0;
 
-                // center of the face
-                cell->face(face)->child(0)->vertex(3) =
-                  (cell->face(face)->vertex(0) + cell->face(face)->vertex(1) +
-                   cell->face(face)->vertex(2) + cell->face(face)->vertex(3)) /
-                  4.0;
+                    // center of the face
+                    cell->face(face)->child(0)->vertex(3) =
+                      (cell->face(face)->vertex(0) +
+                       cell->face(face)->vertex(1) +
+                       cell->face(face)->vertex(2) +
+                       cell->face(face)->vertex(3)) /
+                      4.0;
+                  }
+                else
+                  {
+                    // Special case for anisotropic refinement
+                    for (unsigned int line = 0;
+                         line < GeometryInfo<dim - 1>::faces_per_cell;
+                         line++)
+                      if (cell->face(face)->line(line)->has_children())
+                        cell->face(face)->line(line)->child(0)->vertex(1) =
+                          (cell->face(face)->line(line)->vertex(0) +
+                           cell->face(face)->line(line)->vertex(1)) /
+                          2.0;
+                  }
               }
       }
 
@@ -3387,7 +3377,7 @@ namespace GridTools
       // a mutex:
       static Utilities::MPI::CollectiveMutex      mutex;
       Utilities::MPI::CollectiveMutex::ScopedLock lock(
-        mutex, tria->get_communicator());
+        mutex, tria->get_mpi_communicator());
 
       const int mpi_tag =
         Utilities::MPI::internal::Tags::exchange_cell_data_request;
@@ -3406,7 +3396,7 @@ namespace GridTools
                                        MPI_BYTE,
                                        it.first,
                                        mpi_tag,
-                                       tria->get_communicator(),
+                                       tria->get_mpi_communicator(),
                                        &requests[idx]);
             AssertThrowMPI(ierr);
             ++idx;
@@ -3422,7 +3412,7 @@ namespace GridTools
           MPI_Status status;
           int        ierr = MPI_Probe(MPI_ANY_SOURCE,
                                mpi_tag,
-                               tria->get_communicator(),
+                               tria->get_mpi_communicator(),
                                &status);
           AssertThrowMPI(ierr);
 
@@ -3445,7 +3435,7 @@ namespace GridTools
                           MPI_BYTE,
                           status.MPI_SOURCE,
                           status.MPI_TAG,
-                          tria->get_communicator(),
+                          tria->get_mpi_communicator(),
                           &status);
           AssertThrowMPI(ierr);
 
@@ -3498,7 +3488,7 @@ namespace GridTools
                            MPI_BYTE,
                            status.MPI_SOURCE,
                            mpi_tag_reply,
-                           tria->get_communicator(),
+                           tria->get_mpi_communicator(),
                            &reply_requests[idx]);
           AssertThrowMPI(ierr);
         }
@@ -3510,7 +3500,7 @@ namespace GridTools
           MPI_Status status;
           int        ierr = MPI_Probe(MPI_ANY_SOURCE,
                                mpi_tag_reply,
-                               tria->get_communicator(),
+                               tria->get_mpi_communicator(),
                                &status);
           AssertThrowMPI(ierr);
 
@@ -3525,7 +3515,7 @@ namespace GridTools
                           MPI_BYTE,
                           status.MPI_SOURCE,
                           status.MPI_TAG,
-                          tria->get_communicator(),
+                          tria->get_mpi_communicator(),
                           &status);
           AssertThrowMPI(ierr);
 

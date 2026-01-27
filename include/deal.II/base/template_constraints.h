@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2024 by the deal.II authors
+// Copyright (C) 2003 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,7 +19,10 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/complex_overloads.h>
+#include <deal.II/base/mpi_stub.h>
 #include <deal.II/base/std_cxx20/type_traits.h>
+
+#include <deal.II/lac/vector_operation.h>
 
 #include <complex>
 #include <type_traits>
@@ -309,17 +312,6 @@ using begin_and_end_t =
 template <typename T>
 constexpr bool has_begin_and_end =
   internal::is_supported_operation<begin_and_end_t, T>;
-
-
-/**
- * A `using` declaration to make the
- * [std::identity_type](https://en.cppreference.com/w/cpp/types/type_identity)
- * class available under the name that deal.II has used for a long time.
- *
- * @deprecated Use `std_cxx20::type_identity` instead.
- */
-template <typename T>
-using identity DEAL_II_DEPRECATED = std_cxx20::type_identity<T>;
 
 
 /**
@@ -614,17 +606,14 @@ class BlockVector;
 namespace LinearAlgebra
 {
   template <typename Number>
-  class Vector;
-
-  template <typename Number>
-  class BlockVector;
+  class ReadWriteVector;
 
   namespace distributed
   {
     template <typename Number, typename MemorySpace>
     class Vector;
 
-    template <typename Number>
+    template <typename Number, typename MemorySpace>
     class BlockVector;
   } // namespace distributed
 } // namespace LinearAlgebra
@@ -671,7 +660,13 @@ namespace LinearAlgebra
     class Vector;
 
     template <typename Number, typename MemorySpace>
+    class BlockVector;
+
+    template <typename Number, typename MemorySpace>
     class SparseMatrix;
+
+    template <typename Number, typename MemorySpace>
+    class BlockSparseMatrix;
   } // namespace TpetraWrappers
 #  endif
 } // namespace LinearAlgebra
@@ -740,15 +735,17 @@ namespace concepts
 
     template <typename Number>
     inline constexpr bool
-      is_dealii_vector_type<dealii::LinearAlgebra::BlockVector<Number>> = true;
+      is_dealii_vector_type<dealii::LinearAlgebra::ReadWriteVector<Number>> =
+        true;
 
     template <typename Number, typename MemorySpace>
     inline constexpr bool is_dealii_vector_type<
       dealii::LinearAlgebra::distributed::Vector<Number, MemorySpace>> = true;
 
-    template <typename Number>
+    template <typename Number, typename MemorySpace>
     inline constexpr bool is_dealii_vector_type<
-      dealii::LinearAlgebra::distributed::BlockVector<Number>> = true;
+      dealii::LinearAlgebra::distributed::BlockVector<Number, MemorySpace>> =
+      true;
 
 #  ifdef DEAL_II_WITH_PETSC
     template <>
@@ -786,6 +783,11 @@ namespace concepts
     template <typename Number, typename MemorySpace>
     inline constexpr bool is_dealii_vector_type<
       dealii::LinearAlgebra::TpetraWrappers::Vector<Number, MemorySpace>> =
+      true;
+
+    template <typename Number, typename MemorySpace>
+    inline constexpr bool is_dealii_vector_type<
+      dealii::LinearAlgebra::TpetraWrappers::BlockVector<Number, MemorySpace>> =
       true;
 #    endif
 #  endif
@@ -935,6 +937,51 @@ namespace parallel
 
 namespace concepts
 {
+  namespace internal
+  {
+    /**
+     * CHeck whether a type represents an MPI-distributed vector whose element
+     * access may require communication.
+     *
+     * This trait explicitly enumerates known distributed vector types from
+     * deal.II, Trilinos, and PETSc.
+     */
+    template <class T>
+    inline constexpr bool is_distributed_vector_type = false;
+
+    // ---- deal.II LA distributed vectors ----
+    template <typename Number, typename MemorySpace>
+    inline constexpr bool is_distributed_vector_type<
+      dealii::LinearAlgebra::distributed::Vector<Number, MemorySpace>> = true;
+
+    template <typename Number, typename MemorySpace>
+    inline constexpr bool is_distributed_vector_type<
+      dealii::LinearAlgebra::distributed::BlockVector<Number, MemorySpace>> =
+      true;
+
+#ifdef DEAL_II_WITH_TRILINOS
+    template <>
+    inline constexpr bool
+      is_distributed_vector_type<dealii::TrilinosWrappers::MPI::Vector> = true;
+
+    template <>
+    inline constexpr bool
+      is_distributed_vector_type<dealii::TrilinosWrappers::MPI::BlockVector> =
+        true;
+#endif
+
+#ifdef DEAL_II_WITH_PETSC
+    template <>
+    inline constexpr bool
+      is_distributed_vector_type<dealii::PETScWrappers::MPI::Vector> = true;
+
+    template <>
+    inline constexpr bool
+      is_distributed_vector_type<dealii::PETScWrappers::MPI::BlockVector> =
+        true;
+#endif
+  } // namespace internal
+
 #if defined(DEAL_II_HAVE_CXX20) || defined(DOXYGEN)
   namespace internal
   {
@@ -986,7 +1033,8 @@ namespace concepts
                                             VectorType                      W,
                                             typename VectorType::value_type a,
                                             typename VectorType::value_type b,
-                                            typename VectorType::value_type s) {
+                                            typename VectorType::value_type s,
+                                            VectorOperation::values operation) {
     // Check local type requirements:
     typename VectorType::value_type;
     typename VectorType::size_type;
@@ -1051,6 +1099,15 @@ namespace concepts
     {
       U.all_zero()
     } -> std::same_as<bool>;
+
+    {
+      U.get_mpi_communicator()
+    } -> std::same_as<MPI_Comm>;
+
+    // Synchronization:
+    {
+      U.compress(operation)
+    } -> std::same_as<void>;
   };
 
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -312,7 +312,7 @@ namespace Step22
 
 
   template <class Matrix, class Preconditioner>
-  class InverseMatrix : public Subscriptor
+  class InverseMatrix : public EnableObserverPointer
   {
   public:
     InverseMatrix(const Matrix &m, const Preconditioner &preconditioner);
@@ -321,8 +321,8 @@ namespace Step22
     vmult(Vector<double> &dst, const Vector<double> &src) const;
 
   private:
-    const SmartPointer<const Matrix>         matrix;
-    const SmartPointer<const Preconditioner> preconditioner;
+    const ObserverPointer<const Matrix>         matrix;
+    const ObserverPointer<const Preconditioner> preconditioner;
   };
 
 
@@ -353,7 +353,7 @@ namespace Step22
   }
 
   template <class Preconditioner>
-  class SchurComplement : public Subscriptor
+  class SchurComplement : public EnableObserverPointer
   {
   public:
     SchurComplement(
@@ -364,8 +364,8 @@ namespace Step22
     vmult(Vector<double> &dst, const Vector<double> &src) const;
 
   private:
-    const SmartPointer<const BlockSparseMatrix<double>> system_matrix;
-    const SmartPointer<
+    const ObserverPointer<const BlockSparseMatrix<double>> system_matrix;
+    const ObserverPointer<
       const InverseMatrix<SparseMatrix<double>, Preconditioner>>
       A_inverse;
 

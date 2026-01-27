@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2015 by the deal.II authors
+// Copyright (C) 2006 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -16,7 +16,7 @@
 /**
  * @defgroup numerics Numerical algorithms
  *
- * This module groups a diverse set of classes that generally implement some
+ * This topic groups a diverse set of classes that generally implement some
  * sort of numerical algorithm on top all the basic triangulation, DoFHandler,
  * and finite element classes in the library. They are generally unconnected
  * to each other.

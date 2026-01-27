@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2005 - 2020 by the deal.II authors
+// Copyright (C) 2005 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -120,6 +120,6 @@
  *
  * These are the classes, where no reasonable predetermined set of instances
  * exists. Therefore, all member definitions are included in the header file
- * and are instantiated wherever needed.  An example would be the SmartPointer
+ * and are instantiated wherever needed.  An example would be the ObserverPointer
  * class template that can be used with virtually any template argument.
  */

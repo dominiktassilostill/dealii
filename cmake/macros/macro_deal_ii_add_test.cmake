@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2013 - 2024 by the deal.II authors
+## Copyright (C) 2013 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -159,6 +159,8 @@ function(deal_ii_add_test _category _test_name _comparison_file)
   # ranks used for the test to the maximum number of allowed ranks. If no
   # limit has been specified, i.e., TEST_MPI_RANK_LIMIT is 0, skip defining
   # the test.
+  #
+  # This mechanism is specifically used in the performance test suite.
   #
   if("${_n_cpu}" STREQUAL "max")
     if(TEST_MPI_RANK_LIMIT EQUAL 0)
@@ -560,6 +562,7 @@ function(deal_ii_add_test _category _test_name _comparison_file)
           ${_test_directory}
         DEPENDS
           ${_target}
+          ${_source_file}
           ${DEAL_II_PATH}/${DEAL_II_SHARE_RELDIR}/scripts/normalize.pl
         COMMENT
           "Normalizing test output file ${_test_directory}/output"

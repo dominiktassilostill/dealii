@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2024 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -72,7 +72,7 @@ test()
     (std::next(dof_handler.begin(0)))->face(1),
     cm,
     ComponentMask(),
-    ReferenceCell::default_combined_face_orientation(),
+    numbers::default_geometric_orientation,
     FullMatrix<double>(),
     std::vector<unsigned int>(),
     periodicity_factor);

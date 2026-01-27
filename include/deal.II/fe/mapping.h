@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2024 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -29,6 +29,8 @@
 #include <deal.II/hp/q_collection.h>
 
 #include <deal.II/non_matching/immersed_surface_quadrature.h>
+
+#include <boost/container/small_vector.hpp>
 
 #include <array>
 #include <cmath>
@@ -314,7 +316,7 @@ enum MappingKind
  * @ingroup mapping
  */
 template <int dim, int spacedim = dim>
-class Mapping : public Subscriptor
+class Mapping : public EnableObserverPointer
 {
 public:
   /**
@@ -349,7 +351,12 @@ public:
    * <code>cell-@>vertex(v)</code>.
    */
   virtual boost::container::small_vector<Point<spacedim>,
-                                         GeometryInfo<dim>::vertices_per_cell>
+#ifndef _MSC_VER
+                                         ReferenceCells::max_n_vertices<dim>()
+#else
+                                         GeometryInfo<dim>::vertices_per_cell
+#endif
+                                         >
   get_vertices(
     const typename Triangulation<dim, spacedim>::cell_iterator &cell) const;
 
@@ -362,7 +369,12 @@ public:
    * @param[in] face_no The number of the face within the cell.
    */
   boost::container::small_vector<Point<spacedim>,
-                                 GeometryInfo<dim>::vertices_per_face>
+#ifndef _MSC_VER
+                                 ReferenceCells::max_n_vertices<dim - 1>()
+#else
+                                 GeometryInfo<dim - 1>::vertices_per_cell
+#endif
+                                 >
   get_vertices(const typename Triangulation<dim, spacedim>::cell_iterator &cell,
                const unsigned int face_no) const;
 
@@ -417,7 +429,7 @@ public:
   /**
    * Return whether the mapping preserves vertex locations. In other words,
    * this function returns whether the mapped location of the reference cell
-   * vertices (given by GeometryInfo::unit_cell_vertex()) equals the result of
+   * vertices (given by ReferenceCell::vertex()) equals the result of
    * <code>cell-@>vertex()</code> (i.e., information stored by the
    * triangulation).
    *
@@ -473,7 +485,7 @@ public:
    * throws an exception of type Mapping::ExcTransformationFailed . Whether
    * the given point @p p lies outside the cell can therefore be determined by
    * checking whether the returned reference coordinates lie inside or outside
-   * the reference cell (e.g., using GeometryInfo::is_inside_unit_cell()) or
+   * the reference cell (e.g., using ReferenceCell::contains_point()) or
    * whether the exception mentioned above has been thrown.
    *
    * @param cell Iterator to the cell that will be used to define the mapping.
@@ -498,7 +510,8 @@ public:
    * MappingQ. The only difference in behavior is that this function
    * will never throw an ExcTransformationFailed() exception. If the
    * transformation fails for `real_points[i]`, the returned `unit_points[i]`
-   * contains std::numeric_limits<double>::infinity() as the first entry.
+   * contains std::numeric_limits<double>::lowest() as the first component
+   * of the point, marking this one point as invalid.
    */
   virtual void
   transform_points_real_to_unit_cell(
@@ -717,7 +730,7 @@ protected:
    * An extensive discussion of the interaction between this function and
    * FEValues can be found in the
    * @ref FE_vs_Mapping_vs_FEValues
-   * documentation module.
+   * documentation topic.
    *
    * @see UpdateFlags
    */
@@ -748,7 +761,7 @@ protected:
    * An extensive discussion of the interaction between this function and
    * FEValues can be found in the
    * @ref FE_vs_Mapping_vs_FEValues
-   * documentation module.
+   * documentation topic.
    *
    * @param update_flags A set of flags that define what is expected of the
    * mapping class in future calls to transform() or the fill_fe_values()
@@ -764,13 +777,6 @@ protected:
    * @return A pointer to a newly created object of type InternalDataBase (or
    * a derived class). Ownership of this object passes to the calling
    * function.
-   *
-   * @note C++ allows that virtual functions in derived classes may return
-   * pointers to objects not of type InternalDataBase but in fact pointers to
-   * objects of classes <i>derived</i> from InternalDataBase. (This feature is
-   * called "covariant return types".) This is useful in some contexts where
-   * the calling is within the derived class and will immediately make use of
-   * the returned object, knowing its real (derived) type.
    */
   virtual std::unique_ptr<InternalDataBase>
   get_data(const UpdateFlags      update_flags,
@@ -795,13 +801,6 @@ protected:
    * @return A pointer to a newly created object of type InternalDataBase (or
    * a derived class). Ownership of this object passes to the calling
    * function.
-   *
-   * @note C++ allows that virtual functions in derived classes may return
-   * pointers to objects not of type InternalDataBase but in fact pointers to
-   * objects of classes <i>derived</i> from InternalDataBase. (This feature is
-   * called "covariant return types".) This is useful in some contexts where
-   * the calling is within the derived class and will immediately make use of
-   * the returned object, knowing its real (derived) type.
    */
   virtual std::unique_ptr<InternalDataBase>
   get_face_data(const UpdateFlags               update_flags,
@@ -834,13 +833,6 @@ protected:
    * @return A pointer to a newly created object of type InternalDataBase (or
    * a derived class). Ownership of this object passes to the calling
    * function.
-   *
-   * @note C++ allows that virtual functions in derived classes may return
-   * pointers to objects not of type InternalDataBase but in fact pointers to
-   * objects of classes <i>derived</i> from InternalDataBase. (This feature is
-   * called "covariant return types".) This is useful in some contexts where
-   * the calling is within the derived class and will immediately make use of
-   * the returned object, knowing its real (derived) type.
    */
   virtual std::unique_ptr<InternalDataBase>
   get_subface_data(const UpdateFlags          update_flags,
@@ -880,7 +872,7 @@ protected:
    * An extensive discussion of the interaction between this function and
    * FEValues can be found in the
    * @ref FE_vs_Mapping_vs_FEValues
-   * documentation module.
+   * documentation topic.
    *
    * @param[in] cell The cell of the triangulation for which this function is
    * to compute a mapping from the reference cell to.

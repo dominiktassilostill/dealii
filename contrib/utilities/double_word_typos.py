@@ -2,7 +2,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2018 by the deal.II authors
+## Copyright (C) 2018 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -37,10 +37,22 @@ import sys
 
 # Skip the following tokens since they show up frequently but are not related to
 # double word typos
-SKIP = ["//", "*", "}", "|", "};", ">", "\"", "|", "/",
-        "numbers::invalid_unsigned_int,", "std::string,", "int,"]
+SKIP = [
+    "//",
+    "*",
+    "}",
+    "|",
+    "};",
+    ">",
+    '"',
+    "|",
+    "/",
+    "numbers::invalid_unsigned_int,",
+    "std::string,",
+    "int,",
+]
 
-with open(sys.argv[1], 'r', encoding='utf-8') as handle:
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
     previous_line = ""
     for line_n, line in enumerate(handle):
         line = line.strip()

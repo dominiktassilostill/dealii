@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 - 2024 by the deal.II authors
+// Copyright (C) 2023 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -20,8 +20,11 @@
 #include <deal.II/grid/grid_tools_geometry.h>
 #include <deal.II/grid/grid_tools_topology.h>
 
+#include <boost/container/small_vector.hpp>
+
 #include <algorithm>
 #include <map>
+#include <numeric>
 #include <set>
 #include <vector>
 
@@ -63,22 +66,23 @@ namespace GridTools
                                          std::begin(b.vertices),
                                          std::end(b.vertices)))
           return true;
-          // it should never be necessary to check the material or manifold
-          // ids as a 'tiebreaker' (since they must be equal if the vertex
-          // indices are equal). Assert it anyway:
-#ifdef DEBUG
-        if (std::equal(std::begin(a.vertices),
-                       std::end(a.vertices),
-                       std::begin(b.vertices)))
+        // it should never be necessary to check the material or manifold
+        // ids as a 'tiebreaker' (since they must be equal if the vertex
+        // indices are equal). Assert it anyway:
+        if constexpr (running_in_debug_mode())
           {
-            Assert(a.material_id == b.material_id &&
-                     a.manifold_id == b.manifold_id,
-                   ExcMessage(
-                     "Two CellData objects with equal vertices must "
-                     "have the same material/boundary ids and manifold "
-                     "ids."));
+            if (std::equal(std::begin(a.vertices),
+                           std::end(a.vertices),
+                           std::begin(b.vertices)))
+              {
+                Assert(a.material_id == b.material_id &&
+                         a.manifold_id == b.manifold_id,
+                       ExcMessage(
+                         "Two CellData objects with equal vertices must "
+                         "have the same material/boundary ids and manifold "
+                         "ids."));
+              }
           }
-#endif
         return false;
       }
     };
@@ -1672,6 +1676,115 @@ namespace GridTools
 
 
   template <int dim, int spacedim>
+  std::vector<std::vector<std::pair<unsigned int, Point<spacedim>>>>
+  extract_ordered_boundary_vertices(const Triangulation<dim, spacedim> &tria,
+                                    const Mapping<dim, spacedim>       &mapping)
+  {
+    Assert(dim == 2, ExcMessage("Only implemented for 2D triangulations"));
+    // This map holds the two vertex indices of each face.
+    // Counterclockwise first vertex index on first position,
+    // counterclockwise second vertex index on second position.
+    std::map<unsigned int, unsigned int>    face_vertex_indices;
+    std::map<unsigned int, Point<spacedim>> vertex_to_point;
+
+    // Iterate over all active cells at the boundary
+    for (const auto &cell : tria.active_cell_iterators())
+      {
+        for (const unsigned int f : cell->face_indices())
+          {
+            if (cell->face(f)->at_boundary())
+              {
+                // get mapped vertices of the cell
+                const auto         v_mapped = mapping.get_vertices(cell);
+                const unsigned int v0       = cell->face(f)->vertex_index(0);
+                const unsigned int v1       = cell->face(f)->vertex_index(1);
+
+                if (cell->reference_cell() == ReferenceCells::Triangle)
+                  {
+                    // add indices and first mapped vertex of the face
+                    vertex_to_point[v0]     = v_mapped[f];
+                    face_vertex_indices[v0] = v1;
+                  }
+                else if (cell->reference_cell() ==
+                         ReferenceCells::Quadrilateral)
+                  {
+                    // Ensure that vertex indices of the face are in
+                    // counterclockwise order inserted in the map.
+                    if (f == 0 || f == 3)
+                      {
+                        // add indices and first mapped vertex of the face
+                        vertex_to_point[v1] =
+                          v_mapped[GeometryInfo<2>::face_to_cell_vertices(f,
+                                                                          1)];
+                        face_vertex_indices[v1] = v0;
+                      }
+                    else
+                      {
+                        // add indices and first mapped vertex of the face
+                        vertex_to_point[v0] =
+                          v_mapped[GeometryInfo<2>::face_to_cell_vertices(f,
+                                                                          0)];
+                        face_vertex_indices[v0] = v1;
+                      }
+                  }
+                else
+                  {
+                    DEAL_II_ASSERT_UNREACHABLE();
+                  }
+              }
+          }
+      }
+
+    std::vector<std::vector<std::pair<unsigned int, Point<spacedim>>>>
+                                                          boundaries;
+    std::vector<std::pair<unsigned int, Point<spacedim>>> current_boundary;
+
+    // Vertex to start counterclockwise insertion
+    unsigned int start_index   = face_vertex_indices.begin()->first;
+    unsigned int current_index = start_index;
+
+    // As long as still entries in the map, use last vertex index to
+    // find next vertex index
+    while (face_vertex_indices.size() > 0)
+      {
+        const auto vertex_it = vertex_to_point.find(current_index);
+        Assert(vertex_it != vertex_to_point.end(),
+               ExcMessage("This should not occur, please report bug"));
+        current_boundary.emplace_back(vertex_it->first, vertex_it->second);
+        vertex_to_point.erase(vertex_it);
+
+        const auto it = face_vertex_indices.find(current_index);
+        // If the boundary is one closed loop, the next vertex index
+        // must exist as key until the map is empty.
+        Assert(it != face_vertex_indices.end(),
+               ExcMessage("Triangulation might contain holes"));
+
+        current_index = it->second;
+        face_vertex_indices.erase(it);
+
+        // traversed one closed boundary loop
+        if (current_index == start_index)
+          {
+            boundaries.push_back(current_boundary);
+            current_boundary.clear();
+
+            if (face_vertex_indices.size() == 0)
+              {
+                break;
+              }
+
+            // Take arbitrary remaining vertex as new start
+            // for next boundary loop
+            start_index   = face_vertex_indices.begin()->first;
+            current_index = start_index;
+          }
+      }
+    return boundaries;
+  }
+
+
+
+  template <int dim, int spacedim>
   void
   remove_hanging_nodes(Triangulation<dim, spacedim> &tria,
                        const bool                    isotropic,
@@ -1855,8 +1968,42 @@ namespace GridTools
     const Triangulation<dim, spacedim> &triangulation,
     DynamicSparsityPattern             &cell_connectivity)
   {
-    std::vector<std::vector<unsigned int>> vertex_to_cell(
-      triangulation.n_vertices());
+    // The choice of 16 or fewer neighbors here is based on empirical
+    // measurements.
+    //
+    // Vertices in a structured hexahedral mesh have 8 adjacent cells. In a
+    // structured tetrahedral mesh, about 98% of vertices have 16 neighbors or
+    // fewer. Similarly, in an unstructured tetrahedral mesh, if we count the
+    // number of neighbors each vertex has we obtain the following distribution:
+    //
+    // 3, 1
+    // 4, 728
+    // 5, 4084
+    // 6, 7614
+    // 7, 17329
+    // 8, 31145
+    // 9, 46698
+    // 10, 64193
+    // 11, 68269
+    // 12, 63574
+    // 13, 57016
+    // 14, 50476
+    // 15, 41886
+    // 16, 31820
+    // 17, 21269
+    // 18, 12217
+    // 19, 6072
+    // 20, 2527
+    // 21, 825
+    // 22, 262
+    // 23, 61
+    // 24, 12
+    // 26, 1
+    //
+    // so about 86% of vertices have 16 neighbors or fewer. Hence, we picked 16
+    // neighbors here to cover most cases without allocation.
+    std::vector<boost::container::small_vector<unsigned int, 16>>
+      vertex_to_cell(triangulation.n_vertices());
     for (const auto &cell : triangulation.active_cell_iterators())
       {
         for (const unsigned int v : cell->vertex_indices())
@@ -1866,14 +2013,20 @@ namespace GridTools
 
     cell_connectivity.reinit(triangulation.n_active_cells(),
                              triangulation.n_active_cells());
+    std::vector<types::global_dof_index> neighbors;
     for (const auto &cell : triangulation.active_cell_iterators())
       {
+        neighbors.clear();
         for (const unsigned int v : cell->vertex_indices())
-          for (unsigned int n = 0;
-               n < vertex_to_cell[cell->vertex_index(v)].size();
-               ++n)
-            cell_connectivity.add(cell->active_cell_index(),
-                                  vertex_to_cell[cell->vertex_index(v)][n]);
+          neighbors.insert(neighbors.end(),
+                           vertex_to_cell[cell->vertex_index(v)].begin(),
+                           vertex_to_cell[cell->vertex_index(v)].end());
+        std::sort(neighbors.begin(), neighbors.end());
+        cell_connectivity.add_entries(cell->active_cell_index(),
+                                      neighbors.begin(),
+                                      std::unique(neighbors.begin(),
+                                                  neighbors.end()),
+                                      true);
       }
   }
 
@@ -1885,8 +2038,8 @@ namespace GridTools
     const unsigned int                  level,
     DynamicSparsityPattern             &cell_connectivity)
   {
-    std::vector<std::vector<unsigned int>> vertex_to_cell(
-      triangulation.n_vertices());
+    std::vector<boost::container::small_vector<unsigned int, 16>>
+      vertex_to_cell(triangulation.n_vertices());
     for (typename Triangulation<dim, spacedim>::cell_iterator cell =
            triangulation.begin(level);
          cell != triangulation.end(level);
@@ -1898,22 +2051,25 @@ namespace GridTools
 
     cell_connectivity.reinit(triangulation.n_cells(level),
                              triangulation.n_cells(level));
-    for (typename Triangulation<dim, spacedim>::cell_iterator cell =
-           triangulation.begin(level);
-         cell != triangulation.end(level);
-         ++cell)
+    std::vector<types::global_dof_index> neighbors;
+    for (const auto &cell : triangulation.cell_iterators_on_level(level))
       {
+        neighbors.clear();
         for (const unsigned int v : cell->vertex_indices())
-          for (unsigned int n = 0;
-               n < vertex_to_cell[cell->vertex_index(v)].size();
-               ++n)
-            cell_connectivity.add(cell->index(),
-                                  vertex_to_cell[cell->vertex_index(v)][n]);
+          neighbors.insert(neighbors.end(),
+                           vertex_to_cell[cell->vertex_index(v)].begin(),
+                           vertex_to_cell[cell->vertex_index(v)].end());
+        std::sort(neighbors.begin(), neighbors.end());
+        cell_connectivity.add_entries(cell->index(),
+                                      neighbors.begin(),
+                                      std::unique(neighbors.begin(),
+                                                  neighbors.end()),
+                                      true);
       }
   }
 } /* namespace GridTools */
 
 // explicit instantiations
-#include "grid_tools_topology.inst"
+#include "grid/grid_tools_topology.inst"
 
 DEAL_II_NAMESPACE_CLOSE

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -51,13 +51,13 @@ main(int argc, char **argv)
 
   data.add_parameters(prm);
   out << "# Default Parameters" << std::endl;
-  prm.print_parameters(out, ParameterHandler::ShortText);
+  prm.print_parameters(out, ParameterHandler::ShortPRM);
 
   std::ifstream ifile(SOURCE_DIR "/petsc_snes_00_in.prm");
   prm.parse_input(ifile);
 
   out << "# Testing Parameters" << std::endl;
-  prm.print_parameters(out, ParameterHandler::ShortText);
+  prm.print_parameters(out, ParameterHandler::ShortPRM);
 
   {
     out << "# Test PETSc interface (MFFD)" << std::endl;

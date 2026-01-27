@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,22 +18,28 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/exceptions.h>
+#include <deal.II/base/mpi_stub.h>
 
 #ifdef DEAL_II_WITH_TRILINOS
+
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_Comm.h>
 #  include <Epetra_Map.h>
 #  include <Teuchos_Comm.hpp>
 #  include <Teuchos_RCP.hpp>
+
 #  ifdef DEAL_II_WITH_MPI
 #    include <Epetra_MpiComm.h>
 #  else
 #    include <Epetra_SerialComm.h>
 #  endif
+
+#  ifdef DEAL_II_TRILINOS_WITH_TPETRA
+#    include <Teuchos_RCPDecl.hpp>
+#  endif // DEAL_II_TRILINOS_WITH_TPETRA
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 #endif
 
-#ifdef DEAL_II_TRILINOS_WITH_TPETRA
-#  include <Teuchos_RCPDecl.hpp>
-#endif // DEAL_II_TRILINOS_WITH_TPETRA
 
 DEAL_II_NAMESPACE_OPEN
 

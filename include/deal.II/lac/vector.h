@@ -22,7 +22,6 @@
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/index_set.h>
 #include <deal.II/base/numbers.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/lac/read_vector.h>
 #include <deal.II/lac/vector_operation.h>
@@ -116,7 +115,7 @@ namespace parallel
  * in the manual).
  */
 template <typename Number>
-class Vector : public Subscriptor, public ReadVector<Number>
+class Vector : public ReadVector<Number>
 {
 public:
   /**
@@ -286,6 +285,13 @@ public:
    * to behave properly.
    */
   virtual ~Vector() override = default;
+
+
+  /**
+   * This function is equivalent to writing <code>size() == 0</code>.
+   */
+  bool
+  empty() const;
 
   /**
    * This function does nothing but exists for compatibility with the parallel
@@ -673,7 +679,7 @@ public:
   operator()(const size_type i) const;
 
   /**
-   * Access the @p ith component as a writeable reference.
+   * Access the @p ith component as a writable reference.
    */
   Number &
   operator()(const size_type i);
@@ -687,7 +693,7 @@ public:
   operator[](const size_type i) const;
 
   /**
-   * Access the @p ith component as a writeable reference.
+   * Access the @p ith component as a writable reference.
    *
    * Exactly the same as operator().
    */
@@ -719,7 +725,7 @@ public:
    */
   virtual void
   extract_subvector_to(const ArrayView<const types::global_dof_index> &indices,
-                       ArrayView<Number> &elements) const override;
+                       const ArrayView<Number> &elements) const override;
 
   /**
    * Instead of getting individual elements of a vector via operator(),
@@ -1072,6 +1078,16 @@ public:
    */
   void
   zero_out_ghost_values() const;
+
+  /**
+   * This function returns the empty object MPI_COMM_SELF that does not signal
+   * any parallel communication model, as this vector is in fact serial with
+   * respect to the message passing interface (MPI). The function exists for
+   * compatibility with the @p parallel vector classes (e.g.,
+   * LinearAlgebra::distributed::Vector class).
+   */
+  MPI_Comm
+  get_mpi_communicator() const;
   /** @} */
 
 private:
@@ -1382,6 +1398,12 @@ Vector<Number>::operator!=(const Vector<Number2> &v) const
 }
 
 
+template <typename Number>
+inline bool
+Vector<Number>::empty() const
+{
+  return this->size() == 0;
+}
 
 template <typename Number>
 inline void
@@ -1411,6 +1433,14 @@ inline void
 Vector<Number>::update_ghost_values() const
 {}
 
+
+
+template <typename Number>
+inline MPI_Comm
+Vector<Number>::get_mpi_communicator() const
+{
+  return MPI_COMM_SELF;
+}
 
 
 template <typename Number>
@@ -1449,7 +1479,7 @@ inline void
 Vector<Number>::save(Archive &ar, const unsigned int) const
 {
   // forward to serialization function in the base class.
-  ar &static_cast<const Subscriptor &>(*this);
+  ar &static_cast<const EnableObserverPointer &>(*this);
   ar &values;
 }
 
@@ -1461,7 +1491,7 @@ inline void
 Vector<Number>::load(Archive &ar, const unsigned int)
 {
   // the load stuff again from the archive
-  ar &static_cast<Subscriptor &>(*this);
+  ar &static_cast<EnableObserverPointer &>(*this);
   ar &values;
   maybe_reset_thread_partitioner();
 }

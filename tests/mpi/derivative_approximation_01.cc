@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -14,7 +14,7 @@
 
 
 
-// document bug in the DerivateApproximation in parallel
+// document bug in the DerivativeApproximation in parallel
 /*
  --------------------------------------------------------
  An error occurred in line <3349> of file

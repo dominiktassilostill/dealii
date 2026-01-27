@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2023 by the deal.II authors
+## Copyright (C) 2023 - 2024 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -30,4 +30,3 @@ macro(strip_known_generator_expressions _variable)
     string(REGEX REPLACE ${expression} "\\1" ${_variable} "${${_variable}}")
   endforeach()
 endmacro()
-

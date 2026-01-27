@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2023 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -82,8 +82,7 @@ test(const unsigned int refs,
   VectorTools::get_position_vector(map_dh, euler_vec);
 
   MappingFEField<dim, spacedim> mapping(map_dh, euler_vec);
-  ;
-  DataOut<dim, spacedim> data_out_scal;
+  DataOut<dim, spacedim>        data_out_scal;
   data_out_scal.attach_dof_handler(dof_handler);
 
   data_out_scal.add_data_vector(scal_sol,

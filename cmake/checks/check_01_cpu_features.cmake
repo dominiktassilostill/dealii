@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2013 - 2023 by the deal.II authors
+## Copyright (C) 2013 - 2024 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -325,16 +325,6 @@ endif()
 
 if(DEAL_II_HAVE_ARM_NEON)
   set(DEAL_II_VECTORIZATION_WIDTH_IN_BITS 128)
-endif()
-
-#
-# We need to disable SIMD vectorization for CUDA device code.
-# Otherwise, nvcc compilers from version 9 on will emit an error message like:
-# "[...] contains a vector, which is not supported in device code"
-#
-
-if(DEAL_II_WITH_CUDA)
-  set(DEAL_II_VECTORIZATION_WIDTH_IN_BITS 0)
 endif()
 
 #

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 #define dealii_sundials_n_vector_templates_h
 
 #include <deal.II/base/config.h>
+
+#include <deal.II/base/mpi.h>
 
 #include <deal.II/sundials/n_vector.h>
 #include <deal.II/sundials/sundials_types.h>
@@ -34,6 +36,8 @@
 #  include <deal.II/lac/trilinos_parallel_block_vector.h>
 #  include <deal.II/lac/trilinos_vector.h>
 #  include <deal.II/lac/vector_memory.h>
+
+#  include <sundials/sundials_nvector.h>
 
 #  include <limits>
 
@@ -401,7 +405,7 @@ namespace SUNDIALS
 
       template <typename VectorType>
       const MPI_Comm &
-      get_communicator(N_Vector v);
+      get_mpi_communicator(N_Vector v);
 
 #  if DEAL_II_SUNDIALS_VERSION_GTE(7, 0, 0)
       /**
@@ -409,7 +413,7 @@ namespace SUNDIALS
        */
       template <typename VectorType>
       inline SUNComm
-      get_communicator_by_value(N_Vector v);
+      get_mpi_communicator_by_value(N_Vector v);
 #  else
       /**
        * Sundials likes a void* but we want to use the above functions
@@ -417,7 +421,7 @@ namespace SUNDIALS
        */
       template <typename VectorType>
       inline void *
-      get_communicator_as_void_ptr(N_Vector v);
+      get_mpi_communicator_as_void_ptr(N_Vector v);
 #  endif
     } // namespace NVectorOperations
   }   // namespace internal
@@ -431,53 +435,50 @@ namespace SUNDIALS
 {
   namespace internal
   {
-    namespace
+    template <typename VectorType,
+              std::enable_if_t<is_serial_vector<VectorType>::value, int> = 0>
+    MPI_Comm
+    get_mpi_communicator_from_vector(const VectorType &)
     {
-      template <typename VectorType,
-                std::enable_if_t<is_serial_vector<VectorType>::value, int> = 0>
-      MPI_Comm
-      get_mpi_communicator_from_vector(const VectorType &)
-      {
-        return MPI_COMM_SELF;
-      }
+      return MPI_COMM_SELF;
+    }
 
 
 
-      template <typename VectorType,
-                std::enable_if_t<!is_serial_vector<VectorType>::value &&
-                                   !IsBlockVector<VectorType>::value,
-                                 int> = 0>
-      MPI_Comm
-      get_mpi_communicator_from_vector(const VectorType &v)
-      {
+    template <typename VectorType,
+              std::enable_if_t<!is_serial_vector<VectorType>::value &&
+                                 !IsBlockVector<VectorType>::value,
+                               int> = 0>
+    MPI_Comm
+    get_mpi_communicator_from_vector(const VectorType &v)
+    {
 #  ifndef DEAL_II_WITH_MPI
-        (void)v;
-        return MPI_COMM_SELF;
+      (void)v;
+      return MPI_COMM_SELF;
 #  else
-        return v.get_mpi_communicator();
+      return v.get_mpi_communicator();
 #  endif
-      }
+    }
 
 
 
-      template <typename VectorType,
-                std::enable_if_t<!is_serial_vector<VectorType>::value &&
-                                   IsBlockVector<VectorType>::value,
-                                 int> = 0>
-      MPI_Comm
-      get_mpi_communicator_from_vector(const VectorType &v)
-      {
+    template <typename VectorType,
+              std::enable_if_t<!is_serial_vector<VectorType>::value &&
+                                 IsBlockVector<VectorType>::value,
+                               int> = 0>
+    MPI_Comm
+    get_mpi_communicator_from_vector(const VectorType &v)
+    {
 #  ifndef DEAL_II_WITH_MPI
-        (void)v;
-        return MPI_COMM_SELF;
+      (void)v;
+      return MPI_COMM_SELF;
 #  else
-        Assert(v.n_blocks() > 0,
-               ExcMessage("You cannot ask a block vector without blocks "
-                          "for its MPI communicator."));
-        return v.block(0).get_mpi_communicator();
+      Assert(v.n_blocks() > 0,
+             ExcMessage("You cannot ask a block vector without blocks "
+                        "for its MPI communicator."));
+      return v.block(0).get_mpi_communicator();
 #  endif
-      }
-    } // namespace
+    }
 
 
     template <typename VectorType>
@@ -726,7 +727,7 @@ namespace SUNDIALS
 
       template <typename VectorType>
       const MPI_Comm &
-      get_communicator(N_Vector v)
+      get_mpi_communicator(N_Vector v)
       {
         Assert(v != nullptr, ExcInternalError());
         Assert(v->content != nullptr, ExcInternalError());
@@ -740,7 +741,7 @@ namespace SUNDIALS
 #  if DEAL_II_SUNDIALS_VERSION_GTE(7, 0, 0)
       template <typename VectorType>
       SUNComm
-      get_communicator_by_value(N_Vector v)
+      get_mpi_communicator_by_value(N_Vector v)
       {
 #    ifndef DEAL_II_WITH_MPI
         (void)v;
@@ -753,7 +754,7 @@ namespace SUNDIALS
           //
           // Further, we need to cast away const here, as SUNDIALS demands the
           // communicator by value.
-          return const_cast<SUNComm>(get_communicator<VectorType>(v));
+          return const_cast<SUNComm &>(get_mpi_communicator<VectorType>(v));
         else
           return SUN_COMM_NULL;
 #    endif
@@ -761,7 +762,7 @@ namespace SUNDIALS
 #  else
       template <typename VectorType>
       void *
-      get_communicator_as_void_ptr(N_Vector v)
+      get_mpi_communicator_as_void_ptr(N_Vector v)
       {
 #    ifndef DEAL_II_WITH_MPI
         (void)v;
@@ -770,7 +771,7 @@ namespace SUNDIALS
         if (is_serial_vector<VectorType>::value == false)
           // We need to cast away const here, as SUNDIALS demands a pure
           // `void*`.
-          return &(const_cast<MPI_Comm &>(get_communicator<VectorType>(v)));
+          return &(const_cast<MPI_Comm &>(get_mpi_communicator<VectorType>(v)));
         else
           return nullptr;
 #    endif
@@ -898,9 +899,9 @@ namespace SUNDIALS
       dot_product_multi_all_reduce(int nv, N_Vector x, realtype *d)
       {
         ArrayView<realtype> products(d, nv);
-        Utilities::MPI::sum(products,
-                            get_communicator<VectorType>(x),
-                            products);
+        ::dealii::Utilities::MPI::sum(products,
+                                      get_mpi_communicator<VectorType>(x),
+                                      products);
         return 0;
       }
 
@@ -1046,8 +1047,8 @@ namespace SUNDIALS
         const auto local_min = *std::min_element(local_elements.begin(),
                                                  local_elements.end(),
                                                  indexed_less_than);
-        return Utilities::MPI::min((*vector)[local_min],
-                                   get_communicator<VectorType>(x));
+        return ::dealii::Utilities::MPI::min(
+          (*vector)[local_min], get_mpi_communicator<VectorType>(x));
       }
 
 
@@ -1086,8 +1087,8 @@ namespace SUNDIALS
                          vector->block(i)[*block_local_min_element]);
           }
 
-        return Utilities::MPI::min(proc_local_min,
-                                   get_communicator<VectorType>(x));
+        return ::dealii::Utilities::MPI::min(
+          proc_local_min, get_mpi_communicator<VectorType>(x));
       }
 
 
@@ -1272,10 +1273,10 @@ namespace SUNDIALS
       //  v->ops->nvspace           = undef;
 #  if DEAL_II_SUNDIALS_VERSION_GTE(7, 0, 0)
       v->ops->nvgetcommunicator =
-        &NVectorOperations::get_communicator_by_value<VectorType>;
+        &NVectorOperations::get_mpi_communicator_by_value<VectorType>;
 #  else
       v->ops->nvgetcommunicator =
-        &NVectorOperations::get_communicator_as_void_ptr<VectorType>;
+        &NVectorOperations::get_mpi_communicator_as_void_ptr<VectorType>;
 #  endif
       v->ops->nvgetlength = &NVectorOperations::get_global_length<VectorType>;
 
@@ -1383,6 +1384,14 @@ namespace SUNDIALS
   } // namespace internal
 } // namespace SUNDIALS
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

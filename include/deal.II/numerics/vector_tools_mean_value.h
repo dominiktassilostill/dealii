@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 
 
 #include <deal.II/base/config.h>
+
+#include <deal.II/base/template_constraints.h>
 
 #include <deal.II/lac/read_vector.h>
 
@@ -152,7 +154,7 @@ namespace VectorTools
    *
    * This function is used in the "Possibilities for extensions" part of the
    * results section of
-   * @ref step_3 "step-3".
+   * step-3.
    *
    * @note The function is most often used when solving a problem whose
    * solution is only defined up to a constant, for example a pure Neumann

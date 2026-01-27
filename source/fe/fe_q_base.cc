@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2024 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -146,10 +146,9 @@ struct FE_Q_Base<xdim, xspacedim>::Implementation
     // polynomials, this is a little more complicated. Then we would evaluate
     // at a number of points and invert the interpolation matrix A.
     //
-    // Note, that we build up these matrices for all subfaces at once, rather
+    // Note that we build up these matrices for all subfaces at once, rather
     // than considering them separately. the reason is that we finally will
-    // want to have them in this order anyway, as this is the format we need
-    // inside deal.II
+    // want to have them in this order inside deal.II
 
     // In the following the points x_i are constructed in following order
     // (n=degree-1)
@@ -161,21 +160,16 @@ struct FE_Q_Base<xdim, xspacedim>::Implementation
     // Add midpoint
     constraint_points.emplace_back(0.5);
 
-    if (q_deg > 1)
-      {
-        const unsigned int n    = q_deg - 1;
-        const double       step = 1. / q_deg;
-        // subface 0
-        for (unsigned int i = 1; i <= n; ++i)
-          constraint_points.push_back(
-            GeometryInfo<dim - 1>::child_to_cell_coordinates(
-              Point<dim - 1>(i * step), 0));
-        // subface 1
-        for (unsigned int i = 1; i <= n; ++i)
-          constraint_points.push_back(
-            GeometryInfo<dim - 1>::child_to_cell_coordinates(
-              Point<dim - 1>(i * step), 1));
-      }
+    // subface 0
+    for (unsigned int i = 1; i < q_deg; ++i)
+      constraint_points.push_back(
+        GeometryInfo<dim - 1>::child_to_cell_coordinates(
+          Point<dim - 1>(i / double(q_deg)), 0));
+    // subface 1
+    for (unsigned int i = 1; i < q_deg; ++i)
+      constraint_points.push_back(
+        GeometryInfo<dim - 1>::child_to_cell_coordinates(
+          Point<dim - 1>(i / double(q_deg)), 1));
 
     // Now construct relation between destination (child) and source (mother)
     // dofs.
@@ -252,38 +246,38 @@ struct FE_Q_Base<xdim, xspacedim>::Implementation
 
     if (q_deg > 1)
       {
-        const unsigned int          n    = q_deg - 1;
-        const double                step = 1. / q_deg;
-        std::vector<Point<dim - 2>> line_support_points(n);
+        const unsigned int    n    = q_deg - 1;
+        const double          step = 1. / q_deg;
+        std::vector<Point<1>> line_support_points(n);
         for (unsigned int i = 0; i < n; ++i)
           line_support_points[i][0] = (i + 1) * step;
-        const Quadrature<dim - 2> qline(line_support_points);
-
-        // auxiliary points in 2d
-        std::vector<Point<dim - 1>> p_line(n);
+        const Quadrature<1> qline(line_support_points);
 
         // Add nodes of lines interior in the "mother-face"
+        auto get_points = [&](const unsigned int face_no,
+                              const unsigned int subface_no) {
+          return QProjector<2>::project_to_subface(
+                   ReferenceCells::get_hypercube<2>(),
+                   qline,
+                   face_no,
+                   subface_no,
+                   numbers::default_geometric_orientation,
+                   RefinementCase<1>::isotropic_refinement)
+            .get_points();
+        };
 
         // line 5: use line 9
-        QProjector<dim - 1>::project_to_subface(
-          ReferenceCells::get_hypercube<dim - 1>(), qline, 0, 0, p_line);
-        for (unsigned int i = 0; i < n; ++i)
-          constraint_points.push_back(p_line[i] + Point<dim - 1>(0.5, 0));
+        for (const Point<dim - 1> &p : get_points(0, 0))
+          constraint_points.push_back(p + Point<dim - 1>(0.5, 0));
         // line 6: use line 10
-        QProjector<dim - 1>::project_to_subface(
-          ReferenceCells::get_hypercube<dim - 1>(), qline, 0, 1, p_line);
-        for (unsigned int i = 0; i < n; ++i)
-          constraint_points.push_back(p_line[i] + Point<dim - 1>(0.5, 0));
+        for (const Point<dim - 1> &p : get_points(0, 1))
+          constraint_points.push_back(p + Point<dim - 1>(0.5, 0));
         // line 7: use line 13
-        QProjector<dim - 1>::project_to_subface(
-          ReferenceCells::get_hypercube<dim - 1>(), qline, 2, 0, p_line);
-        for (unsigned int i = 0; i < n; ++i)
-          constraint_points.push_back(p_line[i] + Point<dim - 1>(0, 0.5));
+        for (const Point<dim - 1> &p : get_points(2, 0))
+          constraint_points.push_back(p + Point<dim - 1>(0, 0.5));
         // line 8: use line 14
-        QProjector<dim - 1>::project_to_subface(
-          ReferenceCells::get_hypercube<dim - 1>(), qline, 2, 1, p_line);
-        for (unsigned int i = 0; i < n; ++i)
-          constraint_points.push_back(p_line[i] + Point<dim - 1>(0, 0.5));
+        for (const Point<dim - 1> &p : get_points(2, 1))
+          constraint_points.push_back(p + Point<dim - 1>(0, 0.5));
 
         // DoFs on bordering lines lines 9-16
         for (unsigned int face = 0;
@@ -293,12 +287,7 @@ struct FE_Q_Base<xdim, xspacedim>::Implementation
                subface < GeometryInfo<dim - 1>::max_children_per_face;
                ++subface)
             {
-              QProjector<dim - 1>::project_to_subface(
-                ReferenceCells::get_hypercube<dim - 1>(),
-                qline,
-                face,
-                subface,
-                p_line);
+              const auto p_line = get_points(face, subface);
               constraint_points.insert(constraint_points.end(),
                                        p_line.begin(),
                                        p_line.end());
@@ -569,18 +558,19 @@ FE_Q_Base<dim, spacedim>::get_interpolation_matrix(
           if (std::fabs(interpolation_matrix(i, j)) < eps)
             interpolation_matrix(i, j) = 0.;
 
-#  ifdef DEBUG
-      // make sure that the row sum of each of the matrices is 1 at this
-      // point. this must be so since the shape functions sum up to 1
-      for (unsigned int i = 0; i < this->n_dofs_per_cell(); ++i)
+      if constexpr (running_in_debug_mode())
         {
-          double sum = 0.;
-          for (unsigned int j = 0; j < source_fe->n_dofs_per_cell(); ++j)
-            sum += interpolation_matrix(i, j);
+          // make sure that the row sum of each of the matrices is 1 at this
+          // point. this must be so since the shape functions sum up to 1
+          for (unsigned int i = 0; i < this->n_dofs_per_cell(); ++i)
+            {
+              double sum = 0.;
+              for (unsigned int j = 0; j < source_fe->n_dofs_per_cell(); ++j)
+                sum += interpolation_matrix(i, j);
 
-          Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+              Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+            }
         }
-#  endif
     }
   else if (dynamic_cast<const FE_Nothing<dim> *>(&x_source_fe))
     {
@@ -637,7 +627,8 @@ FE_Q_Base<dim, spacedim>::get_subface_interpolation_matrix(
   Assert(source_fe.n_components() == this->n_components(),
          ExcDimensionMismatch(source_fe.n_components(), this->n_components()));
 
-  if (source_fe.has_face_support_points(face_no))
+  if ((source_fe.has_face_support_points(face_no)) &&
+      (source_fe.n_dofs_per_face(face_no) > 0))
     {
       // have this test in here since a table of size 2x0 reports its size as
       // 0x0
@@ -671,13 +662,18 @@ FE_Q_Base<dim, spacedim>::get_subface_interpolation_matrix(
       // be done for the face orientation flag in 3d.
       const Quadrature<dim> subface_quadrature =
         subface == numbers::invalid_unsigned_int ?
-          QProjector<dim>::project_to_face(this->reference_cell(),
-                                           quad_face_support,
-                                           0) :
-          QProjector<dim>::project_to_subface(this->reference_cell(),
-                                              quad_face_support,
-                                              0,
-                                              subface);
+          QProjector<dim>::project_to_face(
+            this->reference_cell(),
+            quad_face_support,
+            0,
+            numbers::default_geometric_orientation) :
+          QProjector<dim>::project_to_subface(
+            this->reference_cell(),
+            quad_face_support,
+            0,
+            subface,
+            numbers::default_geometric_orientation,
+            RefinementCase<dim - 1>::isotropic_refinement);
       for (unsigned int i = 0; i < source_fe.n_dofs_per_face(face_no); ++i)
         {
           const Point<dim> &p = subface_quadrature.point(i);
@@ -699,19 +695,20 @@ FE_Q_Base<dim, spacedim>::get_subface_interpolation_matrix(
             }
         }
 
-#  ifdef DEBUG
-      // make sure that the row sum of each of the matrices is 1 at this
-      // point. this must be so since the shape functions sum up to 1
-      for (unsigned int j = 0; j < source_fe.n_dofs_per_face(face_no); ++j)
+      if constexpr (running_in_debug_mode())
         {
-          double sum = 0.;
+          // make sure that the row sum of each of the matrices is 1 at this
+          // point. this must be so since the shape functions sum up to 1
+          for (unsigned int j = 0; j < source_fe.n_dofs_per_face(face_no); ++j)
+            {
+              double sum = 0.;
 
-          for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
-            sum += interpolation_matrix(j, i);
+              for (unsigned int i = 0; i < this->n_dofs_per_face(face_no); ++i)
+                sum += interpolation_matrix(j, i);
 
-          Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+              Assert(std::fabs(sum - 1) < eps, ExcInternalError());
+            }
         }
-#  endif
     }
   else if (dynamic_cast<const FE_Nothing<dim> *>(&source_fe) != nullptr)
     {
@@ -1136,104 +1133,14 @@ FE_Q_Base<dim, spacedim>::initialize_dof_index_permutations()
 template <int dim, int spacedim>
 unsigned int
 FE_Q_Base<dim, spacedim>::face_to_cell_index(
-  const unsigned int  face_index,
-  const unsigned int  face,
-  const unsigned char combined_orientation) const
+  const unsigned int                 face_index,
+  const unsigned int                 face,
+  const types::geometric_orientation combined_orientation) const
 {
-  AssertIndexRange(face_index, this->n_dofs_per_face(face));
-  AssertIndexRange(face, GeometryInfo<dim>::faces_per_cell);
-
-  // we need to distinguish between DoFs on vertices, lines and in 3d quads.
-  // do so in a sequence of if-else statements
-  if (face_index < this->get_first_face_line_index(face))
-    // DoF is on a vertex
-    {
-      // get the number of the vertex on the face that corresponds to this DoF,
-      // along with the number of the DoF on this vertex
-      const unsigned int face_vertex = face_index / this->n_dofs_per_vertex();
-      const unsigned int dof_index_on_vertex =
-        face_index % this->n_dofs_per_vertex();
-
-      // then get the number of this vertex on the cell and translate
-      // this to a DoF number on the cell
-      return this->reference_cell().face_to_cell_vertices(
-               face, face_vertex, combined_orientation) *
-               this->n_dofs_per_vertex() +
-             dof_index_on_vertex;
-    }
-  else if (face_index < this->get_first_face_quad_index(face))
-    // DoF is on a face
-    {
-      // do the same kind of translation as before. we need to only consider
-      // DoFs on the lines, i.e., ignoring those on the vertices
-      const unsigned int index =
-        face_index - this->get_first_face_line_index(face);
-
-      const unsigned int face_line         = index / this->n_dofs_per_line();
-      const unsigned int dof_index_on_line = index % this->n_dofs_per_line();
-
-      // we now also need to adjust the line index for the case of
-      // face orientation, face flips, etc
-      unsigned int adjusted_dof_index_on_line = 0;
-      switch (dim)
-        {
-          case 1:
-            DEAL_II_ASSERT_UNREACHABLE();
-            break;
-
-          case 2:
-            if (combined_orientation ==
-                ReferenceCell::default_combined_face_orientation())
-              adjusted_dof_index_on_line = dof_index_on_line;
-            else
-              adjusted_dof_index_on_line =
-                this->n_dofs_per_line() - dof_index_on_line - 1;
-            break;
-
-          case 3:
-            // in 3d, things are difficult. someone will have to think
-            // about how this code here should look like, by drawing a bunch
-            // of pictures of how all the faces can look like with the various
-            // flips and rotations.
-            //
-            // that said, the Q2 case is easy enough to implement, as is the
-            // case where everything is in standard orientation
-            Assert((this->n_dofs_per_line() <= 1) ||
-                     combined_orientation ==
-                       ReferenceCell::default_combined_face_orientation(),
-                   ExcNotImplemented());
-            adjusted_dof_index_on_line = dof_index_on_line;
-            break;
-
-          default:
-            DEAL_II_ASSERT_UNREACHABLE();
-        }
-
-      return (this->get_first_line_index() +
-              this->reference_cell().face_to_cell_lines(face,
-                                                        face_line,
-                                                        combined_orientation) *
-                this->n_dofs_per_line() +
-              adjusted_dof_index_on_line);
-    }
-  else
-    // DoF is on a quad
-    {
-      Assert(dim >= 3, ExcInternalError());
-
-      // ignore vertex and line dofs
-      const unsigned int index =
-        face_index - this->get_first_face_quad_index(face);
-
-      // the same is true here as above for the 3d case -- someone will
-      // just have to draw a bunch of pictures. in the meantime,
-      // we can implement the Q2 case in which it is simple
-      Assert((this->n_dofs_per_quad(face) <= 1) ||
-               combined_orientation ==
-                 ReferenceCell::default_combined_face_orientation(),
-             ExcNotImplemented());
-      return (this->get_first_quad_index(face) + index);
-    }
+  return FETools::face_to_cell_index(*this,
+                                     face_index,
+                                     face,
+                                     combined_orientation);
 }
 
 
@@ -1273,7 +1180,8 @@ FE_Q_Base<dim, spacedim>::get_prolongation_matrix(
   Assert(refinement_case != RefinementCase<dim>::no_refinement,
          ExcMessage(
            "Prolongation matrices are only available for refined cells!"));
-  AssertIndexRange(child, GeometryInfo<dim>::n_children(refinement_case));
+  AssertIndexRange(
+    child, this->reference_cell().template n_children<dim>(refinement_case));
 
   // initialization upon first request
   if (this->prolongation[refinement_case - 1][child].n() == 0)
@@ -1297,23 +1205,14 @@ FE_Q_Base<dim, spacedim>::get_prolongation_matrix(
       // evaluations of the Lagrange polynomials are zero or one.
       const double eps = 1e-15 * q_degree * dim;
 
-#  ifdef DEBUG
-      // in DEBUG mode, check that the evaluation of support points in the
-      // current numbering gives the identity operation
-      for (unsigned int i = 0; i < q_dofs_per_cell; ++i)
+      if constexpr (running_in_debug_mode())
         {
-          Assert(std::fabs(1. - this->poly_space->compute_value(
-                                  i, this->unit_support_points[i])) < eps,
-                 ExcInternalError("The Lagrange polynomial does not evaluate "
-                                  "to one or zero in a nodal point. "
-                                  "This typically indicates that the "
-                                  "polynomial interpolation is "
-                                  "ill-conditioned such that round-off "
-                                  "prevents the sum to be one."));
-          for (unsigned int j = 0; j < q_dofs_per_cell; ++j)
-            if (j != i)
-              Assert(std::fabs(this->poly_space->compute_value(
-                       i, this->unit_support_points[j])) < eps,
+          // in DEBUG mode, check that the evaluation of support points in the
+          // current numbering gives the identity operation
+          for (unsigned int i = 0; i < q_dofs_per_cell; ++i)
+            {
+              Assert(std::fabs(1. - this->poly_space->compute_value(
+                                      i, this->unit_support_points[i])) < eps,
                      ExcInternalError(
                        "The Lagrange polynomial does not evaluate "
                        "to one or zero in a nodal point. "
@@ -1321,8 +1220,19 @@ FE_Q_Base<dim, spacedim>::get_prolongation_matrix(
                        "polynomial interpolation is "
                        "ill-conditioned such that round-off "
                        "prevents the sum to be one."));
+              for (unsigned int j = 0; j < q_dofs_per_cell; ++j)
+                if (j != i)
+                  Assert(std::fabs(this->poly_space->compute_value(
+                           i, this->unit_support_points[j])) < eps,
+                         ExcInternalError(
+                           "The Lagrange polynomial does not evaluate "
+                           "to one or zero in a nodal point. "
+                           "This typically indicates that the "
+                           "polynomial interpolation is "
+                           "ill-conditioned such that round-off "
+                           "prevents the sum to be one."));
+            }
         }
-#  endif
 
       // to efficiently evaluate the polynomial at the subcell, make use of
       // the tensor product structure of this element and only evaluate 1d
@@ -1431,24 +1341,26 @@ FE_Q_Base<dim, spacedim>::get_prolongation_matrix(
       if (q_dofs_per_cell < this->n_dofs_per_cell())
         prolongate(q_dofs_per_cell, q_dofs_per_cell) = 1.;
 
-        // and make sure that the row sum is 1. this must be so since for this
-        // element, the shape functions add up to one
-#  ifdef DEBUG
-      for (unsigned int row = 0; row < this->n_dofs_per_cell(); ++row)
+      // and make sure that the row sum is 1. this must be so since for this
+      // element, the shape functions add up to one
+      if constexpr (running_in_debug_mode())
         {
-          double sum = 0;
-          for (unsigned int col = 0; col < this->n_dofs_per_cell(); ++col)
-            sum += prolongate(row, col);
-          Assert(std::fabs(sum - 1.) <
-                   std::max(eps, 5e-16 * std::sqrt(this->n_dofs_per_cell())),
-                 ExcInternalError("The entries in a row of the local "
-                                  "prolongation matrix do not add to one. "
-                                  "This typically indicates that the "
-                                  "polynomial interpolation is "
-                                  "ill-conditioned such that round-off "
-                                  "prevents the sum to be one."));
+          for (unsigned int row = 0; row < this->n_dofs_per_cell(); ++row)
+            {
+              double sum = 0;
+              for (unsigned int col = 0; col < this->n_dofs_per_cell(); ++col)
+                sum += prolongate(row, col);
+              Assert(std::fabs(sum - 1.) <
+                       std::max(eps,
+                                5e-16 * std::sqrt(this->n_dofs_per_cell())),
+                     ExcInternalError("The entries in a row of the local "
+                                      "prolongation matrix do not add to one. "
+                                      "This typically indicates that the "
+                                      "polynomial interpolation is "
+                                      "ill-conditioned such that round-off "
+                                      "prevents the sum to be one."));
+            }
         }
-#  endif
 
       // move result into place
       const_cast<FullMatrix<double> &>(
@@ -1472,7 +1384,8 @@ FE_Q_Base<dim, spacedim>::get_restriction_matrix(
   Assert(refinement_case != RefinementCase<dim>::no_refinement,
          ExcMessage(
            "Restriction matrices are only available for refined cells!"));
-  AssertIndexRange(child, GeometryInfo<dim>::n_children(refinement_case));
+  AssertIndexRange(
+    child, this->reference_cell().template n_children<dim>(refinement_case));
 
   // initialization upon first request
   if (this->restriction[refinement_case - 1][child].n() == 0)
@@ -1586,7 +1499,7 @@ FE_Q_Base<dim, spacedim>::get_restriction_matrix(
           if (q_dofs_per_cell < this->n_dofs_per_cell())
             my_restriction(this->n_dofs_per_cell() - 1,
                            this->n_dofs_per_cell() - 1) =
-              1. / GeometryInfo<dim>::n_children(
+              1. / this->reference_cell().template n_children<dim>(
                      RefinementCase<dim>(refinement_case));
         }
 
@@ -1721,6 +1634,6 @@ FE_Q_Base<dim, spacedim>::get_constant_modes() const
 #endif
 
 // explicit instantiations
-#include "fe_q_base.inst"
+#include "fe/fe_q_base.inst"
 
 DEAL_II_NAMESPACE_CLOSE

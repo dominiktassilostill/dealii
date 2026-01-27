@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2023 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -498,6 +498,6 @@ DataOutFaces<dim, spacedim>::next_face(const FaceDescriptor &old_face)
 
 
 // explicit instantiations
-#include "data_out_faces.inst"
+#include "numerics/data_out_faces.inst"
 
 DEAL_II_NAMESPACE_CLOSE

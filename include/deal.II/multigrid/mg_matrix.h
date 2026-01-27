@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -125,7 +125,7 @@ class MGMatrixSelect : public MGMatrixBase<Vector<number>>
 public:
   /**
    * Constructor. @p row and @p col are the coordinate of the selected block.
-   * The other argument is handed over to the @p SmartPointer constructor.
+   * The other argument is handed over to the @p ObserverPointer constructor.
    */
   MGMatrixSelect(const unsigned int         row    = 0,
                  const unsigned int         col    = 0,
@@ -180,7 +180,7 @@ private:
   /**
    * Pointer to the matrix objects on each level.
    */
-  SmartPointer<MGLevelObject<MatrixType>, MGMatrixSelect<MatrixType, number>>
+  ObserverPointer<MGLevelObject<MatrixType>, MGMatrixSelect<MatrixType, number>>
     matrix;
   /**
    * Row coordinate of selected block.

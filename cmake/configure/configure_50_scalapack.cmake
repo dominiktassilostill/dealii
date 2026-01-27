@@ -29,16 +29,16 @@ macro(feature_scalapack_find_external var)
     if (${var})
       clear_cmake_required()
       set(CMAKE_REQUIRED_LIBRARIES ${SCALAPACK_LIBRARIES} ${LAPACK_LIBRARIES})
-      CHECK_C_SOURCE_COMPILES("
-        void pdsyevr_();
-        void pssyevr_();
+      CHECK_CXX_SOURCE_COMPILES("
+        extern \"C\" void pdsyevr_();
+        extern \"C\" void pssyevr_();
         int main(){
           pdsyevr_();
           pssyevr_();
           return 0;
         }"
         DEAL_II_SCALAPACK_HAS_PDSYEVR_PSSYEVR)
-        reset_cmake_required()
+      reset_cmake_required()
 
       if(NOT DEAL_II_SCALAPACK_HAS_PDSYEVR_PSSYEVR)
         message(STATUS "Could not find a sufficient SCALAPACK installation: "
@@ -50,7 +50,8 @@ macro(feature_scalapack_find_external var)
           "SCALAPACK symbol check for pdsyevr_ and pssyevr_ failed! "
           "This usually means that your SCALAPACK installation is incomplete "
           "or the link line is broken. Consult\n"
-          "  CMakeFiles/CMakeError.log\n"
+          "  CMakeFiles/CMakeError.log or\n"
+          "  CMakeFiles/CMakeConfigureLog.yaml\n"
           "for further information.\n"
           )
         set(${var} FALSE)

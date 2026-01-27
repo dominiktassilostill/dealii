@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2022 by the deal.II authors
+// Copyright (C) 2011 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,7 @@
 /**
  * @defgroup SLEPcWrappers SLEPcWrappers
  *
- * The classes in this module are wrappers around functionality
+ * The classes in this group are wrappers around functionality
  * provided by the SLEPc library. All classes and functions in this
  * group reside in a namespace @p PETScWrappers.
  *

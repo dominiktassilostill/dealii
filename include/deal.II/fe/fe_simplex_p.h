@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,6 +19,7 @@
 
 #include <deal.II/base/mutex.h>
 #include <deal.II/base/polynomials_barycentric.h>
+#include <deal.II/base/types.h>
 
 #include <deal.II/fe/fe_poly.h>
 
@@ -64,6 +65,15 @@ public:
     const unsigned int         child,
     const RefinementCase<dim> &refinement_case =
       RefinementCase<dim>::isotropic_refinement) const override;
+
+  /**
+   * @see FiniteElement::face_to_cell_index()
+   */
+  virtual unsigned int
+  face_to_cell_index(const unsigned int                 face_dof_index,
+                     const unsigned int                 face,
+                     const types::geometric_orientation combined_orientation =
+                       numbers::default_geometric_orientation) const override;
 
   /**
    * @copydoc dealii::FiniteElement::get_restriction_matrix()

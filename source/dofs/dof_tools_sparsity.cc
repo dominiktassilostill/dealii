@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -82,6 +82,13 @@ namespace DoFTools
                  "locally owned one does not make sense."));
       }
 
+    const auto                 &fe_collection = dof.get_fe_collection();
+    std::vector<Table<2, bool>> fe_dof_mask(fe_collection.size());
+    for (unsigned int f = 0; f < fe_collection.size(); ++f)
+      {
+        fe_dof_mask[f] = fe_collection[f].get_local_dof_sparsity_pattern();
+      }
+
     std::vector<types::global_dof_index> dofs_on_this_cell;
     dofs_on_this_cell.reserve(dof.get_fe_collection().max_dofs_per_cell());
 
@@ -100,9 +107,16 @@ namespace DoFTools
           // make sparsity pattern for this cell. if no constraints pattern
           // was given, then the following call acts as if simply no
           // constraints existed
-          constraints.add_entries_local_to_global(dofs_on_this_cell,
-                                                  sparsity,
-                                                  keep_constrained_dofs);
+          const types::fe_index fe_index = cell->active_fe_index();
+          if (fe_dof_mask[fe_index].empty())
+            constraints.add_entries_local_to_global(dofs_on_this_cell,
+                                                    sparsity,
+                                                    keep_constrained_dofs);
+          else
+            constraints.add_entries_local_to_global(dofs_on_this_cell,
+                                                    sparsity,
+                                                    keep_constrained_dofs,
+                                                    fe_dof_mask[fe_index]);
         }
   }
 
@@ -152,6 +166,12 @@ namespace DoFTools
     const std::vector<Table<2, Coupling>> dof_mask //(fe_collection.size())
       = dof_couplings_from_component_couplings(fe_collection, couplings);
 
+    std::vector<Table<2, bool>> fe_dof_mask(fe_collection.size());
+    for (unsigned int f = 0; f < fe_collection.size(); ++f)
+      {
+        fe_dof_mask[f] = fe_collection[f].get_local_dof_sparsity_pattern();
+      }
+
     // Convert the dof_mask to bool_dof_mask so we can pass it
     // to constraints.add_entries_local_to_global()
     std::vector<Table<2, bool>> bool_dof_mask(fe_collection.size());
@@ -163,7 +183,8 @@ namespace DoFTools
         bool_dof_mask[f].fill(false);
         for (unsigned int i = 0; i < fe_collection[f].n_dofs_per_cell(); ++i)
           for (unsigned int j = 0; j < fe_collection[f].n_dofs_per_cell(); ++j)
-            if (dof_mask[f](i, j) != none)
+            if (dof_mask[f](i, j) != none &&
+                (fe_dof_mask[f].empty() || fe_dof_mask[f](i, j)))
               bool_dof_mask[f](i, j) = true;
       }
 
@@ -318,7 +339,7 @@ namespace DoFTools
             for (unsigned int i = 0; i < child_cells.size(); ++i)
               {
                 const typename DoFHandler<dim, spacedim>::active_cell_iterator
-                                   cell_col_child = child_cells[i];
+                                  &cell_col_child = child_cells[i];
                 const unsigned int dofs_per_cell_row =
                   cell_row->get_fe().n_dofs_per_cell();
                 const unsigned int dofs_per_cell_col =
@@ -367,16 +388,18 @@ namespace DoFTools
     AssertDimension(dof_to_boundary_mapping.size(), n_dofs);
     AssertDimension(sparsity.n_rows(), dof.n_boundary_dofs());
     AssertDimension(sparsity.n_cols(), dof.n_boundary_dofs());
-#ifdef DEBUG
-    if (sparsity.n_rows() != 0)
+    if constexpr (running_in_debug_mode())
       {
-        types::global_dof_index max_element = 0;
-        for (const types::global_dof_index index : dof_to_boundary_mapping)
-          if ((index != numbers::invalid_dof_index) && (index > max_element))
-            max_element = index;
-        AssertDimension(max_element, sparsity.n_rows() - 1);
+        if (sparsity.n_rows() != 0)
+          {
+            types::global_dof_index max_element = 0;
+            for (const types::global_dof_index index : dof_to_boundary_mapping)
+              if ((index != numbers::invalid_dof_index) &&
+                  (index > max_element))
+                max_element = index;
+            AssertDimension(max_element, sparsity.n_rows() - 1);
+          }
       }
-#endif
 
     std::vector<types::global_dof_index> dofs_on_this_face;
     dofs_on_this_face.reserve(dof.get_fe_collection().max_dofs_per_face());
@@ -481,16 +504,18 @@ namespace DoFTools
                                 dof.n_boundary_dofs(boundary_ids)));
     (void)fe_is_hermite;
 
-#ifdef DEBUG
-    if (sparsity.n_rows() != 0)
+    if constexpr (running_in_debug_mode())
       {
-        types::global_dof_index max_element = 0;
-        for (const types::global_dof_index index : dof_to_boundary_mapping)
-          if ((index != numbers::invalid_dof_index) && (index > max_element))
-            max_element = index;
-        AssertDimension(max_element, sparsity.n_rows() - 1);
+        if (sparsity.n_rows() != 0)
+          {
+            types::global_dof_index max_element = 0;
+            for (const types::global_dof_index index : dof_to_boundary_mapping)
+              if ((index != numbers::invalid_dof_index) &&
+                  (index > max_element))
+                max_element = index;
+            AssertDimension(max_element, sparsity.n_rows() - 1);
+          }
       }
-#endif
 
     std::vector<types::global_dof_index> dofs_on_this_face;
     dofs_on_this_face.reserve(dof.get_fe_collection().max_dofs_per_face());
@@ -1123,7 +1148,7 @@ namespace DoFTools
 
 // --------------------------------------------------- explicit instantiations
 
-#include "dof_tools_sparsity.inst"
+#include "dofs/dof_tools_sparsity.inst"
 
 
 

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2024 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -55,9 +55,6 @@
 
 DEAL_II_NAMESPACE_OPEN
 
-
-// Shorthand notation for ARKODE error codes.
-#  define AssertARKode(code) Assert(code >= 0, ExcARKodeError(code))
 
 /**
  * A namespace for dealing with ODE solvers through the SUNDIALS package.
@@ -1185,6 +1182,15 @@ namespace SUNDIALS
 } // namespace SUNDIALS
 
 DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
+DEAL_II_NAMESPACE_CLOSE
+
 #endif
 
 

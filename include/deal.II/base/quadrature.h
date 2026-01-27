@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,8 +19,9 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/array_view.h>
+#include <deal.II/base/enable_observer_pointer.h>
+#include <deal.II/base/exceptions.h>
 #include <deal.II/base/point.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <array>
 #include <memory>
@@ -119,7 +120,7 @@ DEAL_II_NAMESPACE_OPEN
  * as "list of evaluation points".
  */
 template <int dim>
-class Quadrature : public Subscriptor
+class Quadrature : public EnableObserverPointer
 {
 public:
   /**
@@ -545,7 +546,7 @@ Quadrature<dim>::serialize(Archive &ar, const unsigned int)
 {
   // forward to serialization
   // function in the base class.
-  ar &static_cast<Subscriptor &>(*this);
+  ar &static_cast<EnableObserverPointer &>(*this);
 
   ar &quadrature_points &weights;
 }

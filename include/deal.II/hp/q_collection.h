@@ -17,9 +17,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/quadrature.h>
-#include <deal.II/base/subscriptor.h>
 
 #include <deal.II/hp/collection.h>
 
@@ -37,7 +37,7 @@ namespace hp
    *
    * It implements the concepts stated in the
    * @ref hpcollection
-   * module described in the doxygen documentation.
+   * topic described in the doxygen documentation.
    *
    * @ingroup hp hpcollection
    */

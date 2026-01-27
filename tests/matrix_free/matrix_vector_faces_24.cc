@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2023 by the deal.II authors
+// Copyright (C) 2018 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,7 +17,6 @@
 // check the setup of ghost faces and elements in case the flag
 // MatrixFree::AdditionalData::hold_all_faces_to_owned_cells is set to true
 
-#include <deal.II/base/function.h>
 #include <deal.II/base/quadrature_lib.h>
 
 #include <deal.II/distributed/tria.h>
@@ -101,6 +100,10 @@ test()
                  LinearAlgebra::distributed::Vector<double>>
     mf(mf_data);
   mf.vmult(out, in);
+
+  deallog << "Norm of result:          " << out.l2_norm() << std::endl;
+
+  mf.manual_loop_vmult(out, in);
 
   deallog << "Norm of result:          " << out.l2_norm() << std::endl;
 }

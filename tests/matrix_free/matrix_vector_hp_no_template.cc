@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2013 - 2023 by the deal.II authors
+// Copyright (C) 2013 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -77,28 +77,20 @@ test()
     return;
 
   using number = double;
-  const SphericalManifold<dim> manifold;
-  Triangulation<dim>           tria;
+  Triangulation<dim> tria;
   GridGenerator::hyper_ball(tria);
-  typename Triangulation<dim>::active_cell_iterator cell = tria.begin_active(),
-                                                    endc = tria.end();
-  for (; cell != endc; ++cell)
-    for (const unsigned int f : GeometryInfo<dim>::face_indices())
-      if (cell->at_boundary(f))
-        cell->face(f)->set_all_manifold_ids(0);
-  tria.set_manifold(0, manifold);
   tria.refine_global(1);
 
   // refine a few cells
   for (unsigned int i = 0; i < 11 - 3 * dim; ++i)
     {
-      typename Triangulation<dim>::active_cell_iterator cell =
-                                                          tria.begin_active(),
-                                                        endc = tria.end();
-      unsigned int counter                                   = 0;
-      for (; cell != endc; ++cell, ++counter)
-        if (counter % (7 - i) == 0)
-          cell->set_refine_flag();
+      unsigned int counter = 0;
+      for (const auto &cell : tria.active_cell_iterators())
+        {
+          if (counter % (7 - i) == 0)
+            cell->set_refine_flag();
+          ++counter;
+        }
       tria.execute_coarsening_and_refinement();
     }
 

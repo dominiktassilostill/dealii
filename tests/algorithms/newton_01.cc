@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2020 by the deal.II authors
+// Copyright (C) 2010 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,7 +24,7 @@
 // test computing square root of 2 with newton's method
 
 
-class SquareRoot : public Subscriptor
+class SquareRoot : public EnableObserverPointer
 {
 public:
   void
@@ -37,7 +37,7 @@ public:
 
 class SquareRootResidual : public Algorithms::OperatorBase
 {
-  SmartPointer<SquareRoot, SquareRootResidual> discretization;
+  ObserverPointer<SquareRoot, SquareRootResidual> discretization;
 
 public:
   SquareRootResidual(SquareRoot &problem)
@@ -53,7 +53,7 @@ public:
 
 class SquareRootSolver : public Algorithms::OperatorBase
 {
-  SmartPointer<SquareRoot, SquareRootSolver> solver;
+  ObserverPointer<SquareRoot, SquareRootSolver> solver;
 
 public:
   SquareRootSolver(SquareRoot &problem)

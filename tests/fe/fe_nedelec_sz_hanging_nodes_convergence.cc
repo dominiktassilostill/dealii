@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2024 by the deal.II authors
+// Copyright (C) 2024 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -428,13 +428,9 @@ main()
 
   using namespace ConvergenceTest;
 
-  const unsigned int refinements = 1;
-  const unsigned int poly_degree = 2;
-#ifdef DEBUG
-  const unsigned int n_iterations = 2;
-#else
-  const unsigned int n_iterations = 3;
-#endif
+  const unsigned int refinements  = 1;
+  const unsigned int poly_degree  = 2;
+  const unsigned int n_iterations = (running_in_debug_mode ? 2 : 3);
 
   MaxwellProblem<2> maxwell_2d(refinements, poly_degree, n_iterations);
   maxwell_2d.run();

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2024 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -581,8 +581,6 @@ namespace MatrixCreator
         return;
 
       const unsigned int dofs_per_cell = data.dof_indices.size();
-      (void)dofs_per_cell;
-
       Assert(data.cell_matrix.m() == dofs_per_cell, ExcInternalError());
       Assert(data.cell_matrix.n() == dofs_per_cell, ExcInternalError());
       Assert((right_hand_side == nullptr) ||
@@ -983,7 +981,7 @@ namespace MatrixCreator
   namespace internal
   {
     template <int dim, int spacedim, typename number>
-    void static inline create_boundary_mass_matrix_1(
+    void inline create_boundary_mass_matrix_1(
       const typename DoFHandler<dim, spacedim>::active_cell_iterator &cell,
       const MatrixCreator::internal::AssemblerBoundary::Scratch &,
       MatrixCreator::internal::AssemblerBoundary::
@@ -1311,6 +1309,7 @@ namespace MatrixCreator
       DEAL_II_NOT_IMPLEMENTED();
     }
 
+
     template <>
     void inline create_boundary_mass_matrix_1<1, 3, double>(
       const DoFHandler<1, 3>::active_cell_iterator & /*cell*/,
@@ -1363,7 +1362,6 @@ namespace MatrixCreator
     Assert(fe_is_hermite ||
              matrix.n() == dof.n_boundary_dofs(boundary_functions),
            ExcInternalError());
-    (void)fe_is_hermite;
 
     Assert(matrix.n() == matrix.m(), ExcInternalError());
     Assert(matrix.n() == rhs_vector.size(), ExcInternalError());
@@ -1725,31 +1723,35 @@ namespace MatrixCreator
                 copy_data.cell->face(face)->boundary_id()) !=
               boundary_functions.end())
             {
-#ifdef DEBUG
-              // in debug mode: compute an element in the matrix which is
-              // guaranteed to belong to a boundary dof. We do this to check
-              // that the entries in the cell matrix are guaranteed to be zero
-              // if the respective dof is not on the boundary. Since because of
-              // round-off, the actual value of the matrix entry may be
-              // only close to zero, we assert that it is small relative to an
-              // element which is guaranteed to be nonzero. (absolute smallness
-              // does not suffice since the size of the domain scales in here)
-              //
-              // for this purpose we seek the diagonal of the matrix, where
-              // there must be an element belonging to the boundary. we take the
-              // maximum diagonal entry.
-              types::global_dof_index max_element = 0;
-              for (const auto index : dof_to_boundary_mapping)
-                if ((index != numbers::invalid_dof_index) &&
-                    (index > max_element))
-                  max_element = index;
-              Assert(max_element == matrix.n() - 1, ExcInternalError());
+              if constexpr (running_in_debug_mode())
+                {
+                  // in debug mode: compute an element in the matrix which is
+                  // guaranteed to belong to a boundary dof. We do this to check
+                  // that the entries in the cell matrix are guaranteed to be
+                  // zero if the respective dof is not on the boundary. Since
+                  // because of round-off, the actual value of the matrix entry
+                  // may be only close to zero, we assert that it is small
+                  // relative to an element which is guaranteed to be nonzero.
+                  // (absolute smallness does not suffice since the size of the
+                  // domain scales in here)
+                  //
+                  // for this purpose we seek the diagonal of the matrix, where
+                  // there must be an element belonging to the boundary. we take
+                  // the maximum diagonal entry.
+                  types::global_dof_index max_element = 0;
+                  for (const auto index : dof_to_boundary_mapping)
+                    if ((index != numbers::invalid_dof_index) &&
+                        (index > max_element))
+                      max_element = index;
+                  Assert(max_element == matrix.n() - 1, ExcInternalError());
 
-              double max_diag_entry = 0;
-              for (unsigned int i = 0; i < copy_data.dofs_per_cell; ++i)
-                if (std::abs(copy_data.cell_matrix[pos](i, i)) > max_diag_entry)
-                  max_diag_entry = std::abs(copy_data.cell_matrix[pos](i, i));
-#endif
+                  double max_diag_entry = 0;
+                  for (unsigned int i = 0; i < copy_data.dofs_per_cell; ++i)
+                    if (std::abs(copy_data.cell_matrix[pos](i, i)) >
+                        max_diag_entry)
+                      max_diag_entry =
+                        std::abs(copy_data.cell_matrix[pos](i, i));
+                }
 
               for (unsigned int i = 0; i < copy_data.dofs_per_cell; ++i)
                 {

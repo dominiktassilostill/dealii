@@ -118,8 +118,8 @@ namespace Step22
           const TrilinosWrappers::MPI::Vector &src) const;
 
   private:
-    const SmartPointer<const Matrix>         matrix;
-    const SmartPointer<const Preconditioner> preconditioner;
+    const ObserverPointer<const Matrix>         matrix;
+    const ObserverPointer<const Preconditioner> preconditioner;
 
     mutable TrilinosWrappers::MPI::Vector tmp;
   };
@@ -172,8 +172,9 @@ namespace Step22
           const TrilinosWrappers::MPI::Vector &src) const;
 
   private:
-    const SmartPointer<const TrilinosWrappers::BlockSparseMatrix> system_matrix;
-    const SmartPointer<
+    const ObserverPointer<const TrilinosWrappers::BlockSparseMatrix>
+      system_matrix;
+    const ObserverPointer<
       const InverseMatrix<TrilinosWrappers::SparseMatrix, Preconditioner>>
                                           A_inverse;
     mutable TrilinosWrappers::MPI::Vector tmp1, tmp2;
@@ -266,7 +267,7 @@ namespace Step22
         locally_relevant_dofs.get_view(n_u, n_u + n_p));
 
       constraints.clear();
-      constraints.reinit(locally_relevant_dofs);
+      constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
 
       const FEValuesExtractors::Vector velocities(0);
       const FEValuesExtractors::Scalar pressure(dim);
@@ -606,7 +607,9 @@ namespace Step22
         displacements[i] = displacements[i - 1] + n_elements[i - 1];
 
       global_quad_points_first.resize(displacements[n_processes]);
-      MPI_Allgatherv(&local_quad_points_first[0],
+      MPI_Allgatherv((local_quad_points_first.size() > 0) ?
+                       (&local_quad_points_first[0]) :
+                       nullptr,
                      n_my_elements,
                      MPI_DOUBLE,
                      &global_quad_points_first[0],
@@ -635,7 +638,9 @@ namespace Step22
         displacements[i] = displacements[i - 1] + n_elements[i - 1];
 
       global_quad_points_second.resize(displacements[n_processes]);
-      MPI_Allgatherv(&local_quad_points_second[0],
+      MPI_Allgatherv((local_quad_points_second.size() > 0) ?
+                       (&local_quad_points_second[0]) :
+                       nullptr,
                      n_my_elements,
                      MPI_DOUBLE,
                      &global_quad_points_second[0],

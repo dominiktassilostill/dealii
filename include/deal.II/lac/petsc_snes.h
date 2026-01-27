@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2023 by the deal.II authors
+// Copyright (C) 2023 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -19,8 +19,8 @@
 
 #ifdef DEAL_II_WITH_PETSC
 #  include <deal.II/base/mpi.h>
+#  include <deal.II/base/observer_pointer.h>
 #  include <deal.II/base/parameter_handler.h>
-#  include <deal.II/base/smartpointer.h>
 
 #  include <deal.II/lac/petsc_matrix_base.h>
 #  include <deal.II/lac/petsc_precondition.h>
@@ -170,7 +170,7 @@ namespace PETScWrappers
    * methods:
    *
    * @code
-   * class VectorType : public Subscriptor
+   * class VectorType : public EnableObserverPointer
    *    ...
    *    explicit VectorType(Vec);
    *    ...
@@ -179,7 +179,7 @@ namespace PETScWrappers
    * @endcode
    *
    * @code
-   * class MatrixType : public Subscriptor
+   * class MatrixType : public EnableObserverPointer
    *    ...
    *    explicit MatrixType(Mat);
    *    ...
@@ -472,8 +472,8 @@ namespace PETScWrappers
     /**
      * Pointers to the internal PETSc matrix objects.
      */
-    SmartPointer<AMatrixType, NonlinearSolver> A;
-    SmartPointer<PMatrixType, NonlinearSolver> P;
+    ObserverPointer<AMatrixType, NonlinearSolver> A;
+    ObserverPointer<PMatrixType, NonlinearSolver> P;
 
     /**
      * This flag is used to support versions of PETSc older than 3.13.
@@ -490,6 +490,14 @@ namespace PETScWrappers
 
 } // namespace PETScWrappers
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC

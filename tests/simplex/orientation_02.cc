@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,7 +23,7 @@
 #include "../tests.h"
 
 void
-test(const unsigned char orientation)
+test(const types::geometric_orientation orientation)
 {
   const unsigned int face_no = 0;
 

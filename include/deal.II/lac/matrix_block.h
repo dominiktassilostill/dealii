@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2024 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,7 +21,7 @@
 
 #include <deal.II/base/memory_consumption.h>
 #include <deal.II/base/mg_level_object.h>
-#include <deal.II/base/smartpointer.h>
+#include <deal.II/base/observer_pointer.h>
 
 #include <deal.II/lac/block_indices.h>
 #include <deal.II/lac/block_sparsity_pattern.h>
@@ -75,24 +75,6 @@ namespace internal
  * This behavior allows us to store MatrixBlock objects in vectors, for
  * instance in MGLevelObject without extracting the #matrix first.
  *
- * MatrixBlock comes handy when using BlockMatrixArray. Once the MatrixBlock
- * has been properly initialized and filled, it can be used in the simplest
- * case as:
- * @code
- * MatrixBlockVector<SparseMatrix<double> > > blocks;
- *
- * ...
- *
- * BlockMatrixArray matrix (n_blocks, n_blocks);
- *
- * for (size_type i=0;i<blocks.size;++i)
- *   matrix.enter(blocks.block(i).row, blocks.block(i).column,
- * blocks.matrix(i));
- * @endcode
- *
- * Here, we have not gained very much, except that we do not need to set up
- * empty blocks in the block system.
- *
  * @note This class expects, that the row and column BlockIndices objects for
  * the system are equal. If they are not, some functions will throw
  * ExcNotImplemented.
@@ -107,7 +89,7 @@ namespace internal
  * @ref GlossBlockLA "Block (linear algebra)"
  */
 template <typename MatrixType>
-class MatrixBlock : public Subscriptor
+class MatrixBlock : public EnableObserverPointer
 {
 public:
   /**
@@ -348,7 +330,7 @@ private:
  * @ingroup vector_valued
  */
 template <typename MatrixType>
-class MatrixBlockVector : private AnyData
+class MatrixBlockVector : public AnyData
 {
 public:
   /**
@@ -423,8 +405,6 @@ public:
    */
   using AnyData::name;
   using AnyData::size;
-  using AnyData::subscribe;
-  using AnyData::unsubscribe;
 };
 
 
@@ -437,7 +417,7 @@ public:
  * @ingroup vector_valued
  */
 template <typename MatrixType>
-class MGMatrixBlockVector : public Subscriptor
+class MGMatrixBlockVector : public EnableObserverPointer
 {
 public:
   /**
@@ -736,7 +716,7 @@ MatrixBlock<MatrixType>::add(const size_type  b_row,
   // leave it at this. While it may
   // not be the most efficient way,
   // it is at least thread safe.
-  // #ifdef DEBUG
+  // if constexpr (running_in_debug_mode()){
   Assert(bi.first == row, ExcBlockIndexMismatch(bi.first, row));
 
   for (size_type j = 0; j < n_cols; ++j)
@@ -747,7 +727,7 @@ MatrixBlock<MatrixType>::add(const size_type  b_row,
 
       matrix.add(bi.second, bj.second, values[j]);
     }
-  // #endif
+  // }
 }
 
 

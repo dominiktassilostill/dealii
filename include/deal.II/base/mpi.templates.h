@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2023 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -47,35 +47,37 @@ namespace Utilities
 #ifdef DEAL_II_WITH_MPI
         if (job_supports_mpi())
           {
-#  ifdef DEBUG
-            {
-              const unsigned int rank     = this_mpi_process(mpi_communicator);
-              unsigned int       size     = values.size();
-              unsigned int       size_min = 0;
-              unsigned int       size_max = 0;
-              int                ierr2    = 0;
-              ierr2                       = MPI_Reduce(&size,
-                                 &size_min,
-                                 1,
-                                 MPI_UNSIGNED,
-                                 MPI_MIN,
-                                 0,
-                                 mpi_communicator);
-              AssertThrowMPI(ierr2);
-              ierr2 = MPI_Reduce(&size,
-                                 &size_max,
-                                 1,
-                                 MPI_UNSIGNED,
-                                 MPI_MAX,
-                                 0,
-                                 mpi_communicator);
-              AssertThrowMPI(ierr2);
-              if (rank == 0)
-                Assert(size_min == size_max,
-                       ExcMessage(
-                         "values has different size across MPI processes."));
-            }
-#  endif
+            if constexpr (running_in_debug_mode())
+              {
+                {
+                  const unsigned int rank = this_mpi_process(mpi_communicator);
+                  unsigned int       size = values.size();
+                  unsigned int       size_min = 0;
+                  unsigned int       size_max = 0;
+                  int                ierr2    = 0;
+                  ierr2                       = MPI_Reduce(&size,
+                                     &size_min,
+                                     1,
+                                     MPI_UNSIGNED,
+                                     MPI_MIN,
+                                     0,
+                                     mpi_communicator);
+                  AssertThrowMPI(ierr2);
+                  ierr2 = MPI_Reduce(&size,
+                                     &size_max,
+                                     1,
+                                     MPI_UNSIGNED,
+                                     MPI_MAX,
+                                     0,
+                                     mpi_communicator);
+                  AssertThrowMPI(ierr2);
+                  if (rank == 0)
+                    Assert(
+                      size_min == size_max,
+                      ExcMessage(
+                        "values has different size across MPI processes."));
+                }
+              }
             const int ierr =
               MPI_Allreduce(values != output ? values.data() : MPI_IN_PLACE,
                             static_cast<void *>(output.data()),
@@ -142,12 +144,17 @@ namespace Utilities
     T
     sum(const T &t, const MPI_Comm mpi_communicator)
     {
-      T return_value{};
-      internal::all_reduce(MPI_SUM,
-                           ArrayView<const T>(&t, 1),
-                           mpi_communicator,
-                           ArrayView<T>(&return_value, 1));
-      return return_value;
+      if (mpi_communicator == MPI_COMM_SELF)
+        return t;
+      else
+        {
+          T return_value{};
+          internal::all_reduce(MPI_SUM,
+                               ArrayView<const T>(&t, 1),
+                               mpi_communicator,
+                               ArrayView<T>(&return_value, 1));
+          return return_value;
+        }
     }
 
 
@@ -174,7 +181,11 @@ namespace Utilities
         const MPI_Comm            mpi_communicator,
         const ArrayView<T>       &sums)
     {
-      internal::all_reduce(MPI_SUM, values, mpi_communicator, sums);
+      if (mpi_communicator == MPI_COMM_SELF)
+        for (unsigned int i = 0; i < values.size(); ++i)
+          sums[i] = values[i];
+      else
+        internal::all_reduce(MPI_SUM, values, mpi_communicator, sums);
     }
 
 

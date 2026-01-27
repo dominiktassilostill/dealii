@@ -80,6 +80,13 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
         const Triangulation<deal_II_dimension, deal_II_space_dimension>
           &triangulation);
 
+      template std::vector<types::global_vertex_index>
+      parallel_to_serial_vertex_indices(
+        const Triangulation<deal_II_dimension, deal_II_space_dimension>
+          &serial_tria,
+        const Triangulation<deal_II_dimension, deal_II_space_dimension>
+          &parallel_tria);
+
       template std::pair<
         typename Triangulation<deal_II_dimension,
                                deal_II_space_dimension>::active_cell_iterator,
@@ -280,12 +287,6 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
         const Tensor<1, deal_II_space_dimension, double> &,
         const double,
         Triangulation<deal_II_dimension, deal_II_space_dimension> &);
-
-      template void
-      rotate<deal_II_dimension>(
-        const double,
-        const unsigned int,
-        Triangulation<deal_II_dimension, deal_II_space_dimension> &);
 #  endif
 
       template void
@@ -367,15 +368,6 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
         Triangulation<deal_II_dimension>                       &triangulation,
         const Function<deal_II_dimension>                      *coefficient,
         const bool);
-
-      template Triangulation<deal_II_dimension,
-                             deal_II_space_dimension>::DistortedCellList
-      fix_up_distorted_child_cells(
-        const Triangulation<deal_II_dimension,
-                            deal_II_space_dimension>::DistortedCellList
-          &distorted_cells,
-        Triangulation<deal_II_dimension, deal_II_space_dimension>
-          &triangulation);
 #    endif
 #  endif
     \}

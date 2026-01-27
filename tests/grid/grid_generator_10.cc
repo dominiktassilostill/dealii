@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2024 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -107,9 +107,14 @@ check_grid()
            ++line)
         {
           deallog << line << ": "
-                  << (cell->line_orientation(line) ? "true" : "false")
+                  << (cell->line_orientation(line) ==
+                          numbers::default_geometric_orientation ?
+                        "true" :
+                        "false")
                   << std::endl;
-          Assert(cell->line_orientation(line) == true, ExcInternalError());
+          Assert(cell->line_orientation(line) ==
+                   numbers::default_geometric_orientation,
+                 ExcInternalError());
         }
     }
 }

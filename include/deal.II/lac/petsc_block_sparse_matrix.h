@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2023 by the deal.II authors
+// Copyright (C) 2004 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -27,6 +27,7 @@
 #  include <deal.II/lac/petsc_sparse_matrix.h>
 
 #  include <cmath>
+#  include <cstddef>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -113,7 +114,7 @@ namespace PETScWrappers
       /**
        * Create a BlockSparseMatrix with an array of PETSc matrices.
        */
-      template <size_t block_rows, size_t block_columns>
+      template <std::size_t block_rows, std::size_t block_columns>
       explicit BlockSparseMatrix(
         const std::array<std::array<Mat, block_columns>, block_rows> &);
 
@@ -370,7 +371,7 @@ namespace PETScWrappers
 
 
 
-    template <size_t block_rows, size_t block_columns>
+    template <std::size_t block_rows, std::size_t block_columns>
     inline BlockSparseMatrix::BlockSparseMatrix(
       const std::array<std::array<Mat, block_columns>, block_rows> &arrayA)
       : BlockSparseMatrix()
@@ -472,6 +473,14 @@ namespace PETScWrappers
 
 DEAL_II_NAMESPACE_CLOSE
 
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
+DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_PETSC
 

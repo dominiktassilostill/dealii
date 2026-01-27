@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2023 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,8 @@
 
 
 #include <deal.II/base/config.h>
+
+#include <deal.II/base/vectorization.h>
 
 #include <array>
 #include <complex>
@@ -284,7 +286,7 @@ namespace MemoryConsumption
       }
     else
       {
-        return sizeof(char) * (strlen(string) /*Remember the NUL*/ + 1);
+        return sizeof(char) * (std::strlen(string) /*Remember the NUL*/ + 1);
       }
   }
 

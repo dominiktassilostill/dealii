@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2023 by the deal.II authors
+// Copyright (C) 2011 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,14 +18,13 @@
 // does matrix-assembly, it calls compress() inside and the others don't.
 // We should implement this like in PETSc::MPI::Vector.
 
+#include <deal.II/base/mpi.h>
 #include <deal.II/base/utilities.h>
 
 #include <deal.II/lac/dynamic_sparsity_pattern.h>
 #include <deal.II/lac/petsc_sparse_matrix.h>
 
 #include "../tests.h"
-
-// #include <mpi.h>
 
 
 void

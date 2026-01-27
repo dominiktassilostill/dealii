@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2018 - 2024 by the deal.II authors
+// Copyright (C) 2018 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -78,8 +78,7 @@ namespace LinearAlgebra
 
     template <typename Number, typename MemorySpace>
     Vector<Number, MemorySpace>::Vector()
-      : Subscriptor()
-      , compressed(true)
+      : compressed(true)
       , has_ghost(false)
       , vector(Utilities::Trilinos::internal::make_rcp<
                TpetraTypes::VectorType<Number, MemorySpace>>(
@@ -91,8 +90,7 @@ namespace LinearAlgebra
 
     template <typename Number, typename MemorySpace>
     Vector<Number, MemorySpace>::Vector(const Vector<Number, MemorySpace> &V)
-      : Subscriptor()
-      , compressed(V.compressed)
+      : compressed(V.compressed)
       , has_ghost(V.has_ghost)
       , vector(Utilities::Trilinos::internal::make_rcp<
                TpetraTypes::VectorType<Number, MemorySpace>>(*V.vector,
@@ -109,8 +107,7 @@ namespace LinearAlgebra
     template <typename Number, typename MemorySpace>
     Vector<Number, MemorySpace>::Vector(
       const Teuchos::RCP<TpetraTypes::VectorType<Number, MemorySpace>> V)
-      : Subscriptor()
-      , compressed(true)
+      : compressed(true)
       , has_ghost(V->getMap()->isOneToOne() == false)
       , vector(V)
     {}
@@ -120,12 +117,12 @@ namespace LinearAlgebra
     template <typename Number, typename MemorySpace>
     Vector<Number, MemorySpace>::Vector(const IndexSet &parallel_partitioner,
                                         const MPI_Comm  communicator)
-      : Subscriptor()
-      , compressed(true)
+      : compressed(true)
       , has_ghost(false)
       , vector(Utilities::Trilinos::internal::make_rcp<
                TpetraTypes::VectorType<Number, MemorySpace>>(
-          parallel_partitioner.make_tpetra_map_rcp(communicator, true)))
+          parallel_partitioner.make_tpetra_map_rcp<
+            TpetraTypes::NodeType<MemorySpace>>(communicator, true)))
     {}
 
 
@@ -135,7 +132,6 @@ namespace LinearAlgebra
                                         const IndexSet &ghost_entries,
                                         const MPI_Comm  communicator,
                                         const bool      vector_writable)
-      : Subscriptor()
     {
       if (!vector_writable)
         {
@@ -144,35 +140,45 @@ namespace LinearAlgebra
 
           vector = Utilities::Trilinos::internal::make_rcp<
             TpetraTypes::VectorType<Number, MemorySpace>>(
-            parallel_partitioner.make_tpetra_map_rcp(communicator, true));
+            parallel_partitioner
+              .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+                communicator, true));
+
+          nonlocal_entries = parallel_partitioner;
+          nonlocal_entries.subtract_set(locally_owned_entries);
 
           compressed = true;
         }
       else
         {
           Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> map =
-            locally_owned_entries.make_tpetra_map_rcp(communicator, false);
+            locally_owned_entries
+              .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+                communicator, false);
           vector = Utilities::Trilinos::internal::make_rcp<
             TpetraTypes::VectorType<Number, MemorySpace>>(map);
 
-          IndexSet nonlocal_entries(ghost_entries);
+          nonlocal_entries = ghost_entries;
           nonlocal_entries.subtract_set(locally_owned_entries);
           nonlocal_vector = Utilities::Trilinos::internal::make_rcp<
             TpetraTypes::VectorType<Number, MemorySpace>>(
-            nonlocal_entries.make_tpetra_map_rcp(communicator, true));
+            nonlocal_entries
+              .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+                communicator, true));
 
           compressed = false;
         }
 
       has_ghost = (vector->getMap()->isOneToOne() == false);
 
-#  ifdef DEBUG
-      MPI_Comm comm = Utilities::Trilinos::teuchos_comm_to_mpi_comm(
-        vector->getMap()->getComm());
-      const size_type n_elements_global =
-        Utilities::MPI::sum(vector->getLocalLength(), comm);
-      Assert(has_ghost || n_elements_global == size(), ExcInternalError());
-#  endif
+      if constexpr (running_in_debug_mode())
+        {
+          MPI_Comm comm = Utilities::Trilinos::teuchos_comm_to_mpi_comm(
+            vector->getMap()->getComm());
+          const size_type n_elements_global =
+            Utilities::MPI::sum(vector->getLocalLength(), comm);
+          Assert(has_ghost || n_elements_global == size(), ExcInternalError());
+        }
     }
 
 
@@ -206,7 +212,9 @@ namespace LinearAlgebra
       has_ghost  = false;
       vector     = Utilities::Trilinos::internal::make_rcp<
         TpetraTypes::VectorType<Number, MemorySpace>>(
-        parallel_partitioner.make_tpetra_map_rcp(communicator, true));
+        parallel_partitioner
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+            communicator, true));
     }
 
 
@@ -230,14 +238,21 @@ namespace LinearAlgebra
 
           vector = Utilities::Trilinos::internal::make_rcp<
             TpetraTypes::VectorType<Number, MemorySpace>>(
-            parallel_partitioner.make_tpetra_map_rcp(communicator, true));
+            parallel_partitioner
+              .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+                communicator, true));
+
+          nonlocal_entries = parallel_partitioner;
+          nonlocal_entries.subtract_set(locally_owned_entries);
 
           compressed = true;
         }
       else
         {
           Teuchos::RCP<TpetraTypes::MapType<MemorySpace>> map =
-            locally_owned_entries.make_tpetra_map_rcp(communicator, false);
+            locally_owned_entries
+              .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+                communicator, false);
 
           if (!vector->getMap()->isSameAs(*map))
             {
@@ -248,12 +263,14 @@ namespace LinearAlgebra
           else
             vector->putScalar(0);
 
-          IndexSet nonlocal_entries(ghost_entries);
+          nonlocal_entries = ghost_entries;
           nonlocal_entries.subtract_set(locally_owned_entries);
 
           nonlocal_vector = Utilities::Trilinos::internal::make_rcp<
             TpetraTypes::VectorType<Number, MemorySpace>>(
-            nonlocal_entries.make_tpetra_map_rcp(communicator, true));
+            nonlocal_entries
+              .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(
+                communicator, true));
 
           compressed = false;
         }
@@ -279,26 +296,12 @@ namespace LinearAlgebra
     void
     Vector<Number, MemorySpace>::extract_subvector_to(
       const ArrayView<const types::global_dof_index> &indices,
-      ArrayView<Number>                              &elements) const
+      const ArrayView<Number>                        &elements) const
     {
       AssertDimension(indices.size(), elements.size());
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto vector_2d = vector->template getLocalView<Kokkos::HostSpace>(
-        Tpetra::Access::ReadOnly);
-#  else
-      /*
-       * For Trilinos older than 13.2 we would normally have to call
-       * vector.template sync<Kokkos::HostSpace>() at this place in order
-       * to sync between memory spaces. This is necessary for GPU support.
-       * Unfortunately, we are in a const context here and cannot call to
-       * sync() (which is a non-const member function).
-       *
-       * Let us choose to simply ignore this problem for such an old
-       * Trilinos version.
-       */
-      auto vector_2d = vector->template getLocalView<Kokkos::HostSpace>();
-#  endif
+        Tpetra::Access::ReadOnlyStruct{});
       auto vector_1d = Kokkos::subview(vector_2d, Kokkos::ALL(), 0);
 
       for (unsigned int i = 0; i < indices.size(); ++i)
@@ -341,68 +344,68 @@ namespace LinearAlgebra
       //  - First case: both vectors have the same layout.
       //  - Second case: both vectors have the same size but different layout.
       //  - Third case: the vectors have different size.
+
+      AssertThrow(V.compressed,
+                  ExcMessage("Cannot copy-assign from a vector that has not "
+                             "been compressed. Please call compress() on the "
+                             "source vector before using operator=()."));
+
       if (vector->getMap()->isSameAs(*V.vector->getMap()))
         {
           // Create a read-only Kokkos view from the source vector
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
           auto source_vector_2d =
             V.vector->template getLocalView<Kokkos::HostSpace>(
-              Tpetra::Access::ReadOnly);
-#  else
-          auto source_vector_2d =
-            V.vector->template getLocalView<Kokkos::HostSpace>();
-#  endif
+              Tpetra::Access::ReadOnlyStruct{});
+
           auto source_vector_1d =
             Kokkos::subview(source_vector_2d, Kokkos::ALL(), 0);
 
           // Create a read/write Kokkos view from the target vector
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
           auto target_vector_2d =
             vector->template getLocalView<Kokkos::HostSpace>(
-              Tpetra::Access::ReadWrite);
-#  else
-          vector->template sync<Kokkos::HostSpace>();
-          auto target_vector_2d =
-            vector->template getLocalView<Kokkos::HostSpace>();
-#  endif
+              Tpetra::Access::ReadWriteStruct{});
           auto target_vector_1d =
             Kokkos::subview(target_vector_2d, Kokkos::ALL(), 0);
-#  if !DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
-          vector->template modify<Kokkos::HostSpace>();
-#  endif
 
           // Copy the data
           Kokkos::deep_copy(target_vector_1d, source_vector_1d);
-
-#  if !DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
-          vector->template sync<typename Tpetra::Vector<
-            Number,
-            int,
-            types::signed_global_dof_index>::device_type::memory_space>();
-#  endif
         }
       else if (size() == V.size())
         {
-          // We expect the origin vector to have a one-to-one map, otherwise
-          // we can not call Import
-          Assert(V.vector->getMap()->isOneToOne(),
-                 ExcMessage(
-                   "You are trying to map one vector distributed "
-                   "between processors, where some elements belong "
-                   "to multiple processors, onto another distribution "
-                   "pattern, where some elements belong to multiple "
-                   "processors. It is unclear how to deal with elements "
-                   "in the vector belonging to multiple processors. "
-                   "Therefore, compress() must be called on this "
-                   "vector first."));
+          // We expect that at least one vector has a one-to-one map, otherwise
+          // we can neither call Import nor Export.
+          if (V.vector->getMap()->isOneToOne())
+            {
+              Teuchos::RCP<const TpetraTypes::ImportType<MemorySpace>>
+                importer =
+                  Tpetra::createImport(V.vector->getMap(), vector->getMap());
 
-          Teuchos::RCP<const TpetraTypes::ImportType<MemorySpace>> importer =
-            Tpetra::createImport(V.vector->getMap(), vector->getMap());
+              // Since we are distributing the vector from a one-to-one map
+              // we can always use the VectorOperation::insert / Tpetra::INSERT
+              // here.
+              vector->doImport(*V.vector, *importer, Tpetra::INSERT);
+            }
+          else if (vector->getMap()->isOneToOne())
+            {
+              Teuchos::RCP<const TpetraTypes::ExportType<MemorySpace>>
+                exporter =
+                  Tpetra::createExport(V.vector->getMap(), vector->getMap());
 
-          // Since we are distributing the vector from a one-to-one map
-          // we can always use the VectorOperation::insert / Tpetra::INSERT
-          // here.
-          vector->doImport(*V.vector, *importer, Tpetra::INSERT);
+              vector->doExport(*V.vector, *exporter, Tpetra::INSERT);
+            }
+          else
+            {
+              Assert(false,
+                     ExcMessage(
+                       "You are trying to map one vector distributed "
+                       "between processors, where some elements belong "
+                       "to multiple processors, onto another distribution "
+                       "pattern, where some elements belong to multiple "
+                       "processors. It is unclear how to deal with elements "
+                       "in the vector belonging to multiple processors. "
+                       "Therefore, compress() must be called on this "
+                       "vector first."));
+            }
         }
       else
         {
@@ -437,7 +440,9 @@ namespace LinearAlgebra
       Teuchos::Array<OtherNumber> vector_data(V.begin(), V.end());
       vector = Utilities::Trilinos::internal::make_rcp<
         TpetraTypes::VectorType<Number, MemorySpace>>(
-        V.locally_owned_elements().make_tpetra_map_rcp(), vector_data);
+        V.locally_owned_elements()
+          .template make_tpetra_map_rcp<TpetraTypes::NodeType<MemorySpace>>(),
+        vector_data);
 
       has_ghost  = false;
       compressed = true;
@@ -451,7 +456,7 @@ namespace LinearAlgebra
     Vector<Number, MemorySpace> &
     Vector<Number, MemorySpace>::operator=(const Number s)
     {
-      (void)s;
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       Assert(s == Number(0.0),
              ExcMessage("Only 0 can be assigned to a vector."));
 
@@ -497,13 +502,13 @@ namespace LinearAlgebra
       else
         {
           tpetra_comm_pattern = Teuchos::rcp_dynamic_cast<
-            const TpetraWrappers::CommunicationPattern>(communication_pattern);
+            const TpetraWrappers::CommunicationPattern<MemorySpace>>(
+            communication_pattern);
 
           AssertThrow(
             !tpetra_comm_pattern.is_null(),
-            ExcMessage(
-              std::string("The communication pattern is not of type ") +
-              "LinearAlgebra::TpetraWrappers::CommunicationPattern."));
+            ExcMessage("The communication pattern is not of type "
+                       "LinearAlgebra::TpetraWrappers::CommunicationPattern."));
         }
 
       Teuchos::RCP<const TpetraTypes::ExportType<MemorySpace>> tpetra_export =
@@ -513,26 +518,14 @@ namespace LinearAlgebra
         tpetra_export->getSourceMap());
 
       {
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
         auto x_2d = source_vector.template getLocalView<Kokkos::HostSpace>(
-          Tpetra::Access::ReadWrite);
-#  else
-        source_vector.template sync<Kokkos::HostSpace>();
-        auto x_2d = source_vector.template getLocalView<Kokkos::HostSpace>();
-#  endif
+          Tpetra::Access::ReadWriteStruct{});
         auto x_1d = Kokkos::subview(x_2d, Kokkos::ALL(), 0);
-#  if !DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
-        source_vector.template modify<Kokkos::HostSpace>();
-#  endif
+
         const size_t localLength = source_vector.getLocalLength();
         auto         values_it   = V.begin();
         for (size_t k = 0; k < localLength; ++k)
           x_1d(k) = *values_it++;
-#  if !DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
-        source_vector.template sync<
-          typename Tpetra::Vector<Number, int, types::signed_global_dof_index>::
-            device_type::memory_space>();
-#  endif
       }
       Tpetra::CombineMode tpetra_operation = Tpetra::ZERO;
       if (operation == VectorOperation::insert)
@@ -543,18 +536,6 @@ namespace LinearAlgebra
         DEAL_II_NOT_IMPLEMENTED();
 
       vector->doExport(source_vector, *tpetra_export, tpetra_operation);
-    }
-
-
-
-    template <typename Number, typename MemorySpace>
-    void
-    Vector<Number, MemorySpace>::import_elements(
-      const ReadWriteVector<Number> &V,
-      VectorOperation::values        operation,
-      const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &)
-    {
-      import_elements(V, operation);
     }
 
 
@@ -578,7 +559,9 @@ namespace LinearAlgebra
     Vector<Number, MemorySpace> &
     Vector<Number, MemorySpace>::operator*=(const Number factor)
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(factor);
+
       vector->scale(factor);
 
       return *this;
@@ -590,8 +573,10 @@ namespace LinearAlgebra
     Vector<Number, MemorySpace> &
     Vector<Number, MemorySpace>::operator/=(const Number factor)
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(factor);
       Assert(factor != Number(0.), ExcZero());
+
       *this *= Number(1.) / factor;
 
       return *this;
@@ -604,6 +589,8 @@ namespace LinearAlgebra
     Vector<Number, MemorySpace>::operator+=(
       const Vector<Number, MemorySpace> &V)
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       // If the maps are the same we can update right away.
       if (vector->getMap()->isSameAs(*(V.trilinos_vector().getMap())))
         {
@@ -616,8 +603,11 @@ namespace LinearAlgebra
 
           // TODO: Tpetra doesn't have a combine mode that also updates local
           // elements, maybe there is a better workaround.
-          Tpetra::Vector<Number, int, types::signed_global_dof_index> dummy(
-            vector->getMap(), false);
+          Tpetra::Vector<Number,
+                         int,
+                         types::signed_global_dof_index,
+                         TpetraTypes::NodeType<MemorySpace>>
+                                               dummy(vector->getMap(), false);
           TpetraTypes::ImportType<MemorySpace> data_exchange(
             V.trilinos_vector().getMap(), dummy.getMap());
           dummy.doImport(V.trilinos_vector(), data_exchange, Tpetra::INSERT);
@@ -635,6 +625,8 @@ namespace LinearAlgebra
     Vector<Number, MemorySpace>::operator-=(
       const Vector<Number, MemorySpace> &V)
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
+
       this->add(-1., V);
 
       return *this;
@@ -707,27 +699,15 @@ namespace LinearAlgebra
       // writing to this vector at all.
       Assert(!has_ghost_elements(), ExcGhostsPresent());
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto vector_2d = vector->template getLocalView<Kokkos::HostSpace>(
-        Tpetra::Access::ReadWrite);
-#  else
-      vector->template sync<Kokkos::HostSpace>();
-      auto vector_2d = vector->template getLocalView<Kokkos::HostSpace>();
-#  endif
+        Tpetra::Access::ReadWriteStruct{});
       auto vector_1d = Kokkos::subview(vector_2d, Kokkos::ALL(), 0);
-#  if !DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
-      vector->template modify<Kokkos::HostSpace>();
-#  endif
+
       const size_t localLength = vector->getLocalLength();
       for (size_t k = 0; k < localLength; ++k)
         {
           vector_1d(k) += a;
         }
-#  if !DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
-      vector->template sync<
-        typename Tpetra::Vector<Number, int, types::signed_global_dof_index>::
-          device_type::memory_space>();
-#  endif
     }
 
 
@@ -842,27 +822,14 @@ namespace LinearAlgebra
     bool
     Vector<Number, MemorySpace>::all_zero() const
     {
-      // get a representation of the vector and
-      // loop over all the elements
-      Teuchos::ArrayRCP<const Number> data       = vector->getData();
-      const size_type                 n_elements = vector->getLocalLength();
-      unsigned int                    flag       = 0;
-      for (size_type i = 0; i < n_elements; ++i)
-        {
-          if (data[i] != Number(0))
-            {
-              flag = 1;
-              break;
-            }
-        }
+      Teuchos::ArrayRCP<const Number> data = vector->getData();
 
-      // Check that the vector is zero on _all_ processors.
-      unsigned int num_nonzero =
-        Utilities::MPI::sum(flag,
-                            Utilities::Trilinos::teuchos_comm_to_mpi_comm(
-                              vector->getMap()->getComm()));
-
-      return num_nonzero == 0;
+      const bool local_all_zero =
+        std::all_of(data.begin(),
+                    data.begin() + locally_owned_size(),
+                    numbers::value_is_zero<Number>);
+      return Utilities::MPI::logical_and(local_all_zero,
+                                         get_mpi_communicator());
     }
 
 
@@ -951,7 +918,7 @@ namespace LinearAlgebra
     typename Vector<Number, MemorySpace>::real_type
     Vector<Number, MemorySpace>::norm_sqr() const
     {
-      Vector<Number, MemorySpace>::real_type d = l2_norm();
+      const Vector<Number, MemorySpace>::real_type d = l2_norm();
       return d * d;
     }
 
@@ -963,6 +930,7 @@ namespace LinearAlgebra
       const Vector<Number, MemorySpace> &V,
       const Vector<Number, MemorySpace> &W)
     {
+      Assert(!has_ghost_elements(), ExcGhostsPresent());
       AssertIsFinite(a);
 
       this->add(a, V);
@@ -984,19 +952,11 @@ namespace LinearAlgebra
       if (this_local_length != other_local_length)
         return false;
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto this_vector_2d = vector->template getLocalView<Kokkos::HostSpace>(
-        Tpetra::Access::ReadOnly);
+        Tpetra::Access::ReadOnlyStruct{});
       auto other_vector_2d = v.vector->template getLocalView<Kokkos::HostSpace>(
-        Tpetra::Access::ReadOnly);
+        Tpetra::Access::ReadOnlyStruct{});
 
-#  else
-      vector->template sync<Kokkos::HostSpace>();
-      v.vector->template sync<Kokkos::HostSpace>();
-      auto this_vector_2d = vector->template getLocalView<Kokkos::HostSpace>();
-      auto other_vector_2d =
-        v.vector->template getLocalView<Kokkos::HostSpace>();
-#  endif
       auto this_vector_1d  = Kokkos::subview(this_vector_2d, Kokkos::ALL(), 0);
       auto other_vector_1d = Kokkos::subview(other_vector_2d, Kokkos::ALL(), 0);
 
@@ -1045,20 +1005,21 @@ namespace LinearAlgebra
       const size_type begin = vector->getMap()->getMinGlobalIndex();
       const size_type end   = vector->getMap()->getMaxGlobalIndex() + 1;
 
-#  ifdef DEBUG
-      const size_type n_local_elements =
-#    if DEAL_II_TRILINOS_VERSION_GTE(14, 0, 0)
-        vector->getMap()->getLocalNumElements();
-#    else
-        vector->getMap()->getNodeNumElements();
-#    endif
-      Assert(
-        end - begin == n_local_elements,
-        ExcMessage(
-          "This function only makes sense if the elements that this "
-          "vector stores on the current processor form a contiguous range. "
-          "This does not appear to be the case for the current vector."));
+      if constexpr (running_in_debug_mode())
+        {
+          const size_type n_local_elements =
+#  if DEAL_II_TRILINOS_VERSION_GTE(14, 0, 0)
+            vector->getMap()->getLocalNumElements();
+#  else
+            vector->getMap()->getNodeNumElements();
 #  endif
+          Assert(
+            end - begin == n_local_elements,
+            ExcMessage(
+              "This function only makes sense if the elements that this "
+              "vector stores on the current processor form a contiguous range. "
+              "This does not appear to be the case for the current vector."));
+        }
 
       return std::make_pair(begin, end);
     }
@@ -1090,7 +1051,9 @@ namespace LinearAlgebra
     IndexSet
     Vector<Number, MemorySpace>::locally_owned_elements() const
     {
-      return IndexSet(vector->getMap());
+      IndexSet locally_owned_entries(vector->getMap());
+      locally_owned_entries.subtract_set(nonlocal_entries);
+      return locally_owned_entries;
     }
 
 
@@ -1180,13 +1143,9 @@ namespace LinearAlgebra
       else
         out.setf(std::ios::fixed, std::ios::floatfield);
 
-#  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
       auto vector_2d = vector->template getLocalView<Kokkos::HostSpace>(
-        Tpetra::Access::ReadOnly);
-#  else
-      vector->template sync<Kokkos::HostSpace>();
-      auto vector_2d = vector->template getLocalView<Kokkos::HostSpace>();
-#  endif
+        Tpetra::Access::ReadOnlyStruct{});
+
       auto         vector_1d    = Kokkos::subview(vector_2d, Kokkos::ALL(), 0);
       const size_t local_length = vector->getLocalLength();
 
@@ -1248,12 +1207,20 @@ namespace LinearAlgebra
       source_stored_elements = source_index_set;
 
       tpetra_comm_pattern =
-        Teuchos::rcp(new TpetraWrappers::CommunicationPattern(
+        Teuchos::rcp(new TpetraWrappers::CommunicationPattern<MemorySpace>(
           locally_owned_elements(), source_index_set, mpi_comm));
     }
   } // namespace TpetraWrappers
 } // namespace LinearAlgebra
 
+DEAL_II_NAMESPACE_CLOSE
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
 DEAL_II_NAMESPACE_CLOSE
 
 #endif

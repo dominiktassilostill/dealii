@@ -21,6 +21,10 @@
 
 #ifdef DEAL_II_WITH_CGAL
 
+#  include <CGAL/version.h>
+#  if CGAL_VERSION_MAJOR >= 6
+#    include <CGAL/Installation/internal/disable_deprecation_warnings_and_errors.h>
+#  endif
 #  include <CGAL/Mesh_facet_topology.h>
 
 #  include <limits>
@@ -77,7 +81,7 @@ namespace CGALWrappers
    * between the facet circumcenter and the center of its surface Delaunay ball.
    * - `CGAL::parameters::facet_topology`: the set of topological constraints
    * which have to be verified by each surface facet. The default value is
-   * `CGAL::FACET_VERTICES_ON_SURFACE`. See the enum @p FacetToplogy CGAL::Mesh_facet_topology manual
+   * `CGAL::FACET_VERTICES_ON_SURFACE`. See the enum @p FacetTopology CGAL::Mesh_facet_topology manual
    * page to get all possible values.
    * - `CGAL::parameters::cell_radius_edge_ratio`: an upper bound for the
    * radius-edge ratio of the mesh tetrahedra.

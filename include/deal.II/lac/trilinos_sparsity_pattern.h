@@ -19,17 +19,19 @@
 
 #ifdef DEAL_II_WITH_TRILINOS
 
+#  include <deal.II/base/enable_observer_pointer.h>
 #  include <deal.II/base/index_set.h>
 #  include <deal.II/base/mpi_stub.h>
-#  include <deal.II/base/subscriptor.h>
 #  include <deal.II/base/utilities.h>
 
 #  include <deal.II/lac/exceptions.h>
 #  include <deal.II/lac/sparsity_pattern_base.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_FECrsGraph.h>
 #  include <Epetra_Map.h>
 #  include <Epetra_MpiComm.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #  include <cmath>
 #  include <memory>
@@ -603,7 +605,7 @@ namespace TrilinosWrappers
     void
     reinit(const IndexSet &row_parallel_partitioning,
            const IndexSet &col_parallel_partitioning,
-           const IndexSet &writeable_rows,
+           const IndexSet &writable_rows,
            const MPI_Comm  communicator      = MPI_COMM_WORLD,
            const size_type n_entries_per_row = 0);
 
@@ -1256,8 +1258,8 @@ namespace TrilinosWrappers
     // accessor class. consequently, we need to somehow get an actual value
     // from it which we can by evaluating an expression such as when
     // multiplying the value produced by 2
-    Assert(sizeof(TrilinosWrappers::types::int_type) == sizeof((*begin) * 2),
-           ExcNotImplemented());
+    static_assert(sizeof(TrilinosWrappers::types::int_type) ==
+                  sizeof((*begin) * 2));
 
     TrilinosWrappers::types::int_type *col_index_ptr =
       reinterpret_cast<TrilinosWrappers::types::int_type *>(
@@ -1325,6 +1327,14 @@ namespace TrilinosWrappers
 
 DEAL_II_NAMESPACE_CLOSE
 
+
+#else
+
+// Make sure the scripts that create the C++20 module input files have
+// something to latch on if the preprocessor #ifdef above would
+// otherwise lead to an empty content of the file.
+DEAL_II_NAMESPACE_OPEN
+DEAL_II_NAMESPACE_CLOSE
 
 #endif // DEAL_II_WITH_TRILINOS
 

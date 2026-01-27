@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2023 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -53,7 +53,7 @@ CellId::CellId(const types::coarse_cell_id coarse_cell_id,
   , n_child_indices(n_child_indices)
 {
   Assert(n_child_indices < child_indices.size(), ExcInternalError());
-  memcpy(child_indices.data(), id, n_child_indices);
+  std::memcpy(child_indices.data(), id, n_child_indices);
 }
 
 
@@ -162,6 +162,6 @@ CellId::to_string() const
 
 
 // explicit instantiations
-#include "cell_id.inst"
+#include "grid/cell_id.inst"
 
 DEAL_II_NAMESPACE_CLOSE

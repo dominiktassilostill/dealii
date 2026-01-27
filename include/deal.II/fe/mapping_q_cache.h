@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2019 - 2023 by the deal.II authors
+// Copyright (C) 2019 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -24,6 +24,9 @@
 #include <deal.II/fe/mapping_q.h>
 
 #include <deal.II/grid/tria.h>
+
+#include <boost/container/small_vector.hpp>
+#include <boost/signals2/connection.hpp>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -195,7 +198,12 @@ public:
    * @copydoc Mapping::get_vertices()
    */
   virtual boost::container::small_vector<Point<spacedim>,
-                                         GeometryInfo<dim>::vertices_per_cell>
+#ifndef _MSC_VER
+                                         ReferenceCells::max_n_vertices<dim>()
+#else
+                                         GeometryInfo<dim>::vertices_per_cell
+#endif
+                                         >
   get_vertices(const typename Triangulation<dim, spacedim>::cell_iterator &cell)
     const override;
 

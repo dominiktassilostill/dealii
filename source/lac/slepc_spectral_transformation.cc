@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2009 - 2023 by the deal.II authors
+// Copyright (C) 2009 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -39,7 +39,6 @@ namespace SLEPcWrappers
     if (st != nullptr)
       {
         const PetscErrorCode ierr = STDestroy(&st);
-        (void)ierr;
         AssertNothrow(ierr == 0, SolverBase::ExcSLEPcError(ierr));
       }
   }
@@ -95,27 +94,6 @@ namespace SLEPcWrappers
 
     ierr = STSetShift(st, additional_data.shift_parameter);
     AssertThrow(ierr == 0, SolverBase::ExcSLEPcError(ierr));
-  }
-
-  /* --------------- TransformationSpectrumFolding ----------------- */
-
-  TransformationSpectrumFolding::AdditionalData::AdditionalData(
-    const double shift_parameter)
-    : shift_parameter(shift_parameter)
-  {}
-
-  TransformationSpectrumFolding::TransformationSpectrumFolding(
-    const MPI_Comm        mpi_communicator,
-    const AdditionalData &data)
-    : TransformationBase(mpi_communicator)
-    , additional_data(data)
-  {
-    // This feature is only in PETSc/SLEPc versions 3.4 or older, which we no
-    // longer support.
-    Assert(false,
-           ExcMessage(
-             "Folding transformation has been removed in SLEPc 3.5.0 and newer."
-             " You cannot use this transformation anymore."));
   }
 
   /* ------------------- TransformationCayley --------------------- */

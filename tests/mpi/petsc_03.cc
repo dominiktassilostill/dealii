@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2023 by the deal.II authors
+// Copyright (C) 2011 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,6 +17,7 @@
 // PETScWrappers: document bug when using GrowingVectorMemory
 // at the end of a run.
 
+#include <deal.II/base/mpi.h>
 #include <deal.II/base/utilities.h>
 
 #include <deal.II/lac/petsc_block_vector.h>
@@ -25,7 +26,6 @@
 
 #include "../tests.h"
 
-// #include <mpi.h>
 
 template <class v>
 void

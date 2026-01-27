@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2024 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,9 +18,9 @@
 
 #include <deal.II/base/config.h>
 
+#include <deal.II/base/enable_observer_pointer.h>
 #include <deal.II/base/exceptions.h>
-#include <deal.II/base/smartpointer.h>
-#include <deal.II/base/subscriptor.h>
+#include <deal.II/base/observer_pointer.h>
 #include <deal.II/base/table.h>
 
 #include <deal.II/lac/block_indices.h>
@@ -711,7 +711,7 @@ namespace TrilinosWrappers
     BlockSparsityPattern(
       const std::vector<IndexSet> &row_parallel_partitioning,
       const std::vector<IndexSet> &column_parallel_partitioning,
-      const std::vector<IndexSet> &writeable_rows,
+      const std::vector<IndexSet> &writable_rows,
       const MPI_Comm               communicator = MPI_COMM_WORLD);
 
     /**
@@ -756,7 +756,7 @@ namespace TrilinosWrappers
     void
     reinit(const std::vector<IndexSet> &row_parallel_partitioning,
            const std::vector<IndexSet> &column_parallel_partitioning,
-           const std::vector<IndexSet> &writeable_rows,
+           const std::vector<IndexSet> &writable_rows,
            const MPI_Comm               communicator = MPI_COMM_WORLD);
 
     /**
@@ -897,15 +897,16 @@ BlockSparsityPatternBase<SparsityPatternType>::add_entries(
           block_column_indices[0].push_back(local_index);
 
           // Check that calculation:
-#ifdef DEBUG
-          {
-            auto check_block_and_col = column_indices.global_to_local(*it);
-            Assert(current_block == check_block_and_col.first,
-                   ExcInternalError());
-            Assert(local_index == check_block_and_col.second,
-                   ExcInternalError());
-          }
-#endif
+          if constexpr (running_in_debug_mode())
+            {
+              {
+                auto check_block_and_col = column_indices.global_to_local(*it);
+                Assert(current_block == check_block_and_col.first,
+                       ExcInternalError());
+                Assert(local_index == check_block_and_col.second,
+                       ExcInternalError());
+              }
+            }
         }
       // add whatever is left over:
       sub_objects[row_index.first][current_block]->add_entries(

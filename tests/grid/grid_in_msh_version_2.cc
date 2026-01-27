@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2006 - 2018 by the deal.II authors
+// Copyright (C) 2006 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -47,9 +47,12 @@ check_file(const std::string name, typename GridIn<dim>::Format format)
 void
 filename_resolution()
 {
-  check_file<2>(std::string(SOURCE_DIR "/grid_in_msh_version_2/hole81"),
+  check_file<2>(std::string(SOURCE_DIR "/grid_in_msh_version_2/hole81.msh"),
                 GridIn<2>::msh);
-  check_file<2>(std::string(SOURCE_DIR "/grid_in_msh_version_2/hole8170"),
+  check_file<2>(std::string(SOURCE_DIR "/grid_in_msh_version_2/hole8170.msh"),
+                GridIn<2>::msh);
+  check_file<2>(std::string(SOURCE_DIR
+                            "/grid_in_msh_version_2/hole81_commented.msh"),
                 GridIn<2>::msh);
 }
 

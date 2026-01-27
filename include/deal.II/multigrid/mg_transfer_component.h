@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2001 - 2023 by the deal.II authors
+// Copyright (C) 2001 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -31,7 +31,7 @@
 #include <deal.II/multigrid/mg_base.h>
 
 #include <memory>
-
+#include <set>
 
 
 DEAL_II_NAMESPACE_OPEN
@@ -138,7 +138,7 @@ private:
 protected:
   /**
    * The actual prolongation matrix. column indices belong to the dof indices
-   * of the mother cell, i.e. the coarse level. while row indices belong to
+   * of the parent cell, i.e. the coarse level. while row indices belong to
    * the child cell, i.e. the fine level.
    */
   std::vector<std::shared_ptr<BlockSparseMatrix<double>>> prolongation_matrices;
@@ -198,24 +198,26 @@ public:
    * This function is a front-end for the same function in
    * MGTransferComponentBase.
    *
-   * @arg selected Number of the block of the global vector to be copied from
+   * @param dof The DoFHandler on which to perform the operation.
+   *
+   * @param selected Number of the block of the global vector to be copied from
    * and to the multilevel vector. This number refers to the renumbering by
    * <tt>target_component</tt>.
    *
-   * @arg mg_selected Number of the block for which the transfer matrices
+   * @param mg_selected Number of the block for which the transfer matrices
    * should be built.
    *
    * If <tt>mg_target_component</tt> is present, this refers to the renumbered
    * components.
    *
-   * @arg target_component this argument allows grouping and renumbering of
+   * @param target_component this argument allows grouping and renumbering of
    * components in the fine-level vector (see DoFRenumbering::component_wise).
    *
-   * @arg mg_target_component this argument allows grouping and renumbering
+   * @param mg_target_component this argument allows grouping and renumbering
    * of components in the level vectors (see DoFRenumbering::component_wise).
    * It also affects the behavior of the <tt>selected</tt> argument
    *
-   * @arg boundary_indices holds the boundary indices on each level.
+   * @param boundary_indices holds the boundary indices on each level.
    */
   template <int dim, int spacedim>
   void
@@ -369,7 +371,7 @@ private:
    * The constraints of the global system.
    */
 public:
-  SmartPointer<const AffineConstraints<double>> constraints;
+  ObserverPointer<const AffineConstraints<double>> constraints;
 };
 
 /** @} */

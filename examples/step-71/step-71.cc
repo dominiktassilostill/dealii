@@ -79,7 +79,7 @@ namespace Step71
   // will be a simplified view as to what they *might* be doing in the
   // background. This description will be very much one designed to aid
   // understanding, and the reader is encouraged to view the @ref auto_symb_diff
-  // module documentation for a far more formal description into how these tools
+  // documentation topic for a far more formal description into how these tools
   // actually work.
   //
   // @sect4{An analytical function}
@@ -334,11 +334,11 @@ namespace Step71
       // like the author, you'll be doing the opposite and will rather verify
       // that your implementation of the analytical solution is correct!)
       AssertThrow(std::abs(f(x, y) - computed_f) < tol,
-                  ExcMessage(std::string("Incorrect value computed for f. ") +
-                             std::string("Hand-calculated value: ") +
+                  ExcMessage("Incorrect value computed for f. "
+                             "Hand-calculated value: " +
                              Utilities::to_string(f(x, y)) +
-                             std::string(" ; ") +
-                             std::string("Value computed by AD: ") +
+                             " ; "
+                             "Value computed by AD: " +
                              Utilities::to_string(computed_f)));
 
       // Because we know the ordering of the independent variables, we know
@@ -347,19 +347,19 @@ namespace Step71
       const double computed_df_dy = Df[1];
 
       AssertThrow(std::abs(df_dx(x, y) - computed_df_dx) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for df/dx. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(df_dx(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_df_dx)));
+                  ExcMessage("Incorrect value computed for df/dx. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(df_dx(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_df_dx)));
       AssertThrow(std::abs(df_dy(x, y) - computed_df_dy) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for df/dy. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(df_dy(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_df_dy)));
+                  ExcMessage("Incorrect value computed for df/dy. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(df_dy(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_df_dy)));
 
       // ... and similar for the Hessian.
       const double computed_d2f_dx_dx = D2f[0][0];
@@ -368,33 +368,33 @@ namespace Step71
       const double computed_d2f_dy_dy = D2f[1][1];
 
       AssertThrow(std::abs(d2f_dx_dx(x, y) - computed_d2f_dx_dx) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dx_dx. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dx_dx(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_d2f_dx_dx)));
+                  ExcMessage("Incorrect value computed for d2f/dx_dx. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dx_dx(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_d2f_dx_dx)));
       AssertThrow(std::abs(d2f_dx_dy(x, y) - computed_d2f_dx_dy) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dx_dy. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dx_dy(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_d2f_dx_dy)));
+                  ExcMessage("Incorrect value computed for d2f/dx_dy. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dx_dy(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_d2f_dx_dy)));
       AssertThrow(std::abs(d2f_dy_dx(x, y) - computed_d2f_dy_dx) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dy_dx. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dy_dx(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_d2f_dy_dx)));
+                  ExcMessage("Incorrect value computed for d2f/dy_dx. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dy_dx(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_d2f_dy_dx)));
       AssertThrow(std::abs(d2f_dy_dy(x, y) - computed_d2f_dy_dy) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dy_dy. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dy_dy(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_d2f_dy_dy)));
+                  ExcMessage("Incorrect value computed for d2f/dy_dy. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dy_dy(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_d2f_dy_dy)));
     }
 
     // That's pretty great. There wasn't too much work involved in computing
@@ -650,11 +650,11 @@ namespace Step71
         f_sd.substitute_and_evaluate<double>(substitution_map);
 
       AssertThrow(std::abs(f(x, y) - computed_f) < tol,
-                  ExcMessage(std::string("Incorrect value computed for f. ") +
-                             std::string("Hand-calculated value: ") +
+                  ExcMessage("Incorrect value computed for f. "
+                             "Hand-calculated value: " +
                              Utilities::to_string(f(x, y)) +
-                             std::string(" ; ") +
-                             std::string("Value computed by AD: ") +
+                             " ; "
+                             "Value computed by AD: " +
                              Utilities::to_string(computed_f)));
 
       // We can do the same for the first derivatives...
@@ -664,19 +664,19 @@ namespace Step71
         df_dy_sd.substitute_and_evaluate<double>(substitution_map);
 
       AssertThrow(std::abs(df_dx(x, y) - computed_df_dx) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for df/dx. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(df_dx(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_df_dx)));
+                  ExcMessage("Incorrect value computed for df/dx. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(df_dx(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_df_dx)));
       AssertThrow(std::abs(df_dy(x, y) - computed_df_dy) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for df/dy. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(df_dy(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by AD: ") +
-                    Utilities::to_string(computed_df_dy)));
+                  ExcMessage("Incorrect value computed for df/dy. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(df_dy(x, y)) +
+                             " ; "
+                             "Value computed by AD: " +
+                             Utilities::to_string(computed_df_dy)));
 
       // ... and the second derivatives.
       // Notice that we can reuse the same substitution map for each of these
@@ -696,33 +696,33 @@ namespace Step71
         d2f_dy_dy_sd.substitute_and_evaluate<double>(substitution_map);
 
       AssertThrow(std::abs(d2f_dx_dx(x, y) - computed_d2f_dx_dx) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dx_dx. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dx_dx(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by SD: ") +
-                    Utilities::to_string(computed_d2f_dx_dx)));
+                  ExcMessage("Incorrect value computed for d2f/dx_dx. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dx_dx(x, y)) +
+                             " ; "
+                             "Value computed by SD: " +
+                             Utilities::to_string(computed_d2f_dx_dx)));
       AssertThrow(std::abs(d2f_dx_dy(x, y) - computed_d2f_dx_dy) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dx_dy. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dx_dy(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by SD: ") +
-                    Utilities::to_string(computed_d2f_dx_dy)));
+                  ExcMessage("Incorrect value computed for d2f/dx_dy. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dx_dy(x, y)) +
+                             " ; "
+                             "Value computed by SD: " +
+                             Utilities::to_string(computed_d2f_dx_dy)));
       AssertThrow(std::abs(d2f_dy_dx(x, y) - computed_d2f_dy_dx) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dy_dx. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dy_dx(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by SD: ") +
-                    Utilities::to_string(computed_d2f_dy_dx)));
+                  ExcMessage("Incorrect value computed for d2f/dy_dx. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dy_dx(x, y)) +
+                             " ; "
+                             "Value computed by SD: " +
+                             Utilities::to_string(computed_d2f_dy_dx)));
       AssertThrow(std::abs(d2f_dy_dy(x, y) - computed_d2f_dy_dy) < tol,
-                  ExcMessage(
-                    std::string("Incorrect value computed for d2f/dy_dy. ") +
-                    std::string("Hand-calculated value: ") +
-                    Utilities::to_string(d2f_dy_dy(x, y)) + std::string(" ; ") +
-                    std::string("Value computed by SD: ") +
-                    Utilities::to_string(computed_d2f_dy_dy)));
+                  ExcMessage("Incorrect value computed for d2f/dy_dy. "
+                             "Hand-calculated value: " +
+                             Utilities::to_string(d2f_dy_dy(x, y)) +
+                             " ; "
+                             "Value computed by SD: " +
+                             Utilities::to_string(computed_d2f_dy_dy)));
     }
 
 
@@ -1205,8 +1205,8 @@ namespace Step71
         const ConstitutiveParameters &constitutive_parameters)
       : Coupled_Magnetomechanical_Constitutive_Law_Base<dim>(
           constitutive_parameters)
-      , H_components(0)
-      , C_components(Tensor<1, dim>::n_independent_components)
+      , H_components(0)   // 'dim' components starting at vector component 0
+      , C_components(dim) // Starting after the 'dim' components of H_components
       , ad_helper(Tensor<1, dim>::n_independent_components +
                   SymmetricTensor<2, dim>::n_independent_components)
       , psi(0.0)

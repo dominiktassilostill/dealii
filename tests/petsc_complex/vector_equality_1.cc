@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2004 - 2023 by the deal.II authors
+// Copyright (C) 2004 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -56,7 +56,7 @@ main(int argc, char **argv)
         PETScWrappers::MPI::Vector w(MPI_COMM_WORLD, 20, 20);
         test(v, w);
 
-        // SOme output
+        // Some output
         deallog << "Complex vectors: " << std::endl;
         v.print(deallog.get_file_stream(), 0, false, true);
         w.print(deallog.get_file_stream(), 0, false, true);

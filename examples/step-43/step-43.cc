@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2010 - 2024 by the deal.II authors
+ * Copyright (C) 2010 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -254,7 +254,7 @@ namespace Step43
               std::exp(-(points[p] - centers[i]).norm_square() / (0.05 * 0.05));
 
           const double normalized_permeability =
-            std::min(std::max(permeability, 0.01), 4.);
+            std::clamp(permeability, 0.01, 4.);
 
           for (unsigned int d = 0; d < dim; ++d)
             values[p][d][d] = 1. / normalized_permeability;
@@ -318,7 +318,7 @@ namespace Step43
   namespace LinearSolvers
   {
     template <class MatrixType, class PreconditionerType>
-    class InverseMatrix : public Subscriptor
+    class InverseMatrix : public EnableObserverPointer
     {
     public:
       InverseMatrix(const MatrixType         &m,
@@ -329,8 +329,8 @@ namespace Step43
       void vmult(VectorType &dst, const VectorType &src) const;
 
     private:
-      const SmartPointer<const MatrixType> matrix;
-      const PreconditionerType            &preconditioner;
+      const ObserverPointer<const MatrixType> matrix;
+      const PreconditionerType               &preconditioner;
     };
 
 
@@ -366,7 +366,7 @@ namespace Step43
     }
 
     template <class PreconditionerTypeA, class PreconditionerTypeMp>
-    class BlockSchurPreconditioner : public Subscriptor
+    class BlockSchurPreconditioner : public EnableObserverPointer
     {
     public:
       BlockSchurPreconditioner(
@@ -379,10 +379,10 @@ namespace Step43
                  const TrilinosWrappers::MPI::BlockVector &src) const;
 
     private:
-      const SmartPointer<const TrilinosWrappers::BlockSparseMatrix>
+      const ObserverPointer<const TrilinosWrappers::BlockSparseMatrix>
         darcy_matrix;
-      const SmartPointer<const InverseMatrix<TrilinosWrappers::SparseMatrix,
-                                             PreconditionerTypeMp>>
+      const ObserverPointer<const InverseMatrix<TrilinosWrappers::SparseMatrix,
+                                                PreconditionerTypeMp>>
                                  m_inverse;
       const PreconditionerTypeA &a_preconditioner;
 
@@ -1688,7 +1688,7 @@ namespace Step43
       tmp_saturation[0].reinit(saturation_solution);
       tmp_saturation[1].reinit(saturation_solution);
       tmp_saturation[2].reinit(saturation_solution);
-      saturation_soltrans.interpolate(x_saturation, tmp_saturation);
+      saturation_soltrans.interpolate(tmp_saturation);
 
       saturation_solution                              = tmp_saturation[0];
       old_saturation_solution                          = tmp_saturation[1];
@@ -1702,7 +1702,7 @@ namespace Step43
       std::vector<TrilinosWrappers::MPI::BlockVector> tmp_darcy(2);
       tmp_darcy[0].reinit(darcy_solution);
       tmp_darcy[1].reinit(darcy_solution);
-      darcy_soltrans.interpolate(x_darcy, tmp_darcy);
+      darcy_soltrans.interpolate(tmp_darcy);
 
       last_computed_darcy_solution        = tmp_darcy[0];
       second_last_computed_darcy_solution = tmp_darcy[1];
@@ -1989,7 +1989,7 @@ namespace Step43
     if (timestep_number != 0)
       {
         double min_saturation = std::numeric_limits<double>::max(),
-               max_saturation = -std::numeric_limits<double>::max();
+               max_saturation = std::numeric_limits<double>::lowest();
 
         for (const auto &cell : saturation_dof_handler.active_cell_iterators())
           {
@@ -2015,7 +2015,7 @@ namespace Step43
     else
       {
         double min_saturation = std::numeric_limits<double>::max(),
-               max_saturation = -std::numeric_limits<double>::max();
+               max_saturation = std::numeric_limits<double>::lowest();
 
         for (const auto &cell : saturation_dof_handler.active_cell_iterators())
           {

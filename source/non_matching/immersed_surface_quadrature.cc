@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2017 - 2023 by the deal.II authors
+// Copyright (C) 2017 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -12,7 +12,11 @@
 //
 // ------------------------------------------------------------------------
 
+#include <deal.II/base/point.h>
+#include <deal.II/base/tensor.h>
+
 #include <deal.II/non_matching/immersed_surface_quadrature.h>
+
 
 DEAL_II_NAMESPACE_OPEN
 namespace NonMatching

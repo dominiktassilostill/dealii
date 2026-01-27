@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 1998 - 2024 by the deal.II authors
+// Copyright (C) 1998 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -997,6 +997,6 @@ FESubfaceValues<dim, spacedim>::do_reinit(const unsigned int face_no,
 
 /*------------------------- Explicit Instantiations --------------------------*/
 
-#include "fe_values.inst"
+#include "fe/fe_values.inst"
 
 DEAL_II_NAMESPACE_CLOSE

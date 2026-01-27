@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2000 - 2024 by the deal.II authors
+// Copyright (C) 2000 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -349,7 +349,7 @@ GridRefinement::refine_and_coarsen_fixed_number(
       Vector<Number> tmp(criteria);
       if (refine_cells)
         {
-          if (static_cast<size_t>(refine_cells) == criteria.size())
+          if (static_cast<std::size_t>(refine_cells) == criteria.size())
             refine(tria, criteria, std::numeric_limits<double>::lowest());
           else
             {
@@ -363,7 +363,7 @@ GridRefinement::refine_and_coarsen_fixed_number(
 
       if (coarsen_cells)
         {
-          if (static_cast<size_t>(coarsen_cells) == criteria.size())
+          if (static_cast<std::size_t>(coarsen_cells) == criteria.size())
             coarsen(tria, criteria, std::numeric_limits<double>::max());
           else
             {
@@ -492,6 +492,6 @@ GridRefinement::refine_and_coarsen_optimize(Triangulation<dim, spacedim> &tria,
 
 
 // explicit instantiations
-#include "grid_refinement.inst"
+#include "grid/grid_refinement.inst"
 
 DEAL_II_NAMESPACE_CLOSE

@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2016 - 2023 by the deal.II authors
+ * Copyright (C) 2016 - 2024 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -18,7 +18,7 @@
  *          Joscha Gedicke, U Heidelberg
  *
  * This file tests the non-symmetric interface to ARPACK for an
- advection-diffussion
+ advection-diffusion
  * operator. The advection is chosen in such a way that we compute complex
  eigenvalues.
  * The most critical case when we cut a complex conjugate pair is tested, i.e.

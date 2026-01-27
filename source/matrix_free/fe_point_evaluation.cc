@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2021 - 2024 by the deal.II authors
+// Copyright (C) 2021 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -116,7 +116,7 @@ namespace internal
 
 
 // explicit instantiations
-#include "fe_point_evaluation.inst"
+#include "matrix_free/fe_point_evaluation.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

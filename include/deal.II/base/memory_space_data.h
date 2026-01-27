@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2024 by the deal.II authors
+// Copyright (C) 2020 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -18,7 +18,7 @@
 
 #include <deal.II/base/config.h>
 
-#include <deal.II/base/cuda.h>
+#include <deal.II/base/array_view.h>
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/kokkos.h>
 
@@ -35,9 +35,8 @@ namespace MemorySpace
 {
   /**
    * Structure which stores data on the host or the @ref GlossDevice "device" depending on the
-   * template parameter @p MemorySpace. Valid choices are MemorySpace::Host,
-   * MemorySpace::Default, and MemorySpace::CUDA (if CUDA was enabled in
-   * deal.II). The data is copied into the structure which then owns the data
+   * template parameter @p MemorySpace. Valid choices are MemorySpace::Host and MemorySpace::Default.
+   * The data is copied into the structure which then owns the data
    * and will release the memory when the destructor is called.
    */
   template <typename T, typename MemorySpace>
@@ -63,10 +62,10 @@ namespace MemorySpace
      * Kokkos View owning a host buffer used for MPI communication.
      */
     // FIXME Should we move this somewhere else?
-#if KOKKOS_VERSION < 40000
-    Kokkos::View<T *, Kokkos::HostSpace> values_host_buffer;
-#else
+#if DEAL_II_KOKKOS_VERSION_GTE(4, 0, 0)
     Kokkos::View<T *, Kokkos::SharedHostPinnedSpace> values_host_buffer;
+#else
+    Kokkos::View<T *, Kokkos::HostSpace> values_host_buffer;
 #endif
 
     /**
@@ -109,11 +108,11 @@ namespace MemorySpace
   MemorySpaceData<T, MemorySpace>::MemorySpaceData()
     : values_host_buffer(
         (dealii::internal::ensure_kokkos_initialized(),
-#  if KOKKOS_VERSION < 40000
-         Kokkos::View<T *, Kokkos::HostSpace>("host buffer", 0)))
-#  else
+#  if DEAL_II_KOKKOS_VERSION_GTE(4, 0, 0)
          Kokkos::View<T *, Kokkos::SharedHostPinnedSpace>("host pinned buffer",
                                                           0)))
+#  else
+         Kokkos::View<T *, Kokkos::HostSpace>("host buffer", 0)))
 #  endif
     , values(Kokkos::View<T *, typename MemorySpace::kokkos_space>(
         "memoryspace data",
@@ -176,6 +175,7 @@ namespace MemorySpace
     std::swap(u.values_host_buffer, v.values_host_buffer);
     std::swap(u.values, v.values);
     std::swap(u.values_sm_ptr, v.values_sm_ptr);
+    std::swap(u.values_sm, v.values_sm);
   }
 
 #endif

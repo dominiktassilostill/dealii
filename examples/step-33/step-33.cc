@@ -1804,7 +1804,7 @@ namespace Step33
     // however, simplify it a bit taking into account that the $i$th
     // (vector-valued) test function $\mathbf{z}_i$ has in reality only a
     // single nonzero component (more on this topic can be found in the @ref
-    // vector_valued module). It will be represented by the variable
+    // vector_valued topic). It will be represented by the variable
     // <code>component_i</code> below. With this, the residual term can be
     // re-written as
     // @f{eqnarray*}{
@@ -2300,7 +2300,7 @@ namespace Step33
     std::vector<Vector<double>> transfer_out = {
       Vector<double>(dof_handler.n_dofs()),
       Vector<double>(dof_handler.n_dofs())};
-    soltrans.interpolate(transfer_in, transfer_out);
+    soltrans.interpolate(transfer_out);
 
     old_solution = std::move(transfer_out[0]);
     predictor    = std::move(transfer_out[1]);
@@ -2555,6 +2555,11 @@ int main(int argc, char *argv[])
 
       Utilities::MPI::MPI_InitFinalize mpi_initialization(
         argc, argv, numbers::invalid_unsigned_int);
+
+      AssertThrow(
+        Utilities::MPI::n_mpi_processes(MPI_COMM_WORLD) == 1,
+        ExcMessage(
+          "This program does not support parallel computing via MPI."));
 
       ConservationLaw<2> cons(argv[1]);
       cons.run();

@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2016 - 2018 by the deal.II authors
+// Copyright (C) 2016 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -17,8 +17,7 @@
 // exception messages to the screen.
 
 #include <deal.II/base/exceptions.h>
-
-#include <mpi.h>
+#include <deal.II/base/mpi.h>
 
 #include <vector>
 

@@ -1,7 +1,7 @@
 /* ------------------------------------------------------------------------
  *
  * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2008 - 2024 by the deal.II authors
+ * Copyright (C) 2008 - 2025 by the deal.II authors
  *
  * This file is part of the deal.II library.
  *
@@ -70,13 +70,6 @@
 #include <limits>
 #include <locale>
 #include <string>
-
-// This is the only include file that is new: It introduces the
-// parallel::distributed::SolutionTransfer equivalent of the
-// SolutionTransfer class to take a solution from on mesh to the next
-// one upon mesh refinement, but in the case of parallel distributed
-// triangulations:
-#include <deal.II/distributed/solution_transfer.h>
 
 // The following classes are used in parallel distributed computations and
 // have all already been introduced in step-40:
@@ -210,8 +203,8 @@ namespace Step32
   // from the one used in step-31. Specifically, it is a right preconditioner,
   // implementing the matrix
   // @f{align*}{
-  //   \left(\begin{array}{cc}A^{-1} & -A^{-1}B^TS^{-1}
-  //                        \\0 & S^{-1}
+  //   \left(\begin{array}{cc}A^{-1} & A^{-1}B^TS^{-1}
+  //                        \\0 & -S^{-1}
   // \end{array}\right)
   // @f}
   // where the two inverse matrix operations
@@ -224,7 +217,7 @@ namespace Step32
   namespace LinearSolvers
   {
     template <class PreconditionerTypeA, class PreconditionerTypeMp>
-    class BlockSchurPreconditioner : public Subscriptor
+    class BlockSchurPreconditioner : public EnableObserverPointer
     {
     public:
       BlockSchurPreconditioner(const TrilinosWrappers::BlockSparseMatrix &S,
@@ -277,9 +270,9 @@ namespace Step32
       }
 
     private:
-      const SmartPointer<const TrilinosWrappers::BlockSparseMatrix>
+      const ObserverPointer<const TrilinosWrappers::BlockSparseMatrix>
         stokes_matrix;
-      const SmartPointer<const TrilinosWrappers::BlockSparseMatrix>
+      const ObserverPointer<const TrilinosWrappers::BlockSparseMatrix>
                                   stokes_preconditioner_matrix;
       const PreconditionerTypeMp &mp_preconditioner;
       const PreconditionerTypeA  &a_preconditioner;
@@ -292,7 +285,7 @@ namespace Step32
   // @sect3{Definition of assembly data structures}
   //
   // As described in the introduction, we will use the WorkStream mechanism
-  // discussed in the @ref threads module to parallelize operations among the
+  // discussed in the @ref threads topic to parallelize operations among the
   // processors of a single machine. The WorkStream class requires that data
   // is passed around in two kinds of data structures, one for scratch data
   // and one to pass data from the assembly function to the function that
@@ -1000,7 +993,7 @@ namespace Step32
         parameter_file.close();
 
         std::ofstream parameter_out(parameter_filename);
-        prm.print_parameters(parameter_out, ParameterHandler::Text);
+        prm.print_parameters(parameter_out, ParameterHandler::PRM);
 
         AssertThrow(
           false,
@@ -1381,7 +1374,7 @@ namespace Step32
     // entropy as well as keeps track of the area/volume of the part of the
     // domain we locally own and the integral over the entropy on it:
     double min_entropy = std::numeric_limits<double>::max(),
-           max_entropy = -std::numeric_limits<double>::max(), area = 0,
+           max_entropy = std::numeric_limits<double>::lowest(), area = 0,
            entropy_integrated = 0;
 
     for (const auto &cell : temperature_dof_handler.active_cell_iterators())
@@ -1462,7 +1455,7 @@ namespace Step32
     std::vector<double> old_old_temperature_values(n_q_points);
 
     double min_local_temperature = std::numeric_limits<double>::max(),
-           max_local_temperature = -std::numeric_limits<double>::max();
+           max_local_temperature = std::numeric_limits<double>::lowest();
 
     if (timestep_number != 0)
       {
@@ -1975,7 +1968,7 @@ namespace Step32
   // @sect4{The BoussinesqFlowProblem assembly functions}
   //
   // Following the discussion in the introduction and in the @ref threads
-  // module, we split the assembly functions into different parts:
+  // topic, we split the assembly functions into different parts:
   //
   // <ul> <li> The local calculations of matrices and right hand sides, given
   // a certain cell as input (these functions are named
@@ -2160,12 +2153,10 @@ namespace Step32
 
     assemble_stokes_preconditioner();
 
-    std::vector<std::vector<bool>>   constant_modes;
-    const FEValuesExtractors::Vector velocity_components(0);
-    DoFTools::extract_constant_modes(stokes_dof_handler,
-                                     stokes_fe.component_mask(
-                                       velocity_components),
-                                     constant_modes);
+    const FEValuesExtractors::Vector     velocity_components(0);
+    const std::vector<std::vector<bool>> constant_modes =
+      DoFTools::extract_constant_modes(
+        stokes_dof_handler, stokes_fe.component_mask(velocity_components));
 
     Mp_preconditioner =
       std::make_shared<TrilinosWrappers::PreconditionJacobi>();
@@ -2303,7 +2294,7 @@ namespace Step32
     const QGauss<dim> quadrature_formula(parameters.stokes_velocity_degree + 1);
 
     using CellFilter =
-      FilteredIterator<typename DoFHandler<2>::active_cell_iterator>;
+      FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>;
 
     WorkStream::run(
       CellFilter(IteratorFilters::LocallyOwnedCell(),
@@ -2416,7 +2407,7 @@ namespace Step32
     const QGauss<dim> quadrature_formula(parameters.temperature_degree + 2);
 
     using CellFilter =
-      FilteredIterator<typename DoFHandler<2>::active_cell_iterator>;
+      FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>;
 
     WorkStream::run(
       CellFilter(IteratorFilters::LocallyOwnedCell(),
@@ -2683,7 +2674,7 @@ namespace Step32
       get_entropy_variation(average_temperature);
 
     using CellFilter =
-      FilteredIterator<typename DoFHandler<2>::active_cell_iterator>;
+      FilteredIterator<typename DoFHandler<dim>::active_cell_iterator>;
 
     auto worker =
       [this, global_T_range, maximal_velocity, global_entropy_variation](
@@ -2924,7 +2915,7 @@ namespace Step32
             << " CG iterations for temperature" << std::endl;
 
       double temperature[2] = {std::numeric_limits<double>::max(),
-                               -std::numeric_limits<double>::max()};
+                               std::numeric_limits<double>::lowest()};
       double global_temperature[2];
 
       for (unsigned int i =
@@ -3251,11 +3242,10 @@ namespace Step32
   void
   BoussinesqFlowProblem<dim>::refine_mesh(const unsigned int max_grid_level)
   {
-    parallel::distributed::SolutionTransfer<dim, TrilinosWrappers::MPI::Vector>
-      temperature_trans(temperature_dof_handler);
-    parallel::distributed::SolutionTransfer<dim,
-                                            TrilinosWrappers::MPI::BlockVector>
-      stokes_trans(stokes_dof_handler);
+    SolutionTransfer<dim, TrilinosWrappers::MPI::Vector> temperature_trans(
+      temperature_dof_handler);
+    SolutionTransfer<dim, TrilinosWrappers::MPI::BlockVector> stokes_trans(
+      stokes_dof_handler);
 
     {
       TimerOutput::Scope timer_section(computing_timer,
@@ -3285,9 +3275,8 @@ namespace Step32
           cell->clear_refine_flag();
 
       // With all flags marked as necessary, we can then tell the
-      // parallel::distributed::SolutionTransfer objects to get ready to
-      // transfer data from one mesh to the next, which they will do when
-      // notified by
+      // SolutionTransfer objects to get ready to transfer data from one mesh to
+      // the next, which they will do when notified by
       // Triangulation as part of the @p execute_coarsening_and_refinement() call.
       // The syntax is similar to the non-%parallel solution transfer (with the
       // exception that here a pointer to the vector entries is enough). The

@@ -25,7 +25,6 @@
 #include <deal.II/base/parameter_acceptor.h>
 #include <deal.II/base/timer.h>
 
-#include <deal.II/distributed/solution_transfer.h>
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/dofs/dof_handler.h>
@@ -231,7 +230,7 @@ namespace Step68
 
     DoFHandler<dim>                            fluid_dh;
     const FESystem<dim>                        fluid_fe;
-    MappingQ1<dim>                             mapping;
+    const MappingQ1<dim>                       mapping;
     LinearAlgebra::distributed::Vector<double> velocity_field;
 
     Functions::RayleighKotheVortex<dim> velocity;

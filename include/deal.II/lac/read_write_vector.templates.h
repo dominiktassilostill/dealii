@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2015 - 2024 by the deal.II authors
+// Copyright (C) 2015 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -21,12 +21,14 @@
 #include <deal.II/base/partitioner.h>
 
 #include <deal.II/lac/exceptions.h>
+#include <deal.II/lac/la_parallel_block_vector.h>
 #include <deal.II/lac/la_parallel_vector.h>
 #include <deal.II/lac/read_write_vector.h>
 #include <deal.II/lac/vector.h>
 #include <deal.II/lac/vector_operations_internal.h>
 
 #ifdef DEAL_II_WITH_PETSC
+#  include <deal.II/lac/petsc_block_vector.h>
 #  include <deal.II/lac/petsc_vector.h>
 #endif
 
@@ -34,11 +36,9 @@
 #  include <deal.II/lac/trilinos_epetra_communication_pattern.h>
 #  include <deal.II/lac/trilinos_vector.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_Import.h>
-#endif
-
-#ifdef DEAL_II_WITH_CUDA
-#  include <deal.II/lac/cuda_vector.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 #endif
 
 #include <boost/io/ios_state.hpp>
@@ -96,16 +96,11 @@ namespace LinearAlgebra
       static void
       import_elements(
         const std::shared_ptr<const ::dealii::Utilities::MPI::Partitioner>
-                                                         &communication_pattern,
-        const Number                                     *values,
-        const VectorOperation::values                     operation,
-        ::dealii::LinearAlgebra::ReadWriteVector<Number> &rw_vector)
+          & /*communication_pattern*/,
+        const Number * /*values*/,
+        const VectorOperation::values /*operation*/,
+        ::dealii::LinearAlgebra::ReadWriteVector<Number> & /*rw_vector*/)
       {
-        (void)communication_pattern;
-        (void)values;
-        (void)operation;
-        (void)rw_vector;
-
         static_assert(
           std::is_same_v<MemorySpace, ::dealii::MemorySpace::Host> ||
             std::is_same_v<MemorySpace, ::dealii::MemorySpace::Default>,
@@ -206,6 +201,54 @@ namespace LinearAlgebra
             rw_vector.local_element(i) = tmp_vector(stored.nth_index_in_set(i));
       }
     };
+
+
+
+    template <typename Number, typename BlockVectorType>
+    void
+    import_elements_from_block_vector(ReadWriteVector<Number>      &dst,
+                                      const BlockVectorType        &src,
+                                      const VectorOperation::values operation)
+    {
+      const auto &bi = src.get_block_indices();
+
+      const IndexSet &stored = dst.get_stored_elements();
+
+      for (unsigned int b = 0; b < src.n_blocks(); ++b)
+        {
+          const types::global_dof_index b0 = bi.block_start(b);
+          const types::global_dof_index b1 = b0 + bi.block_size(b);
+
+          // Build the subset of dst's stored indices that lie in this block,
+          // block-local numbering
+          const IndexSet block_local = stored.get_view(b0, b1);
+
+          if (block_local.n_elements() == 0)
+            continue;
+
+          ReadWriteVector<Number> tmp(block_local);
+
+          // Per-block import: relies on existing import_elements() overloads
+          tmp.import_elements(src.block(b), operation);
+
+          // Scatter back into global indexing
+          for (const auto li : block_local)
+            {
+              const auto gi = b0 + li;
+
+              if (operation == VectorOperation::insert)
+                dst[gi] = tmp[li];
+              else if (operation == VectorOperation::add)
+                dst[gi] += tmp[li];
+              else if (operation == VectorOperation::min)
+                dst[gi] = get_min(dst[gi], tmp[li]);
+              else if (operation == VectorOperation::max)
+                dst[gi] = get_max(dst[gi], tmp[li]);
+              else
+                DEAL_II_NOT_IMPLEMENTED();
+            }
+        }
+    }
   } // namespace internal
 
 
@@ -346,7 +389,6 @@ namespace LinearAlgebra
   {
     Assert(s == static_cast<Number>(0),
            ExcMessage("Only 0 can be assigned to a vector."));
-    (void)s;
 
     const size_type this_size = locally_owned_size();
     if (this_size > 0)
@@ -400,10 +442,8 @@ namespace LinearAlgebra
     const dealii::Vector<Number> &vec,
     VectorOperation::values       operation,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
-      &communication_pattern)
+      & /*communication_pattern*/)
   {
-    (void)communication_pattern;
-
     internal::import_serial_vector(vec, operation, *this);
   }
 
@@ -445,6 +485,18 @@ namespace LinearAlgebra
 
 
 
+  template <typename Number>
+  template <typename MemorySpace>
+  void
+  ReadWriteVector<Number>::import_elements(
+    const distributed::BlockVector<Number, MemorySpace> &src,
+    const VectorOperation::values                        operation)
+  {
+    internal::import_elements_from_block_vector(*this, src, operation);
+  }
+
+
+
 #ifdef DEAL_II_WITH_PETSC
   namespace internal
   {
@@ -474,34 +526,64 @@ namespace LinearAlgebra
     {
       AssertThrow(false, ExcMessage("Tried to copy complex -> real"));
     }
+
   } // namespace internal
-
-
 
   template <typename Number>
   void
   ReadWriteVector<Number>::import_elements(
     const PETScWrappers::MPI::Vector &petsc_vec,
-    VectorOperation::values /*operation*/,
+    VectorOperation::values           operation,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
-      & /*communication_pattern*/)
+      &communication_pattern)
   {
-    // TODO: this works only if no communication is needed.
-    Assert(petsc_vec.locally_owned_elements() == stored_elements,
-           StandardExceptions::ExcInvalidState());
+    std::shared_ptr<const Utilities::MPI::Partitioner> comm_pattern;
+    if (communication_pattern.get() == nullptr)
+      {
+        comm_pattern = std::make_shared<Utilities::MPI::Partitioner>(
+          petsc_vec.locally_owned_elements(),
+          get_stored_elements(),
+          petsc_vec.get_mpi_communicator());
+      }
+    else
+      {
+        comm_pattern =
+          std::dynamic_pointer_cast<const Utilities::MPI::Partitioner>(
+            communication_pattern);
+        AssertThrow(comm_pattern != nullptr,
+                    ExcMessage("The communication pattern is not of type "
+                               "Utilities::MPI::Partitioner."));
+      }
 
-    // get a representation of the vector and copy it
-    const PetscScalar *start_ptr;
+    // PETSc local array provides the locally-owned entries (contiguous)
+    const PetscScalar *start_ptr = nullptr;
     PetscErrorCode     ierr =
       VecGetArrayRead(static_cast<const Vec &>(petsc_vec), &start_ptr);
     AssertThrow(ierr == 0, ExcPETScError(ierr));
 
-    const size_type vec_size = petsc_vec.locally_owned_size();
-    internal::copy_petsc_vector(start_ptr, start_ptr + vec_size, begin());
+    const unsigned int n_owned = comm_pattern->locally_owned_size();
+    AssertDimension(n_owned, petsc_vec.locally_owned_size());
 
-    // restore the representation of the vector
+    std::vector<Number> owned_values(n_owned);
+    internal::copy_petsc_vector(start_ptr,
+                                start_ptr + n_owned,
+                                owned_values.data());
+
     ierr = VecRestoreArrayRead(static_cast<const Vec &>(petsc_vec), &start_ptr);
     AssertThrow(ierr == 0, ExcPETScError(ierr));
+
+    // Do the actual MPI exchange + apply operation into *this*
+    internal::read_write_vector_functions<Number, ::dealii::MemorySpace::Host>::
+      import_elements(comm_pattern, owned_values.data(), operation, *this);
+  }
+
+  template <typename Number>
+  void
+  ReadWriteVector<Number>::import_elements(
+    const PETScWrappers::MPI::BlockVector &src,
+    const VectorOperation::values          operation)
+  {
+    internal::import_elements_from_block_vector(*this, src, operation);
   }
 #endif
 
@@ -509,18 +591,24 @@ namespace LinearAlgebra
 
 #ifdef DEAL_II_TRILINOS_WITH_TPETRA
   template <typename Number>
-  template <typename Dummy>
+  template <typename NodeType, typename Dummy>
   std::enable_if_t<std::is_same_v<Dummy, Number> &&
                    dealii::is_tpetra_type<Number>::value>
   ReadWriteVector<Number>::import_elements(
-    const Tpetra::Vector<Number, int, types::signed_global_dof_index> &vector,
+    const Tpetra::Vector<Number, int, types::signed_global_dof_index, NodeType>
+                           &vector,
     const IndexSet         &source_elements,
     VectorOperation::values operation,
     const MPI_Comm          mpi_comm,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
       &communication_pattern)
   {
-    std::shared_ptr<const TpetraWrappers::CommunicationPattern>
+    using MemorySpace = std::conditional_t<
+      std::is_same_v<typename NodeType::memory_space, Kokkos::HostSpace>,
+      dealii::MemorySpace::Host,
+      dealii::MemorySpace::Default>;
+
+    std::shared_ptr<const TpetraWrappers::CommunicationPattern<MemorySpace>>
       tpetra_comm_pattern;
 
     // If no communication pattern is given, create one. Otherwise, use the one
@@ -534,33 +622,35 @@ namespace LinearAlgebra
             (source_elements == source_stored_elements))
           {
             tpetra_comm_pattern = std::dynamic_pointer_cast<
-              const TpetraWrappers::CommunicationPattern>(comm_pattern);
+              const TpetraWrappers::CommunicationPattern<MemorySpace>>(
+              comm_pattern);
             if (tpetra_comm_pattern == nullptr)
-              tpetra_comm_pattern =
-                std::make_shared<const TpetraWrappers::CommunicationPattern>(
-                  create_tpetra_comm_pattern(source_elements, mpi_comm));
+              tpetra_comm_pattern = std::make_shared<
+                const TpetraWrappers::CommunicationPattern<MemorySpace>>(
+                create_tpetra_comm_pattern<MemorySpace>(source_elements,
+                                                        mpi_comm));
           }
         else
-          tpetra_comm_pattern =
-            std::make_shared<const TpetraWrappers::CommunicationPattern>(
-              create_tpetra_comm_pattern(source_elements, mpi_comm));
+          tpetra_comm_pattern = std::make_shared<
+            const TpetraWrappers::CommunicationPattern<MemorySpace>>(
+            create_tpetra_comm_pattern<MemorySpace>(source_elements, mpi_comm));
       }
     else
       {
-        tpetra_comm_pattern =
-          std::dynamic_pointer_cast<const TpetraWrappers::CommunicationPattern>(
-            communication_pattern);
+        tpetra_comm_pattern = std::dynamic_pointer_cast<
+          const TpetraWrappers::CommunicationPattern<MemorySpace>>(
+          communication_pattern);
         AssertThrow(tpetra_comm_pattern != nullptr,
                     ExcMessage(
-                      std::string("The communication pattern is not of type ") +
+                      "The communication pattern is not of type "
                       "LinearAlgebra::TpetraWrappers::CommunicationPattern."));
       }
 
-    Tpetra::Export<int, types::signed_global_dof_index> tpetra_export(
+    Tpetra::Export<int, types::signed_global_dof_index, NodeType> tpetra_export(
       tpetra_comm_pattern->get_tpetra_export());
 
-    Tpetra::Vector<Number, int, types::signed_global_dof_index> target_vector(
-      tpetra_export.getSourceMap());
+    Tpetra::Vector<Number, int, types::signed_global_dof_index, NodeType>
+      target_vector(tpetra_export.getSourceMap());
 
     // Communicate the vector to the correct map.
     // Remark: We use here doImport on an Export object since we have to use
@@ -570,7 +660,7 @@ namespace LinearAlgebra
 
 #  if DEAL_II_TRILINOS_VERSION_GTE(13, 2, 0)
     auto vector_2d = target_vector.template getLocalView<Kokkos::HostSpace>(
-      Tpetra::Access::ReadOnly);
+      Tpetra::Access::ReadOnlyStruct{});
 #  else
     target_vector.template sync<Kokkos::HostSpace>();
     auto vector_2d = target_vector.template getLocalView<Kokkos::HostSpace>();
@@ -682,7 +772,7 @@ namespace LinearAlgebra
             communication_pattern);
         AssertThrow(epetra_comm_pattern != nullptr,
                     ExcMessage(
-                      std::string("The communication pattern is not of type ") +
+                      "The communication pattern is not of type "
                       "LinearAlgebra::EpetraWrappers::CommunicationPattern."));
       }
 
@@ -804,15 +894,25 @@ namespace LinearAlgebra
   }
 
 
+  template <typename Number>
+  void
+  ReadWriteVector<Number>::import_elements(
+    const TrilinosWrappers::MPI::BlockVector &src,
+    const VectorOperation::values             operation)
+  {
+    internal::import_elements_from_block_vector(*this, src, operation);
+  }
+
 
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
   template <typename Number>
-  template <typename Dummy>
+  template <typename MemorySpace, typename Dummy>
   std::enable_if_t<std::is_same_v<Dummy, Number> &&
                    dealii::is_tpetra_type<Number>::value>
   ReadWriteVector<Number>::import_elements(
-    const LinearAlgebra::TpetraWrappers::Vector<Number> &trilinos_vec,
-    VectorOperation::values                              operation,
+    const LinearAlgebra::TpetraWrappers::Vector<Number, MemorySpace>
+                           &trilinos_vec,
+    VectorOperation::values operation,
     const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase>
       &communication_pattern)
   {
@@ -839,96 +939,6 @@ namespace LinearAlgebra
                     operation,
                     trilinos_vec.get_mpi_communicator(),
                     communication_pattern);
-  }
-#endif
-
-
-
-#ifdef DEAL_II_WITH_CUDA
-  template <typename Number>
-  void
-  ReadWriteVector<Number>::import_elements(
-    const LinearAlgebra::CUDAWrappers::Vector<Number> &cuda_vec,
-    VectorOperation::values                            operation,
-    const std::shared_ptr<const Utilities::MPI::CommunicationPatternBase> &)
-  {
-    const unsigned int n_elements = stored_elements.n_elements();
-    if (operation == VectorOperation::insert)
-      {
-        cudaError_t error_code = cudaMemcpy(values.data(),
-                                            cuda_vec.get_values(),
-                                            n_elements * sizeof(Number),
-                                            cudaMemcpyDeviceToHost);
-        AssertCuda(error_code);
-      }
-    else if (operation == VectorOperation::add)
-      {
-        // Copy the vector from the device to a temporary vector on the host
-        std::vector<Number> tmp(n_elements);
-        cudaError_t         error_code = cudaMemcpy(tmp.data(),
-                                            cuda_vec.get_values(),
-                                            n_elements * sizeof(Number),
-                                            cudaMemcpyDeviceToHost);
-        AssertCuda(error_code);
-
-        // Add the two vectors
-        for (unsigned int i = 0; i < n_elements; ++i)
-          values[i] += tmp[i];
-      }
-    else if (operation == VectorOperation::min)
-      {
-        // Copy the vector from the device to a temporary vector on the host
-        std::vector<Number> tmp(n_elements);
-        cudaError_t         error_code = cudaMemcpy(tmp.data(),
-                                            cuda_vec.get_values(),
-                                            n_elements * sizeof(Number),
-                                            cudaMemcpyDeviceToHost);
-        AssertCuda(error_code);
-
-        // To ensure that this code also compiles with complex
-        // numbers, we only compare the real part of the
-        // variable. Note that min/max do not make sense with complex
-        // numbers.
-        for (unsigned int i = 0; i < n_elements; ++i)
-          {
-            Assert(
-              std::imag(tmp[i]) == 0.,
-              ExcMessage(
-                "VectorOperation::min is not defined if there is an imaginary part!)"));
-            Assert(
-              std::imag(values[i]) == 0.,
-              ExcMessage(
-                "VectorOperation::min is not defined if there is an imaginary part!)"));
-            if (std::real(tmp[i]) - std::real(values[i]) < 0.0)
-              values[i] = tmp[i];
-          }
-      }
-    else if (operation == VectorOperation::max)
-      {
-        // Copy the vector from the device to a temporary vector on the host
-        std::vector<Number> tmp(n_elements);
-        cudaError_t         error_code = cudaMemcpy(tmp.data(),
-                                            cuda_vec.get_values(),
-                                            n_elements * sizeof(Number),
-                                            cudaMemcpyDeviceToHost);
-        AssertCuda(error_code);
-
-        for (unsigned int i = 0; i < n_elements; ++i)
-          {
-            Assert(
-              std::imag(tmp[i]) == 0.,
-              ExcMessage(
-                "VectorOperation::max is not defined if there is an imaginary part!)"));
-            Assert(
-              std::imag(values[i]) == 0.,
-              ExcMessage(
-                "VectorOperation::max is not defined if there is an imaginary part!)"));
-            if (std::real(tmp[i]) - std::real(values[i]) > 0.0)
-              values[i] = tmp[i];
-          }
-      }
-    else
-      AssertThrow(false, ExcNotImplemented());
   }
 #endif
 
@@ -990,16 +1000,18 @@ namespace LinearAlgebra
 #ifdef DEAL_II_WITH_TRILINOS
 #  ifdef DEAL_II_TRILINOS_WITH_TPETRA
   template <typename Number>
-  TpetraWrappers::CommunicationPattern
+  template <typename MemorySpace>
+  TpetraWrappers::CommunicationPattern<MemorySpace>
   ReadWriteVector<Number>::create_tpetra_comm_pattern(
     const IndexSet &source_index_set,
     const MPI_Comm  mpi_comm)
   {
     source_stored_elements = source_index_set;
-    TpetraWrappers::CommunicationPattern tpetra_comm_pattern(
+    TpetraWrappers::CommunicationPattern<MemorySpace> tpetra_comm_pattern(
       source_stored_elements, stored_elements, mpi_comm);
-    comm_pattern = std::make_shared<TpetraWrappers::CommunicationPattern>(
-      source_stored_elements, stored_elements, mpi_comm);
+    comm_pattern =
+      std::make_shared<TpetraWrappers::CommunicationPattern<MemorySpace>>(
+        source_stored_elements, stored_elements, mpi_comm);
 
     return tpetra_comm_pattern;
   }

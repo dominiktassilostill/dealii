@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2011 - 2024 by the deal.II authors
+// Copyright (C) 2011 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -13,7 +13,7 @@
 // ------------------------------------------------------------------------
 
 
-// Similar to polyomial_lagrange, but test Lagrange interpolation for high
+// Similar to polynomial_lagrange, but test Lagrange interpolation for high
 // order with tighter tolerances, in particular the effect of stability of the
 // polynomial evaluation at random points
 

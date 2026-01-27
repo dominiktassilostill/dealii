@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2012 - 2024 by the deal.II authors
+## Copyright (C) 2012 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -35,7 +35,6 @@
 #                         C++ Version Support:                         #
 #                                                                      #
 ########################################################################
-
 
 #
 # We need compiler flags specified in ${DEAL_II_CXX_FLAGS} for all the
@@ -386,9 +385,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(NOT "${CMAKE_CXX_STANDARD}" STREQUAL "${_cxx_standard}")
   message(FATAL_ERROR
     "\nThe current version of deal.II was configured with CMAKE_CXX_STANDARD "
-    "set to »${CMAKE_CXX_STANDARD}«, but we detected only support for standard "
-    "version »${_cxx_standard}«. Either unset the CMake variable "
-    "CMAKE_CXX_STANDARD, or ensure that it is at most set to »${_cxx_standard}«.\n\n"
+    "set to \"${CMAKE_CXX_STANDARD}\", but we detected only support for standard "
+    "version \"${_cxx_standard}\". Either unset the CMake variable "
+    "CMAKE_CXX_STANDARD, or ensure that it is at most set to \"${_cxx_standard}\".\n\n"
     )
 endif()
 
@@ -413,6 +412,12 @@ else()
   enable_if_supported(_werror_flag "-Werror")
   enable_if_supported(_werror_flag "-Wno-unused-command-line-argument")
 endif()
+
+#
+# We need to reset CMAKE_REQUIRED_* variables again after the above call to
+# enable_if_supported()
+#
+_set_up_cmake_required()
 add_flags(CMAKE_REQUIRED_FLAGS "${_werror_flag}")
 
 unset_if_changed(CHECK_CXX_FEATURES_FLAGS_SAVED
@@ -431,7 +436,7 @@ unset_if_changed(CHECK_CXX_FEATURES_FLAGS_SAVED
 # Check that we can use feenableexcept through the C++11 header file cfenv:
 #
 # The test is a bit more complicated because we also check that no garbage
-# exception is thrown if we convert -std::numeric_limits<double>::max to a
+# exception is thrown if we convert std::numeric_limits<double>::lowest to a
 # string. This sadly happens with some compiler support libraries :-(
 #
 # - Timo Heister, 2015
@@ -446,7 +451,7 @@ set(_snippet
   {
     feenableexcept(FE_DIVBYZERO|FE_INVALID);
     std::ostringstream description;
-    const double lower_bound = -std::numeric_limits<double>::max();
+    const double lower_bound = std::numeric_limits<double>::lowest();
 
     description << lower_bound;
 
@@ -466,8 +471,17 @@ endif()
 
 
 #
-# Check whether the standard library provides operator* overloads for mixed
-# floating point multiplication of complex and real valued numbers.
+# Check whether the standard library provides operator* overloads for
+# mixed floating point multiplication of complex and real valued
+# numbers. The C++ standard does not say that such overloads should
+# exist, and so they shouldn't. In other words, a standards compliant
+# compiler will fail this check.
+#
+# In practice, the absence of these overloads makes it quite difficult
+# to write mixed-precision linear algebra functions. To make this less
+# of a pain, we declare such overloads ourselves (in namespace dealii)
+# unless the compiler already has them (which, as mentioned above, it
+# shouldn't).
 #
 # - Matthias Maier, 2015
 #

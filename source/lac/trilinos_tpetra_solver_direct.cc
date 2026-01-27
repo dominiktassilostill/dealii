@@ -12,7 +12,7 @@
 //
 // ------------------------------------------------------------------------
 
-#include "deal.II/lac/trilinos_tpetra_solver_direct.templates.h"
+#include <deal.II/lac/trilinos_tpetra_solver_direct.templates.h>
 
 #ifdef DEAL_II_TRILINOS_WITH_TPETRA
 #  ifdef DEAL_II_TRILINOS_WITH_AMESOS2
@@ -25,27 +25,43 @@ namespace LinearAlgebra
 {
   namespace TpetraWrappers
   {
-#      ifdef HAVE_TPETRA_INST_FLOAT
-    template class SolverDirectBase<float>;
-    template class SolverDirect<float>;
-    template class SolverDirectKLU2<float>;
+#      ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_FLOAT
+    template class SolverDirectBase<float, MemorySpace::Host>;
+    template class SolverDirect<float, MemorySpace::Host>;
+    template class SolverDirectKLU2<float, MemorySpace::Host>;
+
+    template class SolverDirectBase<float, MemorySpace::Default>;
+    template class SolverDirect<float, MemorySpace::Default>;
+    template class SolverDirectKLU2<float, MemorySpace::Default>;
 #      endif
 
-#      ifdef HAVE_TPETRA_INST_DOUBLE
-    template class SolverDirectBase<double>;
-    template class SolverDirect<double>;
-    template class SolverDirectKLU2<double>;
+#      ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_DOUBLE
+    template class SolverDirectBase<double, MemorySpace::Host>;
+    template class SolverDirect<double, MemorySpace::Host>;
+    template class SolverDirectKLU2<double, MemorySpace::Host>;
+
+    template class SolverDirectBase<double, MemorySpace::Default>;
+    template class SolverDirect<double, MemorySpace::Default>;
+    template class SolverDirectKLU2<double, MemorySpace::Default>;
 #      endif
 #      ifdef DEAL_II_WITH_COMPLEX_VALUES
-#        ifdef HAVE_TPETRA_INST_COMPLEX_FLOAT
-    template class SolverDirectBase<std::complex<float>>;
-    template class SolverDirect<std::complex<float>>;
-    template class SolverDirectKLU2<std::complex<float>>;
+#        ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_FLOAT
+    template class SolverDirectBase<std::complex<float>, MemorySpace::Host>;
+    template class SolverDirect<std::complex<float>, MemorySpace::Host>;
+    template class SolverDirectKLU2<std::complex<float>, MemorySpace::Host>;
+
+    template class SolverDirectBase<std::complex<float>, MemorySpace::Default>;
+    template class SolverDirect<std::complex<float>, MemorySpace::Default>;
+    template class SolverDirectKLU2<std::complex<float>, MemorySpace::Default>;
 #        endif
-#        ifdef HAVE_TPETRA_INST_COMPLEX_DOUBLE
-    template class SolverDirectBase<std::complex<double>>;
-    template class SolverDirect<std::complex<double>>;
-    template class SolverDirectKLU2<std::complex<double>>;
+#        ifdef DEAL_II_TRILINOS_WITH_TPETRA_INST_COMPLEX_DOUBLE
+    template class SolverDirectBase<std::complex<double>, MemorySpace::Host>;
+    template class SolverDirect<std::complex<double>, MemorySpace::Host>;
+    template class SolverDirectKLU2<std::complex<double>, MemorySpace::Host>;
+
+    template class SolverDirectBase<std::complex<double>, MemorySpace::Default>;
+    template class SolverDirect<std::complex<double>, MemorySpace::Default>;
+    template class SolverDirectKLU2<std::complex<double>, MemorySpace::Default>;
 #        endif
 #      endif
 

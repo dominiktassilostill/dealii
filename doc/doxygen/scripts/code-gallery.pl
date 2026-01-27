@@ -1,7 +1,7 @@
 ## ------------------------------------------------------------------------
 ##
 ## SPDX-License-Identifier: LGPL-2.1-or-later
-## Copyright (C) 2016 - 2018 by the deal.II authors
+## Copyright (C) 2016 - 2025 by the deal.II authors
 ##
 ## This file is part of the deal.II library.
 ##
@@ -60,7 +60,7 @@ foreach my $gallery (@ARGV)
     chop $authors;
     $authors =~ s/,$//;
 
-    $gallery_underscore    =~ s/-/_/;
+    $gallery_underscore    =~ s/-/_/g;
 
     my $description;
     $description = "  <dt><b>\@ref code_gallery_${gallery_underscore} \"$entryname\"</b> (by $authors)</dt>\n";

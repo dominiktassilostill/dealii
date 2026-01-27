@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2022 - 2023 by the deal.II authors
+// Copyright (C) 2022 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -53,7 +53,7 @@ test()
       GridTools::compute_mesh_predicate_bounding_box(
         triangulation, IteratorFilters::LocallyOwnedCell());
     const auto global_bounding_boxes =
-      Utilities::MPI::all_gather(triangulation.get_communicator(),
+      Utilities::MPI::all_gather(triangulation.get_mpi_communicator(),
                                  local_bounding_box);
 
     Particles::Generators::quadrature_points(triangulation,

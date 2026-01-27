@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2008 - 2024 by the deal.II authors
+// Copyright (C) 2008 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,7 +23,9 @@
 #  include <deal.II/lac/dynamic_sparsity_pattern.h>
 #  include <deal.II/lac/sparsity_pattern.h>
 
+DEAL_II_DISABLE_EXTRA_DIAGNOSTICS
 #  include <Epetra_Export.h>
+DEAL_II_ENABLE_EXTRA_DIAGNOSTICS
 
 #  include <limits>
 
@@ -135,7 +137,6 @@ namespace TrilinosWrappers
     , graph(
         new Epetra_FECrsGraph(View, *column_space_map, *column_space_map, 0))
   {
-    (void)input_sparsity;
     Assert(input_sparsity.n_rows() == 0,
            ExcMessage(
              "Copy constructor only works for empty sparsity patterns."));
@@ -557,15 +558,16 @@ namespace TrilinosWrappers
     IndexSet nonlocal_partitioner = writable_rows;
     AssertDimension(nonlocal_partitioner.size(),
                     row_parallel_partitioning.size());
-#  ifdef DEBUG
-    {
-      IndexSet tmp = writable_rows & row_parallel_partitioning;
-      Assert(tmp == row_parallel_partitioning,
-             ExcMessage(
-               "The set of writable rows passed to this method does not "
-               "contain the locally owned rows, which is not allowed."));
-    }
-#  endif
+    if constexpr (running_in_debug_mode())
+      {
+        {
+          IndexSet tmp = writable_rows & row_parallel_partitioning;
+          Assert(tmp == row_parallel_partitioning,
+                 ExcMessage(
+                   "The set of writable rows passed to this method does not "
+                   "contain the locally owned rows, which is not allowed."));
+        }
+      }
     nonlocal_partitioner.subtract_set(row_parallel_partitioning);
     if (Utilities::MPI::n_mpi_processes(communicator) > 1)
       {
@@ -827,7 +829,6 @@ namespace TrilinosWrappers
             int ierr = graph->ExtractGlobalRowView(trilinos_i,
                                                    nnz_extracted,
                                                    col_indices);
-            (void)ierr;
             Assert(ierr == 0, ExcTrilinosError(ierr));
             Assert(nnz_present == nnz_extracted,
                    ExcDimensionMismatch(nnz_present, nnz_extracted));
@@ -853,7 +854,6 @@ namespace TrilinosWrappers
             // an error.
             int ierr =
               graph->ExtractMyRowView(trilinos_i, nnz_extracted, col_indices);
-            (void)ierr;
             Assert(ierr == 0, ExcTrilinosError(ierr));
 
             Assert(nnz_present == nnz_extracted,
@@ -1040,7 +1040,7 @@ namespace TrilinosWrappers
   void
   SparsityPattern::print_gnuplot(std::ostream &out) const
   {
-    Assert(graph->Filled() == true, ExcInternalError());
+    Assert(graph->Filled(), ExcInternalError());
     for (dealii::types::global_dof_index row = 0; row < local_size(); ++row)
       {
         int *indices;

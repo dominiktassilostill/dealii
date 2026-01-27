@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2020 - 2023 by the deal.II authors
+// Copyright (C) 2020 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -23,7 +23,8 @@ for (S : REAL_SCALARS)
         template void
         NoncontiguousPartitioner::export_to_ghosted_array(
           const ArrayView<const S> &src,
-          const ArrayView<S>       &dst) const;
+          const ArrayView<S>       &dst,
+          const unsigned int) const;
 
         template void
         NoncontiguousPartitioner::import_from_ghosted_array(

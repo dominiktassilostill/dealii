@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2010 - 2024 by the deal.II authors
+// Copyright (C) 2010 - 2025 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -127,25 +127,26 @@ namespace internal
                     DEAL_II_NOT_IMPLEMENTED();
                 }
 
-#ifdef DEBUG
-              // Each entry of 'complete_identities' contains a set of
-              // pairs (fe_index,dof_index). Because we put in exactly
-              // two fe indices, we know that each entry of the outer
-              // vector needs to contain a set of exactly two such
-              // pairs. Check this. While there, also check that
-              // the two entries actually reference fe_index_1 and
-              // fe_index_2:
-              for (const auto &complete_identity : complete_identities)
+              if constexpr (running_in_debug_mode())
                 {
-                  Assert(complete_identity.size() == 2, ExcInternalError());
-                  Assert(complete_identity.find(fe_index_1) !=
-                           complete_identity.end(),
-                         ExcInternalError());
-                  Assert(complete_identity.find(fe_index_2) !=
-                           complete_identity.end(),
-                         ExcInternalError());
+                  // Each entry of 'complete_identities' contains a set of
+                  // pairs (fe_index,dof_index). Because we put in exactly
+                  // two fe indices, we know that each entry of the outer
+                  // vector needs to contain a set of exactly two such
+                  // pairs. Check this. While there, also check that
+                  // the two entries actually reference fe_index_1 and
+                  // fe_index_2:
+                  for (const auto &complete_identity : complete_identities)
+                    {
+                      Assert(complete_identity.size() == 2, ExcInternalError());
+                      Assert(complete_identity.find(fe_index_1) !=
+                               complete_identity.end(),
+                             ExcInternalError());
+                      Assert(complete_identity.find(fe_index_2) !=
+                               complete_identity.end(),
+                             ExcInternalError());
+                    }
                 }
-#endif
 
               // Next reduce these sets of two pairs by removing the
               // fe_index parts: We know which indices we have. But we
@@ -165,7 +166,6 @@ namespace internal
                   reduced_identities.emplace_back(dof_index_1, dof_index_2);
                 }
 
-#ifdef DEBUG
               // double check whether the newly created entries make
               // any sense at all
               auto assert_identity =
@@ -183,6 +183,7 @@ namespace internal
                          ExcInternalError());
                 };
 
+                if constexpr (running_in_debug_mode())
               for (const auto &identity : reduced_identities)
                 {
                   // If the second element is a pyramid we have to see if we are
@@ -212,7 +213,7 @@ namespace internal
                   else
                     assert_identity(identity, face_no, face_no);
                 }
-#endif
+
 
               identities =
                 std::make_unique<DoFIdentities>(std::move(reduced_identities));
@@ -2960,7 +2961,7 @@ namespace internal
         Assert(tr != nullptr, ExcInternalError());
 
         const unsigned int n_procs =
-          Utilities::MPI::n_mpi_processes(tr->get_communicator());
+          Utilities::MPI::n_mpi_processes(tr->get_mpi_communicator());
 
         // If an underlying shared::Tria allows artificial cells, we need to
         // restore the true cell owners temporarily.
@@ -3111,7 +3112,7 @@ namespace internal
                       "is set in the constructor."));
 
         const unsigned int n_procs =
-          Utilities::MPI::n_mpi_processes(tr->get_communicator());
+          Utilities::MPI::n_mpi_processes(tr->get_mpi_communicator());
         const unsigned int n_levels = tr->n_global_levels();
 
         std::vector<NumberCache> number_caches;
@@ -3319,12 +3320,9 @@ namespace internal
         // is also supported.
         const bool uses_sequential_numbering =
           new_numbers.size() == this->dof_handler->n_dofs();
-        bool all_use_sequential_numbering = false;
-        Utilities::MPI::internal::all_reduce<bool>(
-          MPI_LAND,
-          ArrayView<const bool>(&uses_sequential_numbering, 1),
-          tr->get_communicator(),
-          ArrayView<bool>(&all_use_sequential_numbering, 1));
+        const bool all_use_sequential_numbering =
+          Utilities::MPI::logical_and(uses_sequential_numbering,
+                                      tr->get_mpi_communicator());
         if (all_use_sequential_numbering)
           {
             global_gathered_numbers = new_numbers;
@@ -3335,10 +3333,11 @@ namespace internal
                      this->dof_handler->locally_owned_dofs().n_elements(),
                    ExcInternalError());
             const unsigned int n_cpu =
-              Utilities::MPI::n_mpi_processes(tr->get_communicator());
+              Utilities::MPI::n_mpi_processes(tr->get_mpi_communicator());
             std::vector<types::global_dof_index> gathered_new_numbers(
               this->dof_handler->n_dofs(), 0);
-            Assert(Utilities::MPI::this_mpi_process(tr->get_communicator()) ==
+            Assert(Utilities::MPI::this_mpi_process(
+                     tr->get_mpi_communicator()) ==
                      this->dof_handler->get_triangulation()
                        .locally_owned_subdomain(),
                    ExcInternalError());
@@ -3361,7 +3360,7 @@ namespace internal
                                        rcounts.data(),
                                        1,
                                        MPI_INT,
-                                       tr->get_communicator());
+                                       tr->get_mpi_communicator());
               AssertThrowMPI(ierr);
 
               // compute the displacements (relative to recvbuf)
@@ -3375,16 +3374,17 @@ namespace internal
               Assert(new_numbers_copy.size() ==
                        static_cast<unsigned int>(
                          rcounts[Utilities::MPI::this_mpi_process(
-                           tr->get_communicator())]),
+                           tr->get_mpi_communicator())]),
                      ExcInternalError());
-              ierr = MPI_Allgatherv(new_numbers_copy.data(),
-                                    new_numbers_copy.size(),
-                                    DEAL_II_DOF_INDEX_MPI_TYPE,
-                                    gathered_new_numbers.data(),
-                                    rcounts.data(),
-                                    displacements.data(),
-                                    DEAL_II_DOF_INDEX_MPI_TYPE,
-                                    tr->get_communicator());
+              ierr = MPI_Allgatherv(
+                new_numbers_copy.data(),
+                new_numbers_copy.size(),
+                Utilities::MPI::mpi_type_id_for_type<types::global_dof_index>,
+                gathered_new_numbers.data(),
+                rcounts.data(),
+                displacements.data(),
+                Utilities::MPI::mpi_type_id_for_type<types::global_dof_index>,
+                tr->get_mpi_communicator());
               AssertThrowMPI(ierr);
             }
 
@@ -3398,11 +3398,11 @@ namespace internal
             std::vector<unsigned int> flag_2(this->dof_handler->n_dofs(), 0);
             std::vector<IndexSet>     locally_owned_dofs_per_processor =
               Utilities::MPI::all_gather(
-                tr->get_communicator(),
+                tr->get_mpi_communicator(),
                 this->dof_handler->locally_owned_dofs());
             for (unsigned int i = 0; i < n_cpu; ++i)
               {
-                const IndexSet iset = locally_owned_dofs_per_processor[i];
+                const IndexSet &iset = locally_owned_dofs_per_processor[i];
                 for (types::global_dof_index ind = 0; ind < iset.n_elements();
                      ind++)
                   {
@@ -3766,7 +3766,7 @@ namespace internal
         //                    range of indices
         const auto [my_shift, n_global_dofs] =
           Utilities::MPI::partial_and_total_sum(
-            n_locally_owned_dofs, triangulation->get_communicator());
+            n_locally_owned_dofs, triangulation->get_mpi_communicator());
 
 
         // make dof indices globally consecutive
@@ -3829,51 +3829,53 @@ namespace internal
 
           // at this point, we must have taken care of the data transfer
           // on all cells we had previously marked. verify this
-#  ifdef DEBUG
-          for (const auto &cell : dof_handler->active_cell_iterators())
-            Assert(cell_marked[cell->active_cell_index()] == false,
-                   ExcInternalError());
-#  endif
+          if constexpr (running_in_debug_mode())
+            {
+              for (const auto &cell : dof_handler->active_cell_iterators())
+                Assert(cell_marked[cell->active_cell_index()] == false,
+                       ExcInternalError());
+            }
         }
 
-#  ifdef DEBUG
-        // check that we are really done
-        {
-          std::vector<dealii::types::global_dof_index> local_dof_indices;
+        if constexpr (running_in_debug_mode())
+          {
+            // check that we are really done
+            {
+              std::vector<dealii::types::global_dof_index> local_dof_indices;
 
-          for (const auto &cell : dof_handler->active_cell_iterators())
-            if (!cell->is_artificial())
-              {
-                local_dof_indices.resize(cell->get_fe().n_dofs_per_cell());
-                cell->get_dof_indices(local_dof_indices);
-                if (local_dof_indices.end() !=
-                    std::find(local_dof_indices.begin(),
-                              local_dof_indices.end(),
-                              numbers::invalid_dof_index))
+              for (const auto &cell : dof_handler->active_cell_iterators())
+                if (!cell->is_artificial())
                   {
-                    if (cell->is_ghost())
+                    local_dof_indices.resize(cell->get_fe().n_dofs_per_cell());
+                    cell->get_dof_indices(local_dof_indices);
+                    if (local_dof_indices.end() !=
+                        std::find(local_dof_indices.begin(),
+                                  local_dof_indices.end(),
+                                  numbers::invalid_dof_index))
                       {
-                        Assert(false,
-                               ExcMessage(
-                                 "A ghost cell ended up with incomplete "
-                                 "DoF index information. This should not "
-                                 "have happened!"));
-                      }
-                    else
-                      {
-                        Assert(
-                          false,
-                          ExcMessage(
-                            "A locally owned cell ended up with incomplete "
-                            "DoF index information. This should not "
-                            "have happened!"));
+                        if (cell->is_ghost())
+                          {
+                            Assert(false,
+                                   ExcMessage(
+                                     "A ghost cell ended up with incomplete "
+                                     "DoF index information. This should not "
+                                     "have happened!"));
+                          }
+                        else
+                          {
+                            Assert(
+                              false,
+                              ExcMessage(
+                                "A locally owned cell ended up with incomplete "
+                                "DoF index information. This should not "
+                                "have happened!"));
+                          }
                       }
                   }
-              }
-        }
-#  endif // DEBUG
+            }
+          } // DEBUG
         return number_cache;
-#endif   // DEAL_II_WITH_MPI
+#endif // DEAL_II_WITH_MPI
       }
 
 
@@ -3963,7 +3965,7 @@ namespace internal
             const auto [my_shift, n_global_dofs] =
               Utilities::MPI::partial_and_total_sum(
                 level_number_cache.n_locally_owned_dofs,
-                triangulation->get_communicator());
+                triangulation->get_mpi_communicator());
             level_number_cache.n_global_dofs = n_global_dofs;
 
             // assign appropriate indices
@@ -4017,36 +4019,39 @@ namespace internal
           // in Phase 1.
           communicate_mg_ghost_cells(*dof_handler, cell_marked);
 
-#  ifdef DEBUG
-          // make sure we have finished all cells:
-          for (const auto &cell : dof_handler->cell_iterators())
-            Assert(cell_marked[cell->level()][cell->index()] == false,
-                   ExcInternalError());
-#  endif
+          if constexpr (running_in_debug_mode())
+            {
+              // make sure we have finished all cells:
+              for (const auto &cell : dof_handler->cell_iterators())
+                Assert(cell_marked[cell->level()][cell->index()] == false,
+                       ExcInternalError());
+            }
         }
 
 
 
-#  ifdef DEBUG
-        // check that we are really done
-        {
-          std::vector<dealii::types::global_dof_index> local_dof_indices;
-          for (const auto &cell : dof_handler->cell_iterators())
-            if (cell->level_subdomain_id() !=
-                dealii::numbers::artificial_subdomain_id)
-              {
-                local_dof_indices.resize(cell->get_fe().n_dofs_per_cell());
-                cell->get_mg_dof_indices(local_dof_indices);
-                if (local_dof_indices.end() !=
-                    std::find(local_dof_indices.begin(),
-                              local_dof_indices.end(),
-                              numbers::invalid_dof_index))
+        if constexpr (running_in_debug_mode())
+          {
+            // check that we are really done
+            {
+              std::vector<dealii::types::global_dof_index> local_dof_indices;
+              for (const auto &cell : dof_handler->cell_iterators())
+                if (cell->level_subdomain_id() !=
+                    dealii::numbers::artificial_subdomain_id)
                   {
-                    Assert(false, ExcMessage("not all DoFs got distributed!"));
+                    local_dof_indices.resize(cell->get_fe().n_dofs_per_cell());
+                    cell->get_mg_dof_indices(local_dof_indices);
+                    if (local_dof_indices.end() !=
+                        std::find(local_dof_indices.begin(),
+                                  local_dof_indices.end(),
+                                  numbers::invalid_dof_index))
+                      {
+                        Assert(false,
+                               ExcMessage("not all DoFs got distributed!"));
+                      }
                   }
-              }
-        }
-#  endif // DEBUG
+            }
+          } // DEBUG
 
         return number_caches;
 
@@ -4295,7 +4300,7 @@ namespace internal
 
 
 /*-------------- Explicit Instantiations -------------------------------*/
-#include "dof_handler_policy.inst"
+#include "dofs/dof_handler_policy.inst"
 
 
 DEAL_II_NAMESPACE_CLOSE

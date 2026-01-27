@@ -1,7 +1,7 @@
 // ------------------------------------------------------------------------
 //
 // SPDX-License-Identifier: LGPL-2.1-or-later
-// Copyright (C) 2003 - 2023 by the deal.II authors
+// Copyright (C) 2003 - 2024 by the deal.II authors
 //
 // This file is part of the deal.II library.
 //
@@ -288,7 +288,7 @@ LaplaceProblem<dim>::LaplaceProblem()
 // finite element object which counts
 // how many objects use that finite
 // element (this is what the
-// <code>Subscriptor</code>/<code>SmartPointer</code>
+// <code>EnableObserverPointer</code>/<code>ObserverPointer</code>
 // class pair is used for, in case
 // you want something like this for
 // your own programs; see step-7 for
