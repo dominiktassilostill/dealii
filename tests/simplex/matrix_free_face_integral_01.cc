@@ -227,9 +227,7 @@ main(int argc, char **argv)
         }
 
       test<3>(i, /*degree=*/1);
-
-      if (i != 2) // for pyramids: no quadratic elements implemented
-        test<3>(i, /*degree=*/2);
+      test<3>(i, /*degree=*/2);
 
       deallog.pop();
     }

@@ -16,6 +16,7 @@
 
 #include <deal.II/base/polynomials_barycentric.h>
 #include <deal.II/base/qprojector.h>
+#include <deal.II/base/quadrature_lib.h>
 
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_nothing.h>
@@ -132,7 +133,7 @@ namespace
       {
         // switch to FE_Q when simplex supports electrostatic points
         // FE_Q<2> fe_q(current_degree);
-        FE_Q<2> fe_q(QIterated<1>(QTrapezoid<1>(), degree));
+        FE_Q<2> fe_q(QIterated<1>(QTrapezoid<1>(), current_degree));
 
 
         const auto  &points = fe_q.get_unit_support_points();
@@ -379,7 +380,59 @@ FE_PyramidP<dim, spacedim>::FE_PyramidP(const unsigned int degree)
                                   get_support_points<dim>(degree),
                                   false,
                                   FiniteElementData<dim>::H1)
-{}
+{
+  if (degree > 2)
+    for (unsigned int i = 0; i < this->n_dofs_per_line(); ++i)
+      this->adjust_line_dof_index_for_line_orientation_table[i] =
+        this->n_dofs_per_line() - 1 - i - i;
+
+  // do the quad face first
+  const unsigned int n            = degree - 1;
+  const unsigned int face_no_quad = 0;
+  Assert(n * n == this->n_dofs_per_quad(face_no_quad), ExcInternalError());
+  // see fe_q_base.cc
+  for (unsigned int local = 0; local < this->n_dofs_per_quad(face_no_quad);
+       ++local)
+    {
+      unsigned int i = local % n, j = local / n;
+
+      // face_orientation=false, face_flip=false, face_rotation=false
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(false, false, false)) =
+        j + i * n - local;
+      // face_orientation=false, face_flip=false, face_rotation=true
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(false, true, false)) =
+        i + (n - 1 - j) * n - local;
+      // face_orientation=false, face_flip=true,  face_rotation=false
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(false, false, true)) =
+        (n - 1 - j) + (n - 1 - i) * n - local;
+      // face_orientation=false, face_flip=true,  face_rotation=true
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(false, true, true)) =
+        (n - 1 - i) + j * n - local;
+      // face_orientation=true,  face_flip=false, face_rotation=false
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(true, false, false)) = 0;
+      // face_orientation=true,  face_flip=false, face_rotation=true
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(true, true, false)) =
+        j + (n - 1 - i) * n - local;
+      // face_orientation=true,  face_flip=true,  face_rotation=false
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(true, false, true)) =
+        (n - 1 - i) + (n - 1 - j) * n - local;
+      // face_orientation=true,  face_flip=true,  face_rotation=true
+      this->adjust_quad_dof_index_for_face_orientation_table[face_no_quad](
+        local, internal::combined_face_orientation(true, true, true)) =
+        (n - 1 - j) + i * n - local;
+    }
+
+  // Now do it for the triangular faces
+  // for degree 3 there is only 1 DoF on the face
+  Assert(degree <= 3, ExcNotImplemented());
+}
 
 
 
@@ -506,12 +559,24 @@ std::vector<std::pair<unsigned int, unsigned int>>
 FE_PyramidP<dim, spacedim>::hp_line_dof_identities(
   const FiniteElement<dim, spacedim> &fe_other) const
 {
-  (void)fe_other;
-
   Assert((dynamic_cast<const FE_SimplexP<dim, spacedim> *>(&fe_other)) ||
            (dynamic_cast<const FE_Q<dim, spacedim> *>(&fe_other)),
          ExcNotImplemented());
 
+  Assert(fe_other.degree == this->degree, ExcNotImplemented());
+
+  // In case of FE_Q check that the points are equidistant
+  if ((dynamic_cast<const FE_Q<dim, spacedim> *>(&fe_other)) &&
+      fe_other.degree > 2)
+    {
+      // first support point on the lines
+      const auto   support_point = fe_other.unit_support_point(8);
+      const double distance      = 1.0 / fe_other.degree;
+      Assert(
+        std::abs(support_point[0] - distance) < 1e-14,
+        ExcNotImplemented(
+          "FE_Q must use equidistant points to match the support points of the pyramid."));
+    }
   std::vector<std::pair<unsigned int, unsigned int>> result;
 
   for (unsigned int i = 0; i < this->degree - 1; ++i)
@@ -528,9 +593,6 @@ FE_PyramidP<dim, spacedim>::hp_quad_dof_identities(
   const FiniteElement<dim, spacedim> &fe_other,
   const unsigned int                  face_no) const
 {
-  (void)fe_other;
-
-
   AssertIndexRange(face_no, 5);
 
   if (face_no == 0)

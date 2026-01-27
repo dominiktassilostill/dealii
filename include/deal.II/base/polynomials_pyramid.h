@@ -134,7 +134,7 @@ public:
   virtual std::unique_ptr<ScalarPolynomialsBase<dim>>
   clone() const override;
 
-private:
+  private:
   /**
    * Inverse of the Vandermonde matrix
    */

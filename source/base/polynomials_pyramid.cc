@@ -52,8 +52,13 @@ ScalarLagrangePolynomialPyramid<dim>::ScalarLagrangePolynomialPyramid(
   : ScalarPolynomialsBase<dim>(degree, n_dofs)
 {
   AssertThrow(dim == 3,
-              ExcNotImplemented("Pyramid elements only make sense in 3D"));
+              ExcNotImplemented("Pyramid elements only make sense in 3D."));
 
+  // TODO: remove n_dofs as argument??
+  AssertThrow(
+    support_points.size() == n_dofs,
+    ExcNotImplemented(
+      "The number of DoF must be equal to the number of support points."));
 
   // fill VDM Matrix
   FullMatrix<double> VDM(support_points.size());
@@ -87,16 +92,22 @@ ScalarLagrangePolynomialPyramid<dim>::compute_polynomial_space(
   const double y = p[1];
   const double z = p[2];
 
-  double ratio;
-  if (std::fabs(z - 1.0) < 1e-14)
-    ratio = 0.0;
-  else
-    ratio = 1.0 / (1.0 - z);
-
-  double             phi    = 0.0;
   const unsigned int max_ij = std::max(i, j);
 
-  phi =
+  // handle the special cases
+  // assume (1-z)^0 = 1 even when z = 1
+  if (max_ij == 0)
+    return Polynomials::jacobi_polynomial_value<double>(k, 2, 0, z, true);
+
+  // at the tip the basis looks like (x/(1-z))^i * (y/(1-z))^j * (1-z)^max(i,j)
+  // when going to the tip of the cone the relation is roughly x = 1 - z, so
+  // (x/(1-z)) = const the (1-z)^max(i,j) term then pushes to 0
+  if (std::fabs(z - 1.0) < 1e-14)
+    return 0.0;
+
+  const double ratio = 1.0 / (1.0 - z);
+
+  const double phi =
     Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
     Polynomials::jacobi_polynomial_value<double>(j, 0, 0, y * ratio, false) *
     std::pow((1.0 - z), max_ij) *
@@ -140,18 +151,19 @@ ScalarLagrangePolynomialPyramid<dim>::compute_polynomial_space_derivative(
   const unsigned int k,
   const Point<dim>  &p) const
 {
+  AssertThrow(std::abs(p[2] - 1.0) > 1e-14,
+              ExcMessage("The derivative at the tip is not defined."));
+  // e.g. for i,j,k=1,1,0 the gradient is [y/(1-z),x/(1-z),xy/(1-z)**2] which is
+  // not defined at [0,0,1] alternatively move z a little bit to 1.0-1e-14
+
   const double x = p[0];
   const double y = p[1];
   const double z = p[2];
 
   Tensor<1, dim> grad;
-  double         ratio;
-  if (std::fabs(z - 1.0) < 1e-14)
-    ratio = 0.0;
-  else
-    ratio = 1.0 / (1.0 - z);
 
   const unsigned int max_ij = std::max(i, j);
+  const double       ratio  = 1.0 / (1.0 - z);
 
   grad[0] =
     Polynomials::jacobi_polynomial_derivative<double>(
@@ -161,76 +173,42 @@ ScalarLagrangePolynomialPyramid<dim>::compute_polynomial_space_derivative(
     std::pow((1.0 - z), max_ij) *
     Polynomials::jacobi_polynomial_value<double>(k, 2 * max_ij + 2, 0, z, true);
   grad[1] =
+    Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
     Polynomials::jacobi_polynomial_derivative<double>(
       j, 0, 0, y * ratio, false) *
-    ratio *
-    Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
-    std::pow((1.0 - z), max_ij) *
+    ratio * std::pow((1.0 - z), max_ij) *
     Polynomials::jacobi_polynomial_value<double>(k, 2 * max_ij + 2, 0, z, true);
-  if (max_ij == 0)
-    grad[2] =
-      x * std::pow(ratio, 2) *
-        Polynomials::jacobi_polynomial_derivative<double>(
-          i, 0, 0, x * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          j, 0, 0, y * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          k, 2 * max_ij + 2, 0, z, true) +
-      y * std::pow(ratio, 2) *
-        Polynomials::jacobi_polynomial_derivative<double>(
-          j, 0, 0, y * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          i, 0, 0, x * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          k, 2 * max_ij + 2, 0, z, true) +
-      Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          j, 0, 0, y * ratio, false) *
-        Polynomials::jacobi_polynomial_derivative<double>(
-          k, 2 * max_ij + 2, 0, 2.0 * z - 1, false) *
-        2.0;
-  else
-    grad[2] =
-      x * std::pow(ratio, 2) *
-        Polynomials::jacobi_polynomial_derivative<double>(
-          i, 0, 0, x * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          j, 0, 0, y * ratio, false) *
-        std::pow((1.0 - z), max_ij) *
-        Polynomials::jacobi_polynomial_value<double>(
-          k, 2 * max_ij + 2, 0, z, true) +
-      y * std::pow(ratio, 2) *
-        Polynomials::jacobi_polynomial_derivative<double>(
-          j, 0, 0, y * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          i, 0, 0, x * ratio, false) *
-        std::pow((1.0 - z), max_ij) *
-        Polynomials::jacobi_polynomial_value<double>(
-          k, 2 * max_ij + 2, 0, z, true) +
-      Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          j, 0, 0, y * ratio, false) *
-        (-1.0) * max_ij * std::pow((1.0 - z), max_ij - 1) *
-        Polynomials::jacobi_polynomial_value<double>(
-          k, 2 * max_ij + 2, 0, z, true) +
-      Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
-        Polynomials::jacobi_polynomial_value<double>(
-          j, 0, 0, y * ratio, false) *
-        std::pow((1.0 - z), max_ij) *
-        Polynomials::jacobi_polynomial_derivative<double>(
-          k, 2 * max_ij + 2, 0, 2.0 * z - 1, false) *
-        2.0;
+  grad[2] =
+    Polynomials::jacobi_polynomial_derivative<double>(
+      i, 0, 0, x * ratio, false) *
+      x * ratio * ratio *
+      Polynomials::jacobi_polynomial_value<double>(j, 0, 0, y * ratio, false) *
+      std::pow((1.0 - z), max_ij) *
+      Polynomials::jacobi_polynomial_value<double>(
+        k, 2 * max_ij + 2, 0, z, true) +
+    Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
+      Polynomials::jacobi_polynomial_derivative<double>(
+        j, 0, 0, y * ratio, false) *
+      y * ratio * ratio * std::pow((1.0 - z), max_ij) *
+      Polynomials::jacobi_polynomial_value<double>(
+        k, 2 * max_ij + 2, 0, z, true) +
+    Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
+      Polynomials::jacobi_polynomial_value<double>(j, 0, 0, y * ratio, false) *
+      (-1.0) * max_ij * std::pow((1.0 - z), max_ij - 1) *
+      Polynomials::jacobi_polynomial_value<double>(
+        k, 2 * max_ij + 2, 0, z, true) +
+    Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x * ratio, false) *
+      Polynomials::jacobi_polynomial_value<double>(j, 0, 0, y * ratio, false) *
+      std::pow((1.0 - z), max_ij) *
+      Polynomials::jacobi_polynomial_derivative<double>(
+        k, 2 * max_ij + 2, 0, 2.0 * z - 1.0, false) *
+      2.0;
 
-  Tensor<1, dim> gradient;
   for (unsigned int d = 0; d < dim; ++d)
-    {
-      if (std::fabs(grad[d]) < 1e-14)
-        gradient[d] = 0.0;
-      else
-        gradient[d] = grad[d];
-    }
+    if (std::fabs(grad[d]) < 1e-14)
+      grad[d] = 0.0;
 
-  return gradient;
+  return grad;
 }
 
 

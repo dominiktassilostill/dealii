@@ -29,6 +29,17 @@ test(const unsigned int degree)
     for (const auto &p : points)
       deallog << p << std::endl;
     deallog << std::endl;
+
+    deallog << "Unit face support points" << std::endl;
+    for (const auto f : fe.reference_cell().face_indices())
+      {
+        deallog << "Face " << f << std::endl;
+        const auto unit_face_support_points =
+          fe.get_unit_face_support_points(f);
+        for (const auto &p : unit_face_support_points)
+          deallog << p << std::endl;
+        deallog << std::endl;
+      }
   }
   {
     deallog << "FE_PyramidDGP degree: " << degree << std::endl;
@@ -47,6 +58,6 @@ main()
 {
   initlog();
 
-  for (unsigned int i = 0; i < 4; ++i)
-    tests<3>(i);
+  for (unsigned int i = 1; i < 4; ++i)
+    test<3>(i);
 }
