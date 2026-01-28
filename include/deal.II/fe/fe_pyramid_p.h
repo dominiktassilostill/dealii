@@ -51,6 +51,15 @@ public:
   convert_generalized_support_point_values_to_dof_values(
     const std::vector<Vector<double>> &support_point_values,
     std::vector<double>               &nodal_values) const override;
+
+    /**
+   * @see FiniteElement::face_to_cell_index()
+   */
+  virtual unsigned int
+  face_to_cell_index(const unsigned int                 face_dof_index,
+                     const unsigned int                 face,
+                     const types::geometric_orientation combined_orientation =
+                       numbers::default_geometric_orientation) const override;
 };
 
 /**

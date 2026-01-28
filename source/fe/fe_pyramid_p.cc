@@ -437,6 +437,19 @@ FE_PyramidP<dim, spacedim>::FE_PyramidP(const unsigned int degree)
 
 
 template <int dim, int spacedim>
+unsigned int
+FE_PyramidPoly<dim, spacedim>::face_to_cell_index(
+  const unsigned int                 face_dof_index,
+  const unsigned int                 face,
+  const types::geometric_orientation combined_orientation) const
+{
+  return FETools::face_to_cell_index(*this,
+                                     face_dof_index,
+                                     face,
+                                     combined_orientation);
+}
+
+template <int dim, int spacedim>
 std::unique_ptr<FiniteElement<dim, spacedim>>
 FE_PyramidP<dim, spacedim>::clone() const
 {
