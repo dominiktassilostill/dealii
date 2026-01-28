@@ -3969,7 +3969,7 @@ ReferenceCell::face_to_cell_line_orientation(
 {
   constexpr auto D = numbers::default_geometric_orientation;
   constexpr auto R = numbers::reverse_line_orientation;
-  if (*this == ReferenceCells::Hexahedron)
+  if (*this == ReferenceCells::Hexahedron || (*this == ReferenceCells::Pyramid && face_no == 0))
     {
       static constexpr dealii::ndarray<types::geometric_orientation, 2, 8>
         table{{{{D, D, D, R, R, R, R, D}}, {{D, D, R, D, R, R, D, R}}}};
@@ -4003,11 +4003,35 @@ ReferenceCell::face_to_cell_line_orientation(
       return match ? numbers::default_geometric_orientation :
                      numbers::reverse_line_orientation;
     }
+  else if (*this == ReferenceCells::Pyramid)
+  {
+    Assert((face_no > 0 && face_no < 5), ExcMessage("Invalid face number"));
+    
+    static constexpr unsigned int X = numbers::invalid_unsigned_int;
+    static constexpr dealii::ndarray<unsigned int, 4, 3> combined_lines{
+      {{{X, 0, 1}}, {{X, 0, 1}}, {{X, X, X}}, {{X, X, X}}}};
+
+      const auto combined_line = combined_lines[face_no - 1][face_line_no];
+
+    Assert(combined_line != X,
+            ExcMessage(
+              "This function can only be called for following face-line "
+              "combinations: (1,1), (1,2), (2,1), (2,2)"));
+
+    static constexpr dealii::ndarray<types::geometric_orientation, 2, 6>
+    table{{{{D, R, D, R, D, R}}, {{R, D, R, D, R, D}}}};
+      
+    const bool match =
+      line_orientation == table[combined_line][combined_face_orientation];
+
+    return match ? numbers::default_geometric_orientation :
+                    numbers::reverse_line_orientation;
+  }
   else
     // TODO: This might actually be wrong for some of the other
     // kinds of objects. We should check this
     DEAL_II_NOT_IMPLEMENTED();
-    return numbers::default_geometric_orientation;
+  return numbers::default_geometric_orientation;
 }
 
 inline unsigned int
