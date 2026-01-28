@@ -4006,6 +4006,7 @@ ReferenceCell::face_to_cell_line_orientation(
   else
     // TODO: This might actually be wrong for some of the other
     // kinds of objects. We should check this
+    DEAL_II_NOT_IMPLEMENTED();
     return numbers::default_geometric_orientation;
 }
 
