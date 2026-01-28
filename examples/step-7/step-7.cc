@@ -325,7 +325,7 @@ public:
           create_description_from_triangulation_in_groups<dim, dim>(
             serial_grid_generator,
             serial_grid_partitioner,
-            triangulation.get_communicator(),
+            triangulation.get_mpi_communicator(),
             group_size,
             dealii::Triangulation<dim>::none,
             triangulation_description_setting);
@@ -397,7 +397,7 @@ int main(int argc, char **argv)
   for(unsigned int i = 0; i < quadrature_formula_linear.size(); ++i)
     std::cout << quadrature_formula_linear.point(i) << " " << quadrature_formula_linear.weight(i) << std::endl;
 
-    std::cout << std::endl;
+  std::cout << std::endl;
   for(unsigned int i = 0; i < quadrature_formula_quadratic.size(); ++i)
     std::cout << quadrature_formula_quadratic.point(i) << " " << quadrature_formula_quadratic.weight(i) << std::endl;
 
