@@ -7566,6 +7566,7 @@ namespace internal
                             chosen_line_tetrahedron = 2;
                           else
                             DEAL_II_NOT_IMPLEMENTED();
+        chosen_line_tetrahedron = 0;
 
                           cell->set_refinement_case(
                             RefinementCase<dim>(chosen_line_tetrahedron + 1));

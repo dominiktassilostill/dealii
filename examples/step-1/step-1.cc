@@ -125,6 +125,7 @@ int main()
       tet<3>(i, n_cycles);
     }
   tet<3>(0, n_cycles); // IsotropicRefinementChoice<dim>::isotropic_refinement
+  tet<3>(1, n_cycles); // IsotropicRefinementChoice::cut_tet_68
   tet<3>(3, n_cycles); // IsotropicRefinementChoice::cut_tet_49
 
   return 0;
