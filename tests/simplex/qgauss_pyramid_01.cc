@@ -17,42 +17,72 @@
 
 #include "../tests.h"
 
+unsigned int
+factorial(const unsigned int n)
+{
+  if (n < 2)
+    return 1;
+  return factorial(n - 1) * n;
+}
+
+
 template <int dim>
 void
 check_accuracy_1D(const unsigned int n_points_1D)
 {
   const unsigned int accuracy = 2 * n_points_1D - 1;
 
-  Tensor<1, dim> monomial_powers;
-  unsigned int   sum = 0;
-  for (unsigned int d = 0; d < dim; ++d)
-    {
-      monomial_powers[d] += accuracy / dim;
-      sum += accuracy / dim;
-    }
+  // Pyramid has Gauss quadrature in x,y and Gauss-Jacobi in z direction
+  // mononomial leads to z^k*(1-z)^(i+j+2)
 
-  // if we aren't at the correct degree then add the rest to the final
-  // component
-  monomial_powers[dim - 1] += accuracy - sum;
+  for (const unsigned int i :
+       std::vector<unsigned int>{{0, 1, 2, accuracy + 1}})
+    for (const unsigned int j :
+         std::vector<unsigned int>{{0, 1, 2, accuracy + 1}})
+      for (unsigned int k = 0; i + j + k < accuracy - 1; ++k)
+        {
+          Tensor<1, dim> monomial_powers;
+          monomial_powers[0] = i;
+          monomial_powers[1] = j;
+          monomial_powers[2] = k;
 
-  const Functions::Monomial<dim> func(monomial_powers);
-  const QGaussPyramid<dim>       quad(n_points_1D);
+          const Functions::Monomial<dim> func(monomial_powers);
+          const QGaussPyramid<dim>       quad(n_points_1D);
 
-  deallog << "Monomial powers = " << monomial_powers << std::endl;
-  double integrand = 0.0;
-  for (unsigned int q = 0; q < quad.size(); ++q)
-    integrand += quad.weight(q) * func.value(quad.point(q));
-  auto old_precision = deallog.precision(16);
-  deallog << "Integrand = " << integrand << std::endl;
-  deallog.precision(old_precision);
-  deallog << std::endl;
+          double integrand = 0.0;
+          for (unsigned int q = 0; q < quad.size(); ++q)
+            integrand += quad.weight(q) * func.value(quad.point(q));
+
+          const double analytical_solution =
+            (i % 2 == 1 || j % 2 == 1) ?
+              0.0 :
+              4.0 / ((i + 1) * (j + 1)) * factorial(k) * factorial(i + j + 2) /
+                factorial(i + j + k + 3);
+
+          const double error = std::abs(integrand - analytical_solution);
+
+          deallog << "Monomial powers = " << monomial_powers << std::endl;
+
+          if (error > 1e-14)
+            {
+              deallog << "With n points 1D " << n_points_1D << std::endl;
+              deallog << "Integrand = " << integrand << std::endl;
+              deallog << "Analytical_solution = " << analytical_solution
+                      << std::endl;
+              deallog << "Error = " << error << " Failed!" << std::endl;
+            }
+          else
+            deallog << " passed!" << std::endl;
+        }
 }
+
+
 
 int
 main()
 {
   initlog();
 
-  for (unsigned int i = 1; i < 8; ++i)
+  for (unsigned int i = 1; i < 7; ++i)
     check_accuracy_1D<3>(i);
 }
