@@ -27,10 +27,11 @@ DEAL_II_NAMESPACE_OPEN
 /**
  * Polynomials defined on simplex entities. This class can be a basis of
  * FE_SimplexP.
- * We first use Jacobi polynomials to construct a modal basis. With the
- * modal basis a Vandermonde matrix is calculated which leads to a nodal basis.
- * For computing the values of the nodal basis the Vandermonde matrix is
- * multiplied with the modal basis vector evaluated at the evaluation point.
+ * We first use the Jacobi polynomials given in @cite Hesthaven2007 to construct
+ * a modal basis. With the modal basis a Vandermonde matrix is calculated which
+ * leads to a nodal basis. For computing the values of the nodal basis the
+ * Vandermonde matrix is multiplied with the modal basis vector evaluated at the
+ * evaluation point.
  */
 template <int dim>
 class ScalarLagrangePolynomialSimplex
@@ -60,7 +61,8 @@ public:
 private:
   /**
    * Evaluate the orthogonal basis at point @p p. The indices @p i, @p j
-   * and @p k corresponde to the polynomial degrees of the Jacobi polynomials.
+   * and @p k corresponde to the polynomial degrees of the Jacobi polynomials
+   * given in @cite Hesthaven2007.
    */
   double
   evaluate_orthogonal_basis_function_by_degree(
@@ -81,7 +83,7 @@ private:
   /**
    * Evaluate the derivative of the orthogonal basis at point @p p.
    * The indices @p i, @p j and @p k corresponde to the polynomial degrees of
-   * the Jacobi polynomials.
+   * the Jacobi polynomials given in  @cite Hesthaven2007.
    */
   Tensor<1, dim>
   evaluate_orthogonal_basis_derivative_by_degree(
