@@ -205,10 +205,13 @@ ScalarLagrangePolynomialWedge<dim>::compute_derivative(
 /**
  * Polynomials defined on wedge entities. This class can be a basis of
  * FE_WedgeP.
- * We first use Jacobi polynomials to construct a modal basis. With the
- * modal basis a Vandermonde matrix is calculated which leads to a nodal basis.
- * For computing the values of the nodal basis the Vandermonde matrix is
- * multiplied with the modal basis vector evaluated at the evaluation point.
+ * We first use Jacobi polynomials to construct a modal basis. The polynomials
+ * are based on the implementation of triangles (see
+ * ScalarLagrangePolynomialSimplex) multiplied by a one dimensional one to
+ * accout for the z-direction. With the modal basis a Vandermonde matrix is
+ * calculated which leads to a nodal basis. For computing the values of the
+ * nodal basis the Vandermonde matrix is multiplied with the modal basis vector
+ * evaluated at the evaluation point.
  */
 template <int dim>
 class ScalarNodalPolynomialWedge : public ScalarPolynomialsVandermondeBase<dim>
