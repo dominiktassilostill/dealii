@@ -43,12 +43,6 @@ public:
   static constexpr unsigned int dimension = dim;
 
   /*
-   * Constructor taking the polynomial @p degree as input.
-   * This constructor only works for linear elements.
-   */
-  ScalarLagrangePolynomialSimplex(const unsigned int degree);
-
-  /*
    * Constructor taking the polynomial @p degree, the number of polynomials
    * @p n_dofs and the support points as input.
    */
