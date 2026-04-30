@@ -35,6 +35,8 @@ test(const unsigned int degree)
                                     fe_simplex.n_dofs_per_cell(),
                                     support_points);
 
+  deallog << "Testing with " << support_points.size() << " DoFs" << std::endl;
+
   for (unsigned int i = 0; i < support_points.size(); ++i)
     for (unsigned int j = 0; j < fe_simplex.n_dofs_per_cell(); ++j)
       {
@@ -68,6 +70,10 @@ main()
   initlog();
   for (unsigned int i = 1; i < 4; ++i)
     {
+      deallog.push("1d-" + std::to_string(i));
+      test<1>(i);
+      deallog.pop();
+
       deallog.push("2d-" + std::to_string(i));
       test<2>(i);
       deallog.pop();

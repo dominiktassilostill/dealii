@@ -63,10 +63,20 @@ ScalarLagrangePolynomialSimplex<
   AssertIndexRange(i + j + k, this->degree() + 1);
 
   const double x = p[0];
-  const double y = p[1];
 
-  if constexpr (dim == 2)
+  if constexpr (dim == 1)
     {
+      const double phi =
+        Polynomials::jacobi_polynomial_value<double>(i, 0, 0, x, true);
+
+      if (std::fabs(phi) < 1e-14)
+        return 0.0;
+
+      return phi;
+    }
+  else if constexpr (dim == 2)
+    {
+      const double y      = p[1];
       const double factor = std::abs(1.0 - y) < 1e-14 ? 1.0 : 1.0 / (1.0 - y);
 
       const double x_contribution =
@@ -87,6 +97,7 @@ ScalarLagrangePolynomialSimplex<
     }
   else if constexpr (dim == 3)
     {
+      const double y = p[1];
       const double z = p[2];
 
       const double factor_yz =
@@ -131,7 +142,12 @@ ScalarLagrangePolynomialSimplex<dim>::evaluate_orthogonal_basis_function(
 {
   AssertIndexRange(i, this->n());
 
-  if constexpr (dim == 2)
+  if constexpr (dim == 1)
+    {
+      // return the value of the orthogonal basis
+      return evaluate_orthogonal_basis_function_by_degree(i, 0, 0, p);
+    }
+  else if constexpr (dim == 2)
     {
       // find corresponding entry to i
       // it holds 0 <= j + k <= degree
@@ -171,10 +187,17 @@ ScalarLagrangePolynomialSimplex<dim>::
   Tensor<1, dim> grad;
 
   const double x = p[0];
-  const double y = p[1];
 
-  if constexpr (dim == 2)
+  if constexpr (dim == 1)
     {
+      grad[0] = Polynomials::jacobi_polynomial_derivative<double>(
+                  i, 0, 0, 2.0 * x - 1.0, false) *
+                2.0;
+    }
+  else if constexpr (dim == 2)
+    {
+      const double y = p[1];
+
       const double factor = std::abs(1.0 - y) < 1e-14 ? 0.0 : 1.0 / (1.0 - y);
 
       const double x_contribution =
@@ -220,6 +243,7 @@ ScalarLagrangePolynomialSimplex<dim>::
     }
   else if constexpr (dim == 3)
     {
+      const double y = p[1];
       const double z = p[2];
 
       const double factor_yz =
@@ -319,7 +343,12 @@ ScalarLagrangePolynomialSimplex<dim>::evaluate_orthogonal_basis_derivative(
 {
   AssertIndexRange(i, this->n());
 
-  if constexpr (dim == 2)
+  if constexpr (dim == 1)
+    {
+      // entrance to i corresponse to degree
+      return evaluate_orthogonal_basis_derivative_by_degree(i, 0, 0, p);
+    }
+  else if constexpr (dim == 2)
     {
       // find corresponding entrance to i
       // it holds 0 <= j + k <= degree

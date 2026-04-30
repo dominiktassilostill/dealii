@@ -1,4 +1,54 @@
 
+DEAL:1d-1::N support points: 2 at degree 1
+DEAL:1d-1::ok ok 
+DEAL:1d-1::ok ok 
+DEAL:1d-1::ok ok 
+DEAL:1d-1::ok ok 
+DEAL:1d-1::ok ok 
+DEAL:1d-1::ok ok 
+DEAL:1d-1::ok ok 
+DEAL:1d-1::ok ok 
+DEAL:1d-2::N support points: 3 at degree 2
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-2::ok ok 
+DEAL:1d-3::N support points: 4 at degree 3
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
+DEAL:1d-3::ok ok 
 DEAL:2d-1::N support points: 3 at degree 1
 DEAL:2d-1::ok ok ok 
 DEAL:2d-1::ok ok ok 
