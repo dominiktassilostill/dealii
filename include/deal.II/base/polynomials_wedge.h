@@ -17,8 +17,13 @@
 #include <deal.II/base/config.h>
 
 #include <deal.II/base/ndarray.h>
+#include <deal.II/base/point.h>
 #include <deal.II/base/polynomials_barycentric.h>
 #include <deal.II/base/scalar_polynomials_base.h>
+#include <deal.II/base/scalar_polynomials_vandermonde_base.h>
+#include <deal.II/base/tensor.h>
+
+#include <deal.II/lac/full_matrix.h>
 
 DEAL_II_NAMESPACE_OPEN
 
@@ -194,6 +199,82 @@ ScalarLagrangePolynomialWedge<dim>::compute_derivative(
 
   return der;
 }
+
+
+
+/**
+ * Polynomials defined on wedge entities. This class can be a basis of
+ * FE_WedgeP.
+ * We first use Jacobi polynomials to construct a modal basis. With the
+ * modal basis a Vandermonde matrix is calculated which leads to a nodal basis.
+ * For computing the values of the nodal basis the Vandermonde matrix is
+ * multiplied with the modal basis vector evaluated at the evaluation point.
+ */
+template <int dim>
+class ScalarNodalPolynomialWedge : public ScalarPolynomialsVandermondeBase<dim>
+{
+public:
+  /**
+   * Make the dimension available to the outside.
+   */
+  static constexpr unsigned int dimension = dim;
+
+  /*
+   * Constructor taking the polynomial @p degree, the number of polynomials
+   * @p n_dofs and the support points as input.
+   */
+  ScalarNodalPolynomialWedge(const unsigned int             degree,
+                             const unsigned int             n_dofs,
+                             const std::vector<Point<dim>> &support_points);
+
+  std::string
+  name() const override;
+
+  virtual std::unique_ptr<ScalarPolynomialsBase<dim>>
+  clone() const override;
+
+private:
+  /**
+   * Evaluate the orthogonal basis at point @p p. The indices @p i, @p j
+   * and @p k corresponde to the polynomial degrees of the Jacobi polynomials.
+   */
+  double
+  evaluate_orthogonal_basis_function_by_degree(
+    const unsigned int i,
+    const unsigned int j,
+    const unsigned int k,
+    const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the orthogonal basis function @p i at point @p p.
+   * This function determines the corresponding indices for the Jacobi
+   * polynomials and calls the function taking all indices as arguments.
+   */
+  double
+  evaluate_orthogonal_basis_function(const unsigned int i,
+                                     const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the derivative of the orthogonal basis at point @p p.
+   * The indices @p i, @p j and @p k corresponde to the polynomial degrees of
+   * the Jacobi polynomials.
+   */
+  Tensor<1, dim>
+  evaluate_orthogonal_basis_derivative_by_degree(
+    const unsigned int i,
+    const unsigned int j,
+    const unsigned int k,
+    const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the derivative of the orthogonal basis function @p i at point
+   * @p p. This function determines the corresponding indices for the Jacobi
+   * polynomials and calls the function taking all indices as arguments.
+   */
+  Tensor<1, dim>
+  evaluate_orthogonal_basis_derivative(const unsigned int i,
+                                       const Point<dim>  &p) const override;
+};
 
 DEAL_II_NAMESPACE_CLOSE
 
