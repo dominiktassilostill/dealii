@@ -1,0 +1,25 @@
+
+DEAL::Face number: 0 nf 2 orientation 1
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
+DEAL::Face number: 0 nf 2 orientation 2
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
+DEAL::Face number: 0 nf 3 orientation 1
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
+DEAL::Face number: 0 nf 3 orientation 2
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
+DEAL::Face number: 1 nf 2 orientation 1
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
+DEAL::Face number: 1 nf 2 orientation 2
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
+DEAL::Face number: 1 nf 3 orientation 1
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
+DEAL::Face number: 1 nf 3 orientation 2
+DEAL::Testing interpolation FE_SimplexP<3>(4)
+DEAL::  Relative interpolation errors: ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok
