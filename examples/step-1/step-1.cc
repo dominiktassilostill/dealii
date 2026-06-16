@@ -1,280 +1,446 @@
-/* ------------------------------------------------------------------------
- *
- * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 1999 - 2023 by the deal.II authors
- *
- * This file is part of the deal.II library.
- *
- * Part of the source code is dual licensed under Apache-2.0 WITH
- * LLVM-exception OR LGPL-2.1-or-later. Detailed license information
- * governing the source code and code contributions can be found in
- * LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
- *
- * ------------------------------------------------------------------------
- */
+#include "./../../../tests/simplex/simplex_grids.h"
 
-// @sect3{Include files}
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/mapping_fe.h>
 
-// The most fundamental class in the library is the Triangulation class, which
-// is declared here:
+#include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/function.h>
+#include <deal.II/lac/vector.h>
+#include <deal.II/lac/full_matrix.h>
+#include <deal.II/lac/sparse_matrix.h>
+#include <deal.II/lac/dynamic_sparsity_pattern.h>
+#include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/precondition.h>
+#include <deal.II/lac/affine_constraints.h>
 #include <deal.II/grid/tria.h>
-// Here are some functions to generate standard grids:
 #include <deal.II/grid/grid_generator.h>
-// Output of grids in various graphics formats:
-#include <deal.II/grid/grid_out.h>
+#include <deal.II/dofs/dof_handler.h>
+#include <deal.II/dofs/dof_tools.h>
+#include <deal.II/dofs/dof_renumbering.h>
+#include <deal.II/base/smartpointer.h>
+#include <deal.II/numerics/vector_tools.h>
+#include <deal.II/base/convergence_table.h>
+#include <deal.II/fe/fe_values.h>
+#include <deal.II/base/utilities.h>
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/lac/generic_linear_algebra.h>
+#include <deal.II/base/index_set.h>
+#include <deal.II/lac/sparsity_tools.h>
+#include <deal.II/distributed/fully_distributed_tria.h>
+#include <deal.II/grid/grid_tools.h>
 
-// This is needed for C++ output:
-#include <iostream>
+
+#define FORCE_USE_OF_TRILINOS
+namespace LA
+{
+#if defined(DEAL_II_WITH_PETSC) && !defined(DEAL_II_PETSC_WITH_COMPLEX) && \
+  !(defined(DEAL_II_WITH_TRILINOS) && defined(FORCE_USE_OF_TRILINOS))
+  using namespace dealii::LinearAlgebraPETSc;
+#  define USE_PETSC_LA
+#elif defined(DEAL_II_WITH_TRILINOS)
+  using namespace dealii::LinearAlgebraTrilinos;
+#else
+#  error DEAL_II_WITH_PETSC or DEAL_II_WITH_TRILINOS required
+#endif
+} // namespace LA
+
+#include <deal.II/base/conditional_ostream.h>
+#include <array>
 #include <fstream>
-// And this for the declarations of the `std::sqrt` and `std::fabs` functions:
-#include <cmath>
+#include <iostream>
 
-// The final step in importing deal.II is this: All deal.II functions and
-// classes are in a namespace <code>dealii</code>, to make sure they don't
-// clash with symbols from other libraries you may want to use in conjunction
-// with deal.II. One could use these functions and classes by prefixing every
-// use of these names by <code>dealii::</code>, but that would quickly become
-// cumbersome and annoying. Rather, we simply import the entire deal.II
-// namespace for general use:
 using namespace dealii;
 
-// @sect3{Creating the first mesh}
 
-// In the following, first function, we simply use the unit square as domain
-// and produce a globally refined grid from it.
-void first_grid()
+const double FREQUENCY = 3.0 * dealii::numbers::PI;
+template <int dim>
+class Solution : public dealii::Function<dim>
 {
-  // The first thing to do is to define an object for a triangulation of a
-  // two-dimensional domain:
-  Triangulation<2> triangulation;
-  // Here and in many following cases, the string "<2>" after a class name
-  // indicates that this is an object that shall work in two space
-  // dimensions. Likewise, there are versions of the triangulation class that
-  // are working in one ("<1>") and three ("<3>") space dimensions. The way
-  // this works is through some template magic that we will investigate in
-  // some more detail in later example programs; there, we will also see how
-  // to write programs in an essentially dimension independent way.
+public:
+  Solution(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
+  {}
 
-  // Next, we want to fill the triangulation with a single cell for a square
-  // domain. The triangulation is the refined four times, to yield $4^4=256$
-  // cells in total:
-  GridGenerator::hyper_cube(triangulation);
-  triangulation.refine_global(4);
+  double value(const dealii::Point<dim> &p,
+                const unsigned int /*component*/) const final
+  {
+    double result = 1.0;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
 
-  // Now we want to write a graphical representation of the mesh to an output
-  // file. The GridOut class of deal.II can do that in a number of different
-  // output formats; here, we choose scalable vector graphics (SVG) format
-  // that you can visualize using the web browser of your choice:
-  std::ofstream out("grid-1.svg");
-  GridOut       grid_out;
-  grid_out.write_svg(triangulation, out);
-  std::cout << "Grid written to grid-1.svg" << std::endl;
-}
+    return result;
+  }
+};
 
-
-
-// @sect3{Creating the second mesh}
-
-// The grid in the following, second function is slightly more complicated in
-// that we use a ring domain and refine the result once globally.
-void second_grid()
+template <int dim>
+class RightHandSide : public dealii::Function<dim>
 {
-  // We start again by defining an object for a triangulation of a
-  // two-dimensional domain:
-  Triangulation<2> triangulation;
+public:
+  RightHandSide(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
+  {}
 
-  // We then fill it with a ring domain. The center of the ring shall be the
-  // point (1,0), and inner and outer radius shall be 0.5 and 1. The number of
-  // circumferential cells could be adjusted automatically by this function,
-  // but we choose to set it explicitly to 10 as the last argument:
-  const Point<2> center(1, 0);
-  const double   inner_radius = 0.5, outer_radius = 1.0;
-  GridGenerator::hyper_shell(
-    triangulation, center, inner_radius, outer_radius, 10);
-  // By default, the triangulation assumes that all boundaries are straight
-  // lines, and all cells are bi-linear quads or tri-linear hexes, and that
-  // they are defined by the cells of the coarse grid (which we just
-  // created). Unless we do something special, when new points need to be
-  // introduced the domain is assumed to be delineated by the straight
-  // lines of the coarse mesh, and new points will simply be in the middle
-  // of the surrounding ones. Here, however, we know that the domain is
-  // curved, and we would like to have the Triangulation place new points
-  // according to the underlying geometry. Fortunately, some good soul
-  // implemented an object which describes a spherical domain, of which the
-  // ring is a section; it only needs the center of the ring and
-  // automatically figures out how to instruct the Triangulation where to
-  // place the new points. The way this works in deal.II is that you tag
-  // parts of the triangulation you want to be curved with a number that is
-  // usually referred to as "manifold indicator" and then tell the
-  // triangulation to use a particular "manifold object" for all places
-  // with this manifold indicator. How exactly this works is not important
-  // at this point (you can read up on it in step-53 and @ref manifold).
-  // The functions in GridGenerator handle this for us in most
-  // circumstances: they attach the correct manifold to a domain so that
-  // when the triangulation is refined new cells are placed in the correct
-  // places. In the present case GridGenerator::hyper_shell attaches a
-  // SphericalManifold to all cells: this causes cells to be refined with
-  // calculations in spherical coordinates (so new cells have edges that
-  // are either radial or lie along concentric circles around the origin).
-  //
-  // By default (i.e., for a Triangulation created by hand or without a
-  // call to a GridGenerator function like GridGenerator::hyper_shell or
-  // GridGenerator::hyper_ball), all cells and faces of the Triangulation
-  // have their manifold_id set to numbers::flat_manifold_id, which is
-  // the default if you want a manifold that produces straight edges, but
-  // you can change this number for individual cells and faces. In that
-  // case, the curved manifold thus associated with number zero will not
-  // apply to those parts with a non-zero manifold indicator, but other
-  // manifold description objects can be associated with those non-zero
-  // indicators. If no manifold description is associated with a particular
-  // manifold indicator, a manifold that produces straight edges is
-  // implied. (Manifold indicators are a slightly complicated topic; if
-  // you're confused about what exactly is happening here, you may want to
-  // look at the
-  // @ref GlossManifoldIndicator "glossary entry on this topic".)
-  // Since the default chosen by GridGenerator::hyper_shell is reasonable
-  // we leave things alone.
-  //
-  // In order to demonstrate how to write a loop over all cells, we will
-  // refine the grid in five steps towards the inner circle of the domain:
-  for (unsigned int step = 0; step < 5; ++step)
-    {
-      // Next, we need to loop over the active cells of the triangulation. You
-      // can think of a triangulation as a collection of cells. If it were an
-      // array, you would just get a pointer that you increment from one
-      // element to the next using the operator `++`. The cells of a
-      // triangulation aren't stored as a simple array, but the concept of an
-      // <i>iterator</i> generalizes how pointers work to arbitrary collections
-      // of objects (see <a href=
-      // "http://en.wikipedia.org/wiki/Iterator#C.2B.2B">wikipedia</a> for more
-      // information). Typically, any container type in C++ will return an
-      // iterator pointing to the start of the collection with a method called
-      // `begin`, and an iterator point to 1 past the end of the collection with
-      // a method called `end`. We can increment an iterator `it` with the
-      // operator `++it`, dereference it to get the underlying data with `*it`,
-      // and check to see if we're done by comparing `it != collection.end()`.
-      //
-      // The second important piece is that we only need the active cells.
-      // Active cells are those that are not further refined, and the only
-      // ones that can be marked for further refinement. deal.II provides
-      // iterator categories that allow us to iterate over <i>all</i> cells
-      // (including the parent cells of active ones) or only over the active
-      // cells. Because we want the latter, we need to call the method
-      // Triangulation::active_cell_iterators().
-      //
-      // Putting all of this together, we can loop over all the active cells of
-      // a triangulation with
-      // @code{.cpp}
-      //     for (auto it = triangulation.active_cell_iterators().begin();
-      //          it != triangulation.active_cell_iterators().end();
-      //          ++it)
-      //       {
-      //         auto cell = *it;
-      //         // Then a miracle occurs...
-      //       }
-      // @endcode
-      // In the initializer of this loop, we've used the `auto` keyword for the
-      // type of the iterator `it`. The `auto` keyword means that the type of
-      // the object being declared will be inferred from the context. This
-      // keyword is useful when the actual type names are long or possibly even
-      // redundant. If you're unsure of what the type is and want to look up
-      // what operations the result supports, you can go to the documentation
-      // for the method Triangulation::active_cell_iterators(). In this case,
-      // the type of `it` is `Triangulation::active_cell_iterator`.
-      //
-      // While the `auto` keyword can save us from having to type out long names
-      // of data types, we still have to type a lot of redundant declarations
-      // about the start and end iterator and how to increment it. Instead of
-      // doing that, we'll use
-      // <a href="http://en.cppreference.com/w/cpp/language/range-for">range-
-      // based for loops</a>, which wrap up all of the syntax shown above into a
-      // much shorter form:
-      for (const auto &cell : triangulation.active_cell_iterators())
+  double value(const dealii::Point<dim> &p,
+                const unsigned int /* component */) const final
+  {
+    double result = FREQUENCY * FREQUENCY * dim;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
+
+    return result;
+  }
+};
+
+  template <int dim>
+  class PoissonProblem
+  {
+  public:
+    PoissonProblem(const FiniteElement<dim> &fe);
+
+    void run();
+
+  private:
+    void setup_system();
+    void assemble_system();
+    void solve();
+    void process_solution(const unsigned int cycle);
+
+    MPI_Comm                                       mpi_communicator;
+    parallel::fullydistributed::Triangulation<dim> triangulation;
+
+
+    DoFHandler<dim> dof_handler;
+
+    ObserverPointer<const FiniteElement<dim>> fe;
+
+    AffineConstraints<double> constraints;
+
+    LA::MPI::SparseMatrix system_matrix;
+    LA::MPI::Vector       solution;
+    LA::MPI::Vector       system_rhs;
+
+    ConditionalOStream pcout;
+
+    IndexSet locally_owned_dofs;
+    IndexSet locally_relevant_dofs;
+
+    ConvergenceTable convergence_table;
+  };
+
+
+  template <int dim>
+  PoissonProblem<dim>::PoissonProblem(const FiniteElement<dim> &fe)
+    : mpi_communicator(MPI_COMM_WORLD)
+    , triangulation(mpi_communicator)
+    , dof_handler(triangulation)
+    , fe(&fe)
+    , pcout(std::cout,
+            (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
+  {}
+
+
+  template <int dim>
+  void PoissonProblem<dim>::setup_system()
+  {
+    dof_handler.distribute_dofs(*fe);
+
+    locally_owned_dofs = dof_handler.locally_owned_dofs();
+    locally_relevant_dofs =
+      DoFTools::extract_locally_relevant_dofs(dof_handler);
+    solution.reinit(locally_owned_dofs,
+                                     locally_relevant_dofs,
+                                     mpi_communicator);
+    system_rhs.reinit(locally_owned_dofs, mpi_communicator);
+    
+    constraints.clear();
+    constraints.reinit(locally_owned_dofs, locally_relevant_dofs);
+    DoFTools::make_zero_boundary_constraints(dof_handler, 0, constraints);
+    constraints.close();
+
+    DynamicSparsityPattern dsp(locally_relevant_dofs);
+
+    DoFTools::make_sparsity_pattern(dof_handler, dsp, constraints, false);
+    SparsityTools::distribute_sparsity_pattern(dsp,
+                                               dof_handler.locally_owned_dofs(),
+                                               mpi_communicator,
+                                               locally_relevant_dofs);
+
+    system_matrix.reinit(locally_owned_dofs,
+                         locally_owned_dofs,
+                         dsp,
+                         mpi_communicator);
+  }
+
+
+  template <int dim>
+  void PoissonProblem<dim>::assemble_system()
+  {
+    const QGaussSimplex<dim> quadrature_formula(fe->degree + 1);
+    MappingFE<dim,dim>           mapping(FE_SimplexP<dim>(1));
+
+    FEValues<dim> fe_values(mapping,
+                            *fe,
+                            quadrature_formula,
+                            update_values | update_gradients |
+                              update_quadrature_points | update_JxW_values);
+
+    const unsigned int dofs_per_cell = fe->n_dofs_per_cell();
+    const unsigned int n_q_points    = quadrature_formula.size();
+
+    FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
+    Vector<double>     cell_rhs(dofs_per_cell);
+
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+    RightHandSide<dim>                   rhs;
+
+    for (const auto &cell : dof_handler.active_cell_iterators())
+      if (cell->is_locally_owned())
         {
-          // @note See @ref Iterators for more information about the iterator
-          // classes used in deal.II, and @ref CPP11 for more information about
-          // range-based for loops and the `auto` keyword.
-          //
-          // Next, we loop over all vertices of the cells. For that purpose
-          // we query an iterator over the vertex indices (in 2d, this is an
-          // array that contains the elements `{0,1,2,3}`, but since
-          // `cell->vertex_indices()` knows the dimension the cell lives in, the
-          // array so returned is correct in all dimensions and this enables
-          // this code to be correct whether we run it in 2d or 3d, i.e., it
-          // enables "dimension-independent programming" -- a big part of what
-          // we will discuss in step-4).
-          for (const auto v : cell->vertex_indices())
-            {
-              // If this cell is at the inner boundary, then at least one of its
-              // vertices must sit on the inner ring and therefore have a radial
-              // distance from the center of exactly 0.5, up to floating point
-              // accuracy. So we compute this distance, and if we find a vertex
-              // with this property, we flag this cell for later refinement. We
-              // can then also break the loop over all vertices and move on to
-              // the next cell.
-              //
-              // Because the distance from the center is computed as a floating
-              // point number, we have to expect that whatever we compute is
-              // only accurate to within
-              // [round-off](https://en.wikipedia.org/wiki/Round-off_error). As
-              // a consequence, we can never expect to compare the distance
-              // with the inner radius by equality: A statement such as
-              // `if (distance_from_center == inner_radius)` will fail
-              // unless we get exceptionally lucky. Rather, we need to do this
-              // comparison with a certain tolerance, and the usual way to do
-              // this is to write it as `if (std::abs(distance_from_center -
-              // inner_radius) <= tolerance)`
-              // where `tolerance` is some small number larger
-              // than round-off. The question is how to choose it: We could just
-              // pick, say, `1e-10`, but this is only appropriate if the objects
-              // we compare are of size one. If we had created a mesh with cells
-              // of size `1e+10`, then `1e-10` would be far lower than round-off
-              // and, as before, the comparison will only succeed if we get
-              // exceptionally lucky. Rather, it is almost always useful to make
-              // the tolerance *relative* to a typical "scale" of the objects
-              // being compared. Here, the "scale" would be the inner radius, or
-              // maybe the diameter of cells. We choose the former and set the
-              // tolerance equal to $10^{-6}$ times the inner radius of the
-              // annulus.
-              const double distance_from_center =
-                center.distance(cell->vertex(v));
+          fe_values.reinit(cell);
 
-              if (std::fabs(distance_from_center - inner_radius) <=
-                  1e-6 * inner_radius)
-                {
-                  cell->set_refine_flag();
-                  break;
-                }
-            }
+          cell_matrix = 0.;
+          cell_rhs    = 0.;
+
+          for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                const double rhs_value =
+                  rhs.value(fe_values.quadrature_point(q_point), 0);
+
+                for (unsigned int j = 0; j < dofs_per_cell; ++j)
+                  cell_matrix(i, j) += (fe_values.shape_grad(i, q_point) *
+                                        fe_values.shape_grad(j, q_point) *
+                                        fe_values.JxW(q_point)); // dx
+
+                cell_rhs(i) +=
+                  (fe_values.shape_value(i, q_point) * // phi_i(x_q)
+                   rhs_value *                         // f(x_q)
+                   fe_values.JxW(q_point));            // dx
+              }
+          cell->get_dof_indices(local_dof_indices);
+          constraints.distribute_local_to_global(cell_matrix,
+                                                 cell_rhs,
+                                                 local_dof_indices,
+                                                 system_matrix,
+                                                 system_rhs);
         }
 
-      // Now that we have marked all the cells that we want refined, we let
-      // the triangulation actually do this refinement. The function that does
-      // so owes its long name to the fact that one can also mark cells for
-      // coarsening, and the function does coarsening and refinement all at
-      // once:
-      triangulation.execute_coarsening_and_refinement();
+    system_matrix.compress(VectorOperation::add);
+    system_rhs.compress(VectorOperation::add);
+  }
+
+
+  template <int dim>
+  void PoissonProblem<dim>::solve()
+  {
+    SolverControl solver_control(dof_handler.n_dofs(),
+                                 1e-6 * system_rhs.l2_norm());
+    LA::SolverCG  solver(solver_control);
+
+
+    LA::MPI::PreconditionAMG::AdditionalData data;
+#ifdef USE_PETSC_LA
+    data.symmetric_operator = true;
+#else
+/* Trilinos defaults are good */
+#endif
+    LA::MPI::PreconditionAMG preconditioner;
+    preconditioner.initialize(system_matrix, data);
+
+    LA::MPI::Vector completely_distributed_solution(locally_owned_dofs,
+                                                      mpi_communicator);
+
+    solver.solve(system_matrix,
+                 completely_distributed_solution,
+                 system_rhs,
+                 preconditioner);
+
+    pcout << "   Solved in " << solver_control.last_step() << " iterations."
+          << std::endl;
+
+    constraints.distribute(completely_distributed_solution);
+
+    solution = completely_distributed_solution;
+  }
+
+
+  template <int dim>
+  void PoissonProblem<dim>::process_solution(const unsigned int cycle)
+  {
+    MappingFE<dim,dim> mapping(FE_SimplexP<dim>(1));
+    Vector<double>  difference_per_cell;
+    VectorTools::integrate_difference(mapping,
+                                      dof_handler,
+                                      solution,
+                                      Solution<dim>(),
+                                      difference_per_cell,
+                                      QGaussSimplex<dim>(fe->degree + 3),
+                                      VectorTools::L2_norm);
+    const double L2_error =
+      VectorTools::compute_global_error(triangulation,
+                                        difference_per_cell,
+                                        VectorTools::L2_norm);
+
+    const unsigned int n_active_cells = triangulation.n_global_active_cells();
+    const unsigned int n_dofs         = dof_handler.n_dofs();
+
+    pcout << "Cycle " << cycle << ':' << std::endl
+          << "   Number of active cells:       " << n_active_cells << std::endl
+          << "   Number of degrees of freedom: " << n_dofs << std::endl
+          << "   L2 error:                     " << L2_error << std::endl;
+
+    convergence_table.add_value("cycle", cycle);
+    convergence_table.add_value("cells", n_active_cells);
+    convergence_table.add_value("dofs", n_dofs);
+    convergence_table.add_value("L2", L2_error);
+  }
+
+
+  template <int dim>
+  void PoissonProblem<dim>::run()
+  {
+    const unsigned int n_cells_max    = 20000000;
+    unsigned int       n_cells        = 1;
+    unsigned int cycle = 0;
+    while (n_cells < n_cells_max && cycle < 8)
+      {
+        triangulation.clear();
+
+        const auto serial_grid_generator =
+          [&](dealii::Triangulation<dim, dim> &tria_serial) {
+            // set up triangulation
+            GridGenerator::subdivided_hyper_cube_with_simplices(tria_serial,
+                                                               1);
+            tria_serial.refine_global(cycle+2);
+
+            if(false)
+            for(const auto& c: tria_serial)
+            for(unsigned int i = 0; i < dim+1; ++i)
+              std::cout << "Face " << i << " orientation " << int(c.combined_face_orientation(i)) << std::endl;
+          };
+        const auto serial_grid_partitioner =
+          [&](dealii::Triangulation<dim, dim> &tria_serial,
+              const MPI_Comm                   comm,
+              const unsigned int) {
+            dealii::GridTools::partition_triangulation_zorder(
+              dealii::Utilities::MPI::n_mpi_processes(comm), tria_serial);
+          };
+
+        const unsigned int group_size = 20;
+
+        typename dealii::TriangulationDescription::Settings
+          triangulation_description_setting =
+            dealii::TriangulationDescription::default_setting;
+        const auto description = dealii::TriangulationDescription::Utilities::
+          create_description_from_triangulation_in_groups<dim, dim>(
+            serial_grid_generator,
+            serial_grid_partitioner,
+            triangulation.get_communicator(),
+            group_size,
+            dealii::Triangulation<dim>::none,
+            triangulation_description_setting);
+
+        triangulation.create_triangulation(description);
+
+
+
+        setup_system();
+
+        assemble_system();
+        solve();
+        process_solution(cycle);
+
+        n_cells        = triangulation.n_global_active_cells();
+        ++cycle;
+      }
+
+    /*
+     std::string vtk_filename;
+     vtk_filename = "solution";
+     vtk_filename += "-pyramidp" + std::to_string(fe->degree);
+     vtk_filename += ".vtk";
+     std::ofstream output(vtk_filename);
+
+     DataOut<dim> data_out;
+     data_out.attach_dof_handler(dof_handler);
+     data_out.add_data_vector(solution, "solution");
+     data_out.build_patches(1);
+     data_out.write_vtk(output);
+ */
+
+    convergence_table.set_precision("L2", 3);
+    convergence_table.set_scientific("L2", true);
+
+    convergence_table.set_tex_caption("cells", "\\# cells");
+    convergence_table.set_tex_caption("dofs", "\\# dofs");
+    convergence_table.set_tex_caption("L2", "$L^2$-error");
+
+    convergence_table.set_tex_format("cells", "r");
+    convergence_table.set_tex_format("dofs", "r");
+
+    convergence_table.evaluate_convergence_rates(
+      "L2", ConvergenceTable::reduction_rate);
+    convergence_table.evaluate_convergence_rates(
+      "L2", ConvergenceTable::reduction_rate_log2);
+
+    pcout << std::endl;
+    convergence_table.write_text(std::cout);
+
+    std::string error_filename = "error";
+    error_filename += "-simplex" + std::to_string(fe->degree);
+    error_filename += ".tex";
+    std::ofstream error_table_file(error_filename);
+
+    convergence_table.write_tex(error_table_file);
+  }
+
+
+int main(int argc, char **argv)
+{
+  const unsigned int                       dim = 3;
+  dealii::Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
+  try
+    {  
+      for (unsigned int degree = 1; degree <= 5; ++degree)
+        {
+          std::cout << "Solving with Simplex elements fo degree " << degree << std::endl
+                    << "============================================="
+                    << std::endl
+                    << std::endl;
+
+          const FE_SimplexP<dim> fe(degree);
+          PoissonProblem<dim>    poisson(fe);
+
+          poisson.run();
+
+          std::cout << std::endl;
+        }
+    }
+  catch (std::exception &exc)
+    {
+      std::cerr << std::endl
+                << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+      std::cerr << "Exception on processing: " << std::endl
+                << exc.what() << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+      return 1;
+    }
+  catch (...)
+    {
+      std::cerr << std::endl
+                << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+      std::cerr << "Unknown exception!" << std::endl
+                << "Aborting!" << std::endl
+                << "----------------------------------------------------"
+                << std::endl;
+      return 1;
     }
 
-
-  // Finally, after these five iterations of refinement, we want to again
-  // write the resulting mesh to a file, again in SVG format. This works just
-  // as above:
-  std::ofstream out("grid-2.svg");
-  GridOut       grid_out;
-  grid_out.write_svg(triangulation, out);
-
-  std::cout << "Grid written to grid-2.svg" << std::endl;
-}
-
-
-
-// @sect3{The main function}
-
-// Finally, the main function. There isn't much to do here, only to call the
-// two subfunctions, which produce the two grids.
-int main()
-{
-  first_grid();
-  second_grid();
+  return 0;
 }
