@@ -99,6 +99,27 @@ private:
   Tensor<1, dim>
   evaluate_orthogonal_basis_derivative(const unsigned int i,
                                        const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the 2nd derivative of the orthogonal basis function @p i at point
+   * @p p. This function determines the corresponding indices for the Jacobi
+   * polynomials and calls the function taking all indices as arguments.
+   */
+  virtual Tensor<2, dim>
+  evaluate_orthogonal_basis_2nd_derivative(const unsigned int i,
+                                           const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the 2nd derivative of the orthogonal basis at point @p p.
+   * The indices @p i, @p j and @p k correspond to the polynomial degrees of
+   * the Jacobi polynomials.
+   */
+  virtual Tensor<2, dim>
+  evaluate_orthogonal_basis_2nd_derivative_by_degree(
+    const unsigned int i,
+    const unsigned int j,
+    const unsigned int k,
+    const Point<dim>  &p) const override;
 };
 
 

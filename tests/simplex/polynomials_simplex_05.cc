@@ -14,7 +14,7 @@
 
 
 // Test PolynomialsSimplex by comparing it to the barycentric implementation
-
+// for the 2nd derivative
 
 #include <deal.II/base/polynomials_barycentric.h>
 #include <deal.II/base/polynomials_simplex.h>
@@ -63,25 +63,24 @@ test(const unsigned int degree)
   for (unsigned int i = 0; i < points.size(); ++i)
     for (unsigned int j = 0; j < fe_simplex.n_dofs_per_cell(); ++j)
       {
-        const auto v1 = poly.compute_value(j, points[i]);
-        const auto v2 = barycentric.compute_value(j, points[i]);
-        if (std::abs(v2 - v1) < 1e-9)
+        const auto g1 = poly.compute_grad(j, points[i]);
+        const auto d1 = poly.compute_grad_grad(j, points[i]);
+        const auto d2 = barycentric.compute_grad_grad(j, points[i]);
+
+        bool is_same = true;
+        for (unsigned int d = 0; d < dim; ++d)
+          for (unsigned int e = 0; e < dim; ++e)
+            if (std::abs(d2[d][e] - d1[d][e]) > 1e-9)
+              is_same = false;
+
+        if (is_same)
           deallog << "ok ";
         else
-          deallog << "Failure by value!!! " << i << " " << j << " " << v2 - v1
+          deallog << "Failure in 2nd derivative!!! at point " << i
+                  << " at location " << points[i] << " for shape function " << j
+                  << " poly gives " << d1 << " while barycentric gives " << d2
                   << std::endl;
 
-
-        const auto g1 = poly.compute_grad(j, points[i]);
-        const auto g2 = barycentric.compute_grad(j, points[i]);
-        for (unsigned int d = 0; d < dim; ++d)
-          {
-            if (std::abs((g2 - g1)[d]) < 1e-9)
-              deallog << "ok ";
-            else
-              deallog << "Failure in gradient!!! " << i << " " << j << " "
-                      << g2[d] << " " << g1[d] << " " << d << std::endl;
-          }
         deallog << std::endl;
       }
 }

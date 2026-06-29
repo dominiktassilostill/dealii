@@ -91,19 +91,25 @@ ScalarLagrangePolynomialSimplex<
     }
   else if constexpr (dim == 2)
     {
-      const double y      = p[1];
-      const double factor = std::abs(1.0 - y) < 1e-14 ? 1.0 : 1.0 / (1.0 - y);
+      // the basis function looks like
+      // P_i^{0,0}(2x/(1-y)-1) * (1-y)^i * P_j^{2*i+1,0}(2*y-1)
+      // seperate it into
+      // P_i^{0,0}(2x/(1-y)-1) * (1-y)^i
+      // and
+      // P_j^{2*i+1,0}(2*y-1)
+      // the first is a homogenized Jacobi polynomial
+      // define s = 1 - y so the first term can be written as
+      // Q_i^{0,0}(x,s) = P_i^{0,0}(2 * x/s - 1) * s^i
+      const double y = p[1];
+      const double s = 1 - y;
 
-      const double x_contribution =
-        i == 0 ? 1.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   i, 0, 0, 2.0 * x * factor - 1.0, false) *
-                   std::pow(1.0 - y, i);
+      const double Qi =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(i, 0, 0, x, s);
 
-      const double y_contribution =
+      const double Pj =
         Polynomials::jacobi_polynomial_value<double>(j, 2 * i + 1, 0, y, true);
 
-      const double phi = x_contribution * y_contribution;
+      const double phi = Qi * Pj;
 
       if (std::fabs(phi) < 1e-14)
         return 0.0;
@@ -112,30 +118,33 @@ ScalarLagrangePolynomialSimplex<
     }
   else if constexpr (dim == 3)
     {
+      // the basis function looks like
+      // P_i^{0,0}(2x/(1-y-z)-1) * (1-y-z)^i
+      // P_j^{2*i+1,0}(2*y/(1-z)-1)*(1-z)^j
+      // P_k^{2 (i+j)+2,0}(2 z - 1)
+      // like in 2d use the homogenized Jacobi polynomials
+      // define t = 1 - y - z and s = 1 - z
+      // the first term becomes
+      // Q_i^{0,0}(x,t) = P_i^{0,0}(2x/(1-y-z)-1) * (1-y-z)^i
+      // and the second
+      // Q_i^{2i+1,0}(y,s) = P_j^{2i+1,0}(2y/(1-z)-1) * (1-z)^j
       const double y = p[1];
       const double z = p[2];
 
-      const double factor_yz =
-        std::abs(1.0 - y - z) < 1e-14 ? 1.0 : 1.0 / (1.0 - y - z);
-      const double factor_z = std::abs(1.0 - z) < 1e-14 ? 1.0 : 1.0 / (1.0 - z);
+      const double s = 1 - z;
+      const double t = 1 - y - z;
 
-      const double x_contribution =
-        i == 0 ? 1.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   i, 0, 0, 2.0 * x * factor_yz - 1.0, false) *
-                   std::pow(1.0 - y - z, i);
+      const double Qi =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(i, 0, 0, x, t);
 
-      const double y_contribution =
-        j == 0 ? 1.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   j, 2 * i + 1, 0, 2.0 * y * factor_z - 1.0, false) *
-                   std::pow(1.0 - z, j);
+      const double Qj =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(
+          j, 2 * i + 1, 0, y, s);
 
-      const double z_contribution =
-        Polynomials::jacobi_polynomial_value<double>(
-          k, 2 * (i + j) + 2, 0, z, true);
+      const double Pk = Polynomials::jacobi_polynomial_value<double>(
+        k, 2 * (i + j) + 2, 0, z, true);
 
-      const double phi = x_contribution * y_contribution * z_contribution;
+      const double phi = Qi * Qj * Pk;
 
       if (std::fabs(phi) < 1e-14)
         return 0.0;
@@ -205,138 +214,96 @@ ScalarLagrangePolynomialSimplex<dim>::
 
   if constexpr (dim == 1)
     {
-      grad[0] = Polynomials::jacobi_polynomial_derivative<double>(
-                  i, 0, 0, 2.0 * x - 1.0, false) *
-                2.0;
+      grad[0] =
+        Polynomials::jacobi_polynomial_derivative<double>(i, 0, 0, x, true);
     }
   else if constexpr (dim == 2)
     {
-      const double y = p[1];
+      // the basis function looks like
+      // P_i^{0,0}(2x/(1-y)-1) * (1-y)^i * P_j^{2*i+1,0}(2*y-1)
+      // seperate it into
+      // P_i^{0,0}(2x/(1-y)-1) * (1-y)^i
+      // and
+      // P_j^{2*i+1,0}(2*y-1)
+      // the first is a homogenized Jacobi polynomial
+      // define s = 1 - y so the first term can be written as
+      // Q_i^{0,0}(x,s) = P_i^{0,0}(2 * x/s - 1) * s^i
 
-      const double factor = std::abs(1.0 - y) < 1e-14 ? 0.0 : 1.0 / (1.0 - y);
+      // to get the derivatives just use the product rule with all terms
+      const double y     = p[1];
+      const double s     = 1 - y;
+      const double ds_dy = -1.0;
 
-      const double x_contribution =
-        i == 0 ? 1.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   i, 0, 0, 2.0 * x * factor - 1.0, false) *
-                   std::pow(1.0 - y, i);
-
-      const double y_contribution =
+      const double Qi =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(i, 0, 0, x, s);
+      const double Pj =
         Polynomials::jacobi_polynomial_value<double>(j, 2 * i + 1, 0, y, true);
 
+      const double dQi_dx =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 0, i, 0, 0, x, s);
 
-      const double x_derivative =
-        i == 1 ? 2.0 :
-                 Polynomials::jacobi_polynomial_derivative<double>(
-                   i, 0, 0, 2.0 * x * factor - 1.0, false) *
-                   std::pow(1.0 - y, std::max(1U, i)) * 2.0 * factor;
+      const double dQi_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 1, i, 0, 0, x, s);
 
-      grad[0] = x_derivative * y_contribution;
+      const double dPj_dy = Polynomials::jacobi_polynomial_derivative<double>(
+        j, 2 * i + 1, 0, y, true);
 
-      const double y_derivative_x1 =
-        i == 1 ?
-          1.0 :
-          Polynomials::jacobi_polynomial_derivative<double>(
-            i, 0, 0, 2.0 * x * factor - 1.0, false) *
-            2.0 * x * factor * factor * std::pow(1.0 - y, std::max(1U, i));
-
-      const double y_derivative_x2 =
-        i == 1 ? 0.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   i, 0, 0, 2.0 * x * factor - 1.0, false) *
-                   i * (-1.0) * std::pow(1.0 - y, std::max(i - 1, 1U));
-
-      const double y_derivative =
-        Polynomials::jacobi_polynomial_derivative<double>(
-          j, 2 * i + 1, 0, 2.0 * y - 1.0, false) *
-        2.0;
-
-
-      grad[1] = y_derivative_x1 * y_contribution +
-                y_derivative_x2 * y_contribution +
-                x_contribution * y_derivative;
+      grad[0] = dQi_dx * Pj;
+      grad[1] = dQi_ds * ds_dy * Pj + Qi * dPj_dy;
     }
   else if constexpr (dim == 3)
     {
+      // define t = 1 - y - z and s = 1 - z then
+      // P_i^{0,0}(2x/t-1) * t^i
+      // P_j^{2*i+1,0}(2*y/s-1)*s^j
+      // P_k^{2 (i+j)+2,0}(2 z - 1)
+      // =
+      // Q_i^{0,0}(x,t)
+      // Q_j^{2*i+1,0}(y,s)
+      // P_k^{2*(i+j)+2,0}(2 z - 1)
+
+      // get the derivatives over the product rule
       const double y = p[1];
       const double z = p[2];
 
-      const double factor_yz =
-        std::abs(1.0 - y - z) < 1e-14 ? 0.0 : 1.0 / (1.0 - y - z);
-      const double factor_z = std::abs(1.0 - z) < 1e-14 ? 0.0 : 1.0 / (1.0 - z);
+      const double s     = 1 - z;
+      const double ds_dz = -1.0;
 
-      const double x_contribution =
-        i == 0 ? 1.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   i, 0, 0, 2.0 * x * factor_yz - 1.0, false) *
-                   std::pow(1.0 - y - z, i);
+      const double t     = 1 - y - z;
+      const double dt_dy = -1.0;
+      const double dt_dz = -1.0;
 
-      const double y_contribution =
-        j == 0 ? 1.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   j, 2 * i + 1, 0, 2.0 * y * factor_z - 1.0, false) *
-                   std::pow(1.0 - z, j);
+      const double Qi =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(i, 0, 0, x, t);
+      const double Qj =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(
+          j, 2 * i + 1, 0, y, s);
+      const double Pk = Polynomials::jacobi_polynomial_value<double>(
+        k, 2 * (i + j) + 2, 0, z, true);
 
-      const double z_contribution =
-        Polynomials::jacobi_polynomial_value<double>(
-          k, 2 * (i + j) + 2, 0, z, true);
+      const double dQi_dx =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 0, i, 0, 0, x, t);
+      const double dQi_dt =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 1, i, 0, 0, x, t);
 
+      const double dQj_dy =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 0, j, 2 * i + 1, 0, y, s);
+      const double dQj_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 1, j, 2 * i + 1, 0, y, s);
 
-      const double x_derivative =
-        i == 1 ? 2.0 :
-                 Polynomials::jacobi_polynomial_derivative<double>(
-                   i, 0, 0, 2.0 * x * factor_yz - 1.0, false) *
-                   std::pow(1.0 - y - z, std::max(1U, i)) * 2.0 * factor_yz;
+      const auto dPk_dz = Polynomials::jacobi_polynomial_derivative<double>(
+        k, 2 * (i + j) + 2, 0, z, true);
 
-      grad[0] = x_derivative * y_contribution * z_contribution;
-
-      const double y_derivative_x1 =
-        i == 1 ? 1.0 :
-                 Polynomials::jacobi_polynomial_derivative<double>(
-                   i, 0, 0, 2.0 * x * factor_yz - 1.0, false) *
-                   2.0 * x * factor_yz * factor_yz *
-                   std::pow(1.0 - y - z, std::max(1U, i));
-
-      const double y_derivative_x2 =
-        i == 1 ? 0.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   i, 0, 0, 2.0 * x * factor_yz - 1.0, false) *
-                   i * (-1.0) * std::pow(1.0 - y - z, std::max(i - 1, 1U));
-
-      const double y_derivative =
-        j == 1 ? 2.0 * i + 3.0 :
-                 Polynomials::jacobi_polynomial_derivative<double>(
-                   j, 2 * i + 1, 0, 2.0 * y * factor_z - 1.0, false) *
-                   std::pow(1.0 - z, std::max(1U, j)) * 2.0 * factor_z;
-
-      grad[1] = y_derivative_x1 * y_contribution * z_contribution +
-                y_derivative_x2 * y_contribution * z_contribution +
-                x_contribution * y_derivative * z_contribution;
-
-
-      const double z_derivative_y1 =
-        j == 1 ?
-          0.5 * (2.0 * i + 3.0) - 0.5 * (2.0 * i + 1.0) :
-          Polynomials::jacobi_polynomial_derivative<double>(
-            j, 2 * i + 1, 0, 2.0 * y * factor_z - 1.0, false) *
-            2.0 * y * factor_z * factor_z * std::pow(1.0 - z, std::max(j, 1U));
-
-      const double z_derivative_y2 =
-        j == 1 ? 0.0 :
-                 Polynomials::jacobi_polynomial_value<double>(
-                   j, 2 * i + 1, 0, 2.0 * y * factor_z - 1.0, false) *
-                   j * (-1.0) * std::pow(1.0 - z, std::max(1U, j - 1));
-
-      const double z_derivative =
-        Polynomials::jacobi_polynomial_derivative<double>(
-          k, 2 * (i + j) + 2, 0, 2.0 * z - 1.0, false) *
-        2.0;
-
-      grad[2] = y_derivative_x1 * y_contribution * z_contribution +
-                y_derivative_x2 * y_contribution * z_contribution +
-                x_contribution * z_derivative_y1 * z_contribution +
-                x_contribution * z_derivative_y2 * z_contribution +
-                x_contribution * y_contribution * z_derivative;
+      grad[0] = dQi_dx * Qj * Pk;
+      grad[1] = dQi_dt * dt_dy * Qj * Pk + Qi * dQj_dy * Pk;
+      grad[2] =
+        dQi_dt * dt_dz * Qj * Pk + Qi * dQj_ds * ds_dz * Pk + Qi * Qj * dPk_dz;
     }
   else
     DEAL_II_NOT_IMPLEMENTED();
@@ -386,6 +353,228 @@ ScalarLagrangePolynomialSimplex<dim>::evaluate_orthogonal_basis_derivative(
 
   DEAL_II_ASSERT_UNREACHABLE();
   return Tensor<1, dim>();
+}
+
+
+
+template <int dim>
+Tensor<2, dim>
+ScalarLagrangePolynomialSimplex<dim>::evaluate_orthogonal_basis_2nd_derivative(
+  const unsigned int i,
+  const Point<dim>  &p) const
+{
+  AssertIndexRange(i, this->n());
+
+  if constexpr (dim == 1)
+    {
+      // entrance to i corresponse to degree
+      return evaluate_orthogonal_basis_2nd_derivative_by_degree(i, 0, 0, p);
+    }
+  else if constexpr (dim == 2)
+    {
+      // find corresponding entrance to i
+      // it holds 0 <= j + k <= degree
+      for (unsigned int j = 0, counter = 0; j < this->degree() + 1; ++j)
+        for (unsigned int k = 0; k < this->degree() + 1 - j; ++k, ++counter)
+          if (counter == i)
+            return evaluate_orthogonal_basis_2nd_derivative_by_degree(j,
+                                                                      k,
+                                                                      0,
+                                                                      p);
+    }
+  else if constexpr (dim == 3)
+    {
+      // find corresponding entrance to i
+      // it holds 0 <= j + k + l <= degree
+      for (unsigned int j = 0, counter = 0; j < this->degree() + 1; ++j)
+        for (unsigned int k = 0; k < this->degree() + 1 - j; ++k)
+          for (unsigned int l = 0; l < this->degree() + 1 - j - k;
+               ++l, ++counter)
+            if (counter == i)
+              return evaluate_orthogonal_basis_2nd_derivative_by_degree(j,
+                                                                        k,
+                                                                        l,
+                                                                        p);
+    }
+
+  DEAL_II_ASSERT_UNREACHABLE();
+  return Tensor<2, dim>();
+}
+
+
+
+template <int dim>
+Tensor<2, dim>
+ScalarLagrangePolynomialSimplex<dim>::
+  evaluate_orthogonal_basis_2nd_derivative_by_degree(const unsigned int i,
+                                                     const unsigned int j,
+                                                     const unsigned int k,
+                                                     const Point<dim>  &p) const
+{
+  AssertIndexRange(i + j + k, this->degree() + 1);
+
+  Tensor<2, dim> deriv;
+
+  if constexpr (dim == 1)
+    {
+      deriv[0][0] = Polynomials::jacobi_polynomial_derivative<double>(
+        2, i, 0, 0, p[0], true);
+    }
+  else if constexpr (dim == 2)
+    {
+      // the basis function looks like
+      // P_i^{0,0}(2x/(1-y)-1) * (1-y)^i * P_j^{2*i+1,0}(2*y-1)
+      // seperate it into
+      // P_i^{0,0}(2x/(1-y)-1) * (1-y)^i
+      // and
+      // P_j^{2*i+1,0}(2*y-1)
+      // the first is a homogenized Jacobi polynomial
+      // define s = 1 - y so the first term can be written as
+      // Q_i^{0,0}(x,s) = P_i^{0,0}(2 * x/s - 1) * s^i
+
+      // to get the 2nd derivatives just use the product rule with all terms
+      const double x     = p[0];
+      const double y     = p[1];
+      const double s     = 1 - y;
+      const double ds_dy = -1.0;
+
+      const double Qi =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(i, 0, 0, x, s);
+      const double Pj =
+        Polynomials::jacobi_polynomial_value<double>(j, 2 * i + 1, 0, y, true);
+
+      const double dQi_dx =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 0, i, 0, 0, x, s);
+      const double dQi_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 1, i, 0, 0, x, s);
+
+      const double dPj_dy = Polynomials::jacobi_polynomial_derivative<double>(
+        j, 2 * i + 1, 0, y, true);
+
+      const double dQi_dx_dx =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          2, 0, i, 0, 0, x, s);
+      const double dQi_ds_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 2, i, 0, 0, x, s);
+      const double dQi_dx_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 1, i, 0, 0, x, s);
+
+      const double dPk_dy_dy =
+        Polynomials::jacobi_polynomial_derivative<double>(
+          2, j, 2 * i + 1, 0, y, true);
+
+
+      deriv[0][0] = dQi_dx_dx * Pj;
+      deriv[0][1] = dQi_dx_ds * ds_dy * Pj + dQi_dx * dPj_dy;
+      deriv[1][0] = deriv[0][1];
+      deriv[1][1] =
+        dQi_ds_ds * Pj + 2.0 * dQi_ds * ds_dy * dPj_dy + Qi * dPk_dy_dy;
+    }
+  else if constexpr (dim == 3)
+    {
+      // define t = 1 - y - z and s = 1 - z then
+      // P_i^{0,0}(2x/t-1) * t^i
+      // P_j^{2*i+1,0}(2*y/s-1)*s^j
+      // P_k^{2 (i+j)+2,0}(2 z - 1)
+      // =
+      // Q_i^{0,0}(x,t)
+      // Q_j^{2*i+1,0}(y,s)
+      // P_k^{2*(i+j)+2,0}(2 z - 1)
+
+      // get the derivatives over the product rule
+      const double x = p[0];
+      const double y = p[1];
+      const double z = p[2];
+
+      const double s     = 1 - z;
+      const double ds_dz = -1.0;
+
+      const double t     = 1 - y - z;
+      const double dt_dy = -1.0;
+      const double dt_dz = -1.0;
+
+      const double Qi =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(i, 0, 0, x, t);
+      const double Qj =
+        Polynomials::jacobi_polynomial_homogenized_value<double>(
+          j, 2 * i + 1, 0, y, s);
+      const double Pk = Polynomials::jacobi_polynomial_value<double>(
+        k, 2 * (i + j) + 2, 0, z, true);
+
+      const double dQi_dx =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 0, i, 0, 0, x, t);
+      const double dQi_dt =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 1, i, 0, 0, x, t);
+
+      const double dQj_dy =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 0, j, 2 * i + 1, 0, y, s);
+      const double dQj_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 1, j, 2 * i + 1, 0, y, s);
+
+      const double dPk_dz = Polynomials::jacobi_polynomial_derivative<double>(
+        k, 2 * (i + j) + 2, 0, z, true);
+
+      const double dQi_dx_dx =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          2, 0, i, 0, 0, x, t);
+      const double dQi_dt_dt =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 2, i, 0, 0, x, t);
+      const double dQi_dx_dt =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 1, i, 0, 0, x, t);
+
+      const double dQj_dy_dy =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          2, 0, j, 2 * i + 1, 0, y, s);
+      const double dQj_ds_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          0, 2, j, 2 * i + 1, 0, y, s);
+      const double dQj_dy_ds =
+        Polynomials::jacobi_polynomial_homogenized_derivative<double>(
+          1, 1, j, 2 * i + 1, 0, y, s);
+
+      const double dPk_dz_dz =
+        Polynomials::jacobi_polynomial_derivative<double>(
+          2, k, 2 * (i + j) + 2, 0, z, true);
+
+      deriv[0][0] = dQi_dx_dx * Qj * Pk;
+      deriv[0][1] = dQi_dx_dt * dt_dy * Qj * Pk + dQi_dx * dQj_dy * Pk;
+      deriv[0][2] = dQi_dx_dt * dt_dz * Qj * Pk + dQi_dx * dQj_ds * ds_dz * Pk +
+                    dQi_dx * Qj * dPk_dz;
+
+      deriv[1][0] = deriv[0][1];
+      deriv[1][1] = dQi_dt_dt * Qj * Pk + dQi_dt * dt_dy * dQj_dy * Pk * 2.0 +
+                    Qi * dQj_dy_dy * Pk;
+      deriv[1][2] = dQi_dt_dt * Qj * Pk + dQi_dt * dt_dy * dQj_ds * ds_dz * Pk +
+                    dQi_dt * dt_dy * Qj * dPk_dz +
+                    dQi_dt * dt_dy * dQj_dy * Pk + Qi * dQj_dy_ds * ds_dz * Pk +
+                    Qi * dQj_dy * dPk_dz;
+
+      deriv[2][0] = deriv[0][2];
+      deriv[2][1] = deriv[1][2];
+      deriv[2][2] = dQi_dt_dt * Qj * Pk +
+                    2.0 * dQi_dt * dt_dz * dQj_ds * ds_dz * Pk +
+                    2.0 * dQi_dt * dt_dz * Qj * dPk_dz + Qi * dQj_ds_ds * Pk +
+                    2.0 * Qi * dQj_ds * ds_dz * dPk_dz + Qi * Qj * dPk_dz_dz;
+    }
+  else
+    DEAL_II_NOT_IMPLEMENTED();
+
+  for (unsigned int d = 0; d < dim; ++d)
+    for (unsigned int e = 0; e < dim; ++e)
+      if (std::fabs(deriv[d][e]) < 1e-14)
+        deriv[d][e] = 0.0;
+
+  return deriv;
 }
 
 
