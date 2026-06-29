@@ -808,12 +808,72 @@ namespace Polynomials
    */
   template <typename Number>
   Number
-  jacobi_polynomial_derivative(
-    const unsigned int degree,
-    const int          alpha,
-    const int          beta,
-    const Number       x,
-    const bool         rescale_to_dealii_unit_interval = true);
+  jacobi_polynomial_derivative(const unsigned int degree,
+                               const int          alpha,
+                               const int          beta,
+                               const Number       x,
+                               const bool rescale_to_dealii_unit_interval);
+
+  /*
+   * Evaluate k-th derivative of the Jacobi polynomial
+   * $ d^k P_n^{\alpha, \beta}(x) / dx^k $, where k equals @p order, specified
+   * by the parameters @p alpha, @p beta, @p n, where @p n is the degree of the
+   * Jacobi polynomial and @k the degree of the derivative.
+   *
+   * @note The Jacobi polynomials are not orthonormal and are defined on the
+   * unit interval $[0, 1]$ as usual for deal.II, rather than $[-1, +1]$ often
+   * used in literature. @p x is the point of evaluation. If instead the point @p
+   * x is given on the interval $[-1, +1]$ set @p rescale_to_dealii_unit_interval
+   * to false.
+   */
+
+  template <typename Number>
+  Number
+  jacobi_polynomial_derivative(const unsigned int order,
+                               const unsigned int degree,
+                               const int          alpha,
+                               const int          beta,
+                               const Number       x,
+                               const bool rescale_to_dealii_unit_interval);
+
+  /*
+   * Evaluate the homogenized Jacobi polynomial
+   * $ Q_n^{\alpha, \beta}(x,s) = s^n P_n^{\alpha, \beta}(x/s) $
+   * specified by the parameters @p alpha, @p beta, @p n, where @p n is the
+   * degree of the Jacobi polynomial. The resulting polynomial has no
+   * singularity, the computation of $x/s$ is explicitly avoided.
+   *
+   * @note The shifted Jacobi polynomials are defined on the unit interval
+   * $[0, 1]$ as usual for deal.II, rather than $[-1, +1]$ often used in
+   * literature. @p x is the point of evaluation, the shift to the interval
+   * $[-1, +1]$ is conducted as
+   * $ Q_n^{\alpha, \beta}(x,s) = s^n P_n^{\alpha, \beta}(2 x/s - 1) $.
+   */
+  template <typename Number>
+  Number
+  jacobi_polynomial_homogenized_value(const unsigned int degree,
+                                      const int          alpha,
+                                      const int          beta,
+                                      const Number       x,
+                                      const Number       s);
+
+  /*
+   * Evaluate (mixed) derivatives of the homogenized Jacobi polynomial
+   * $ d^k Q_n^{\alpha, \beta}(x,s) / dx^order_x ds^order_s $ specified by the
+   * parameters @p alpha, @p beta, @p n, where @p n is the degree of the
+   * Jacobi polynomial and @order_x and @order_s the degree of the derivative
+   * with respect to @p x and @p s.
+   *
+   */
+  template <typename Number>
+  Number
+  jacobi_polynomial_homogenized_derivative(const unsigned int order_x,
+                                           const unsigned int order_s,
+                                           const unsigned int degree,
+                                           const int          alpha,
+                                           const int          beta,
+                                           const Number       x,
+                                           const Number       s);
 
   /**
    * Compute the roots of the Jacobi polynomials on the unit interval $[0, 1]$
@@ -1133,6 +1193,7 @@ namespace Polynomials
   }
 
 
+
   template <typename Number>
   Number
   jacobi_polynomial_derivative(const unsigned int degree,
@@ -1141,19 +1202,127 @@ namespace Polynomials
                                const Number       x,
                                const bool rescale_to_dealii_unit_interval)
   {
+    return jacobi_polynomial_derivative(
+      1, degree, alpha, beta, x, rescale_to_dealii_unit_interval);
+  }
+
+
+
+  template <typename Number>
+  Number
+  jacobi_polynomial_derivative(const unsigned int order,
+                               const unsigned int degree,
+                               const int          alpha,
+                               const int          beta,
+                               const Number       x,
+                               const bool rescale_to_dealii_unit_interval)
+  {
     Assert(alpha >= 0 && beta >= 0,
            ExcNotImplemented("Negative alpha/beta coefficients not supported"));
 
-    // The derivative of the Jacobi polynomial is evaluated using the recurrence
-    // relations
+    if (order > degree)
+      return 0.0;
     if (degree == 0)
       return 0.0;
-    if (rescale_to_dealii_unit_interval)
-      return (1 + alpha + beta + degree) *
-             jacobi_polynomial_value(degree - 1, alpha + 1, beta + 1, x, true);
 
-    return 0.5 * (1 + alpha + beta + degree) *
-           jacobi_polynomial_value(degree - 1, alpha + 1, beta + 1, x, false);
+    // The derivative of the Jacobi polynomial is evaluated using the recurrence
+    // relations
+    Number pre_factor = 1.0;
+    for (unsigned int i = 1; i < order + 1; ++i)
+      pre_factor *= (alpha + beta + degree + i);
+
+    if (rescale_to_dealii_unit_interval)
+      return pre_factor * jacobi_polynomial_value(degree - order,
+                                                  alpha + order,
+                                                  beta + order,
+                                                  x,
+                                                  true);
+
+    return std::pow(0.5, order) * pre_factor *
+           jacobi_polynomial_value(
+             degree - order, alpha + order, beta + order, x, false);
+  }
+
+
+
+  template <typename Number>
+  Number
+  jacobi_polynomial_homogenized_value(const unsigned int degree,
+                                      const int          alpha,
+                                      const int          beta,
+                                      const Number       x,
+                                      const Number       s)
+  {
+    Assert(alpha >= 0 && beta >= 0,
+           ExcNotImplemented("Negative alpha/beta coefficients not supported"));
+
+    // the homogenized Jacobi polynomial is evaluated using a recursion formula
+    // to get the recursion formula, the recursion rule for the Jacobi
+    // polynomial is multiplied on both sides by s^degree
+    Number p0, p1;
+
+    // initial values p0 = s^0 * P_0(2x/s-1) = 1 * 1 = 1, p1 = s * P_1(2x/s-1):
+    p0 = 1.0;
+    if (degree == 0)
+      return p0;
+    p1 = ((alpha + beta + 2.0) * (2.0 * x - s) + s * (alpha - beta)) / 2.0;
+    if (degree == 1)
+      return p1;
+
+    for (unsigned int i = 1; i < degree; ++i)
+      {
+        const Number v  = 2 * i + (alpha + beta);
+        const Number a1 = 2 * (i + 1) * (i + (alpha + beta + 1)) * v;
+        const Number a2 = (v + 1) * (alpha * alpha - beta * beta);
+        const Number a3 = v * (v + 1) * (v + 2);
+        const Number a4 = 2 * (i + alpha) * (i + beta) * (v + 2);
+
+        const Number pn =
+          ((a2 * s + a3 * (2.0 * x - s)) * p1 - a4 * s * s * p0) / a1;
+        p0 = p1;
+        p1 = pn;
+      }
+    return p1;
+  }
+
+
+
+  template <typename Number>
+  Number
+  jacobi_polynomial_homogenized_derivative(const unsigned int order_x,
+                                           const unsigned int order_s,
+                                           const unsigned int degree,
+                                           const int          alpha,
+                                           const int          beta,
+                                           const Number       x,
+                                           const Number       s)
+  {
+    Assert(alpha >= 0 && beta >= 0,
+           ExcNotImplemented("Negative alpha/beta coefficients not supported"));
+
+    if (order_x + order_s > degree)
+      return 0.0;
+    if (degree == 0)
+      return 0.0;
+
+    // The derivative of the homogenized Jacobi polynomial is evaluated using
+    // the recurrence relations
+    Number pre_factor = 1.0;
+    for (unsigned int i = 1; i < order_x + 1; ++i)
+      pre_factor *= (alpha + beta + degree + i);
+
+    for (unsigned int i = 0; i < order_s; ++i)
+      pre_factor *= (degree + beta - i);
+
+    const Number derivative =
+      std::pow(-1.0, order_s) * pre_factor *
+      jacobi_polynomial_homogenized_value<Number>(degree - order_x - order_s,
+                                                  alpha + order_x + order_s,
+                                                  beta + order_x,
+                                                  x,
+                                                  s);
+
+    return derivative;
   }
 
 
