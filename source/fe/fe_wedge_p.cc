@@ -301,35 +301,7 @@ FE_WedgeP<dim, spacedim>::hp_line_dof_identities(
            (dynamic_cast<const FE_WedgeP<dim, spacedim> *>(&fe_other)),
          ExcNotImplemented());
 
-  std::vector<std::pair<unsigned int, unsigned int>> identities;
-  // check if the support points are the same location on the line
-  // to avoid rescaling for pyramids use the support points on the faces
-  const auto face_support_points = this->get_unit_face_support_points(0);
-  const auto face_support_points_other =
-    fe_other.get_unit_face_support_points(0);
-
-  // now just compare the DoFs on the line going from [0,0] to [1,0]
-  // for a triangular face that is the first line
-  // for a quad face that is the third line
-  // adjust the offsets accordingly
-  // face number 0 of the wedge is a triangle
-  const unsigned int offset =
-    this->reference_cell().face_reference_cell(0).n_vertices();
-
-  const unsigned int offset_other =
-    fe_other.reference_cell().face_reference_cell(0).is_hyper_cube() ?
-      fe_other.reference_cell().face_reference_cell(0).n_vertices() +
-        2 * fe_other.n_dofs_per_line() :
-      fe_other.reference_cell().face_reference_cell(0).n_vertices();
-
-  // now get the identities
-  for (unsigned int i = 0; i < this->n_dofs_per_line(); ++i)
-    for (unsigned int j = 0; j < fe_other.n_dofs_per_line(); ++j)
-      if (face_support_points[i + offset].distance(
-            face_support_points_other[j + offset_other]) < 1e-14)
-        identities.emplace_back(i, j);
-
-  return identities;
+  return FETools::hp_line_dof_identities(*this, fe_other);
 }
 
 

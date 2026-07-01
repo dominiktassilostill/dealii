@@ -3407,6 +3407,49 @@ namespace FETools
         return fe.get_first_quad_index(face_no) + index;
       }
   }
+
+
+
+  template <int dim, int spacedim>
+  std::vector<std::pair<unsigned int, unsigned int>>
+  hp_line_dof_identities(const FiniteElement<dim, spacedim> &fe,
+                         const FiniteElement<dim, spacedim> &fe_other)
+  {
+    std::vector<std::pair<unsigned int, unsigned int>> identities;
+
+    // check if the support points are the same location on the line
+    // to avoid rescaling for pyramids use the support points on the faces
+    const auto face_support_points = fe.get_unit_face_support_points(0);
+    const auto face_support_points_other =
+      fe_other.get_unit_face_support_points(0);
+
+    const auto face_reference_cell = fe.reference_cell().face_reference_cell(0);
+    const auto face_reference_cell_other =
+      fe_other.reference_cell().face_reference_cell(0);
+
+    // now just compare the DoFs on the line going from [0,0] to [1,0]
+    // for a triangular face that is the first line
+    // for a quad face that is the third line
+    // adjust the offsets accordingly
+    const unsigned int offset =
+      face_reference_cell.is_simplex() ?
+        face_reference_cell.n_vertices() :
+        face_reference_cell.n_vertices() + 2 * fe.n_dofs_per_line();
+
+    const unsigned int offset_other =
+      face_reference_cell_other.is_simplex() ?
+        face_reference_cell_other.n_vertices() :
+        face_reference_cell_other.n_vertices() + 2 * fe_other.n_dofs_per_line();
+
+    // now get the identities
+    for (unsigned int i = 0; i < fe.degree - 1; ++i)
+      for (unsigned int j = 0; j < fe_other.degree - 1; ++j)
+        if (face_support_points[i + offset].distance(
+              face_support_points_other[j + offset_other]) < 1e-14)
+          identities.emplace_back(i, j);
+
+    return identities;
+  }
 } // namespace FETools
 
 
