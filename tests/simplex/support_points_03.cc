@@ -12,7 +12,8 @@
 
 
 // Test the electrostatic support points of FE_SimplexP by comparing them to
-// solutions obtained from Heasthaven and Warburton
+// solutions obtained from the Matlab code from Warburton
+// under https://github.com/tcew/nodal-dg
 
 
 #include <deal.II/fe/fe_simplex_p.h>
@@ -20,7 +21,7 @@
 #include "../tests.h"
 
 
-// reference solutions from Heasthaven and Warburton for p = 1,...,10
+// reference solutions from Hesthaven and Warburton for p = 1,...,10
 
 std::vector<Point<2>> reference_points_2d_p1 = {Point<2>(0, 0),
                                                 Point<2>(1, 0),
@@ -1380,7 +1381,7 @@ main()
     solutions_2d.push_back(reference_points_2d_p9);
     solutions_2d.push_back(reference_points_2d_p10);
 
-    for (unsigned int i = 4; i < 4; ++i)
+    for (unsigned int i = 4; i < 11; ++i)
       test<2>(i, solutions_2d);
     deallog.pop();
   }
@@ -1400,7 +1401,7 @@ main()
     solutions_3d.push_back(reference_points_p9);
     solutions_3d.push_back(reference_points_p10);
 
-    for (unsigned int i = 4; i < 4; ++i)
+    for (unsigned int i = 4; i < 11; ++i)
       test<3>(i, solutions_3d);
 
     deallog.pop();

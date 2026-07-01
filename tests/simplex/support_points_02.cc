@@ -43,17 +43,9 @@ test(const unsigned int degree)
     {
       const double x = p[0];
       const double y = p[1];
-      double       z;
-      if constexpr (dim == 3)
-        z = p[2];
+      const double z = dim == 3 ? p[2] : 0.0;
 
-
-      std::vector<double> l = {1.0 - x - y, x, y};
-      if constexpr (dim == 3)
-        {
-          l[0] -= z;
-          l.push_back(z);
-        }
+      const std::array<double, 4> l{{1.0 - x - y - z, x, y, z}};
 
       double sum = 0;
       for (const auto b : l)
@@ -112,12 +104,12 @@ main()
   initlog();
 
   deallog.push("2D");
-  for (unsigned int i = 4; i < 4; ++i)
+  for (unsigned int i = 4; i < 8; ++i)
     test<2>(i);
   deallog.pop();
 
   deallog.push("3D");
-  for (unsigned int i = 4; i < 4; ++i)
+  for (unsigned int i = 4; i < 8; ++i)
     test<3>(i);
   deallog.pop();
 }
