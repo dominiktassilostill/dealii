@@ -15,6 +15,7 @@
 #include <deal.II/base/exceptions.h>
 #include <deal.II/base/polynomials_barycentric.h>
 #include <deal.II/base/qprojector.h>
+#include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/types.h>
 
 #include <deal.II/fe/fe_dgq.h>
@@ -170,7 +171,7 @@ namespace
    * Set up a vector that contains the electrostatic support points
    * for FE_SimplexPoly and sufficiently similar elements.
    * The points are constructed by the blend and warp alogrithm described
-   * in @cite Heasthaven.
+   * by Hesthaven and Warburton.
    */
   template <int dim>
   std::vector<Point<dim>>

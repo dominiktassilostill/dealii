@@ -38,17 +38,24 @@ main()
 {
   initlog();
 
+  // test for 1D
+  {
+    deallog.push("1D");
+    for (unsigned int i = 4; i < 7; ++i)
+      test<1>(i);
+    deallog.pop();
+  }
   // test for 2D
   {
     deallog.push("2D");
-    for (unsigned int i = 4; i < 4; ++i)
+    for (unsigned int i = 4; i < 7; ++i)
       test<2>(i);
     deallog.pop();
   }
   // test for 3D
   {
     deallog.push("3D");
-    for (unsigned int i = 4; i < 4; ++i)
+    for (unsigned int i = 4; i < 7; ++i)
       test<3>(i);
     deallog.pop();
   }
