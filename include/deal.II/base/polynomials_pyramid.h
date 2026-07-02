@@ -71,11 +71,10 @@ private:
    * see @cite Bergot2010 proposition 1.10.
    */
   double
-  evaluate_orthogonal_basis_function_by_degree(
-    const unsigned int i,
-    const unsigned int j,
-    const unsigned int k,
-    const Point<dim>  &p) const override;
+  evaluate_orthogonal_basis_function_by_degree(const unsigned int i,
+                                               const unsigned int j,
+                                               const unsigned int k,
+                                               const Point<dim>  &p) const;
 
   /**
    * Evaluate the orthogonal basis function @p i at point @p p.
@@ -92,11 +91,10 @@ private:
    * the Jacobi polynomials, see @cite Bergot2010 proposition 1.10.
    */
   Tensor<1, dim>
-  evaluate_orthogonal_basis_derivative_by_degree(
-    const unsigned int i,
-    const unsigned int j,
-    const unsigned int k,
-    const Point<dim>  &p) const override;
+  evaluate_orthogonal_basis_derivative_by_degree(const unsigned int i,
+                                                 const unsigned int j,
+                                                 const unsigned int k,
+                                                 const Point<dim>  &p) const;
 
   /**
    * Evaluate the derivative of the orthogonal basis function @p i at point

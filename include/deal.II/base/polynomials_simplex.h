@@ -78,11 +78,10 @@ private:
    * given in @cite Hesthaven2007.
    */
   double
-  evaluate_orthogonal_basis_function_by_degree(
-    const unsigned int i,
-    const unsigned int j,
-    const unsigned int k,
-    const Point<dim>  &p) const override;
+  evaluate_orthogonal_basis_function_by_degree(const unsigned int i,
+                                               const unsigned int j,
+                                               const unsigned int k,
+                                               const Point<dim>  &p) const;
 
   /**
    * Evaluate the orthogonal basis function @p i at point @p p.
@@ -99,11 +98,10 @@ private:
    * the Jacobi polynomials given in  @cite Hesthaven2007.
    */
   Tensor<1, dim>
-  evaluate_orthogonal_basis_derivative_by_degree(
-    const unsigned int i,
-    const unsigned int j,
-    const unsigned int k,
-    const Point<dim>  &p) const override;
+  evaluate_orthogonal_basis_derivative_by_degree(const unsigned int i,
+                                                 const unsigned int j,
+                                                 const unsigned int k,
+                                                 const Point<dim>  &p) const;
 
   /**
    * Evaluate the derivative of the orthogonal basis function @p i at point
@@ -115,18 +113,6 @@ private:
                                        const Point<dim>  &p) const override;
 
   /**
-   * Evaluate the 2nd derivative of the orthogonal basis at point @p p.
-   * The indices @p i, @p j and @p k correspond to the polynomial degrees of
-   * the Jacobi polynomials.
-   */
-  virtual Tensor<2, dim>
-  evaluate_orthogonal_basis_2nd_derivative_by_degree(
-    const unsigned int i,
-    const unsigned int j,
-    const unsigned int k,
-    const Point<dim>  &p) const override;
-
-  /**
    * Evaluate the 2nd derivative of the orthogonal basis function @p i at point
    * @p p. This function determines the corresponding indices for the Jacobi
    * polynomials and calls the function taking all indices as arguments.
@@ -134,6 +120,48 @@ private:
   virtual Tensor<2, dim>
   evaluate_orthogonal_basis_2nd_derivative(const unsigned int i,
                                            const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the 3rd derivative of the orthogonal basis function @p i at point
+   * @p p. This function determines the corresponding indices for the Jacobi
+   * polynomials and calls the function taking all indices as arguments.
+   */
+  virtual Tensor<3, dim>
+  evaluate_orthogonal_basis_3rd_derivative(const unsigned int i,
+                                           const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the 4th derivative of the orthogonal basis function @p i at point
+   * @p p. This function determines the corresponding indices for the Jacobi
+   * polynomials and calls the function taking all indices as arguments.
+   */
+  virtual Tensor<4, dim>
+  evaluate_orthogonal_basis_4th_derivative(const unsigned int i,
+                                           const Point<dim>  &p) const override;
+
+  /**
+   * Evaluate the n-th derivative of the orthogonal basis function @p i at point
+   * @p p, where n equals @p derivative_order.
+   * This function determines the corresponding indices for the Jacobi
+   * polynomials and calls the function taking all indices as arguments.
+   */
+  template <int derivative_order>
+  Tensor<derivative_order, dim>
+  evaluate_orthogonal_basis_nth_derivative(const unsigned int i,
+                                           const Point<dim>  &p) const;
+
+  /**
+   * Evaluate the n-th derivative of the orthogonal basis at point @p p,
+   * where n equals to @p derivative_order.
+   * The indices @p i, @p j and @p k correspond to the polynomial degrees of
+   * the Jacobi polynomials.
+   */
+  template <int derivative_order>
+  Tensor<derivative_order, dim>
+  evaluate_orthogonal_basis_nth_derivative_by_degree(const unsigned int i,
+                                                     const unsigned int j,
+                                                     const unsigned int k,
+                                                     const Point<dim> &p) const;
 };
 
 
