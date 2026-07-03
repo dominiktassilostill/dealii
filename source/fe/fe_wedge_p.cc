@@ -114,25 +114,29 @@ FE_WedgePoly<dim, spacedim>::FE_WedgePoly(
 
   Assert(1 <= degree && degree <= 2, ExcNotImplemented());
 
-  const FE_SimplexP<2> fe_triangle(degree);
-  const FE_Q<1>        fe_line(degree);
-  const FE_Q<2>        fe_quad(degree);
-
   this->unit_support_points = internal::get_wedge_support_points<dim>(degree);
 
-  this->unit_face_support_points.resize(this->reference_cell().n_faces());
+  if (conformity == FiniteElementData<dim>::H1)
+    {
+      const FE_SimplexP<2> fe_triangle(degree);
+      const FE_Q<2>        fe_quad(degree);
 
-  for (const auto f : this->reference_cell().face_indices())
-    if (this->reference_cell().face_reference_cell(f) ==
-        ReferenceCells::Triangle)
-      for (const auto &p : fe_triangle.get_unit_support_points())
-        this->unit_face_support_points[f].emplace_back(p[0], p[1]);
-    else if (this->reference_cell().face_reference_cell(f) ==
-             ReferenceCells::Quadrilateral)
-      for (const auto &p : fe_quad.get_unit_support_points())
-        this->unit_face_support_points[f].emplace_back(p[0], p[1]);
-    else
-      DEAL_II_ASSERT_UNREACHABLE();
+      this->unit_face_support_points.resize(this->reference_cell().n_faces());
+
+      for (const auto f : this->reference_cell().face_indices())
+        {
+          if (this->reference_cell().face_reference_cell(f) ==
+              ReferenceCells::Triangle)
+            for (const auto &p : fe_triangle.get_unit_support_points())
+              this->unit_face_support_points[f].emplace_back(p[0], p[1]);
+          else if (this->reference_cell().face_reference_cell(f) ==
+                   ReferenceCells::Quadrilateral)
+            for (const auto &p : fe_quad.get_unit_support_points())
+              this->unit_face_support_points[f].emplace_back(p[0], p[1]);
+          else
+            DEAL_II_ASSERT_UNREACHABLE();
+        }
+    }
 }
 
 
@@ -165,7 +169,17 @@ FE_WedgeP<dim, spacedim>::FE_WedgeP(const unsigned int degree)
                                 get_dpo_vector_fe_wedge_p(degree),
                                 false,
                                 FiniteElementData<dim>::H1)
-{}
+{
+  if (degree > 2)
+    {
+      for (unsigned int i = 0; i < this->n_dofs_per_line(); ++i)
+        this->adjust_line_dof_index_for_line_orientation_table[i] =
+          this->n_dofs_per_line() - 1 - i - i;
+
+      FETools::adjust_quad_dof_index_for_face_orientation(
+        *this, this->adjust_quad_dof_index_for_face_orientation_table);
+    }
+}
 
 
 

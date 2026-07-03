@@ -1,0 +1,16 @@
+
+DEAL::Testing adjust_quad_dof_index_for_face_orientation for FE_WedgeP<3>(1)
+DEAL::
+DEAL::
+DEAL::Testing adjust_quad_dof_index_for_face_orientation for FE_WedgeP<3>(2)
+DEAL::ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok 
+DEAL::
+DEAL::Testing adjust_quad_dof_index_for_face_orientation for FE_PyramidP<3>(1)
+DEAL::
+DEAL::
+DEAL::Testing adjust_quad_dof_index_for_face_orientation for FE_PyramidP<3>(2)
+DEAL::ok ok ok ok ok ok ok ok 
+DEAL::
+DEAL::Testing adjust_quad_dof_index_for_face_orientation for FE_PyramidP<3>(3)
+DEAL::ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok ok 
+DEAL::

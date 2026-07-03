@@ -3407,6 +3407,152 @@ namespace FETools
         return fe.get_first_quad_index(face_no) + index;
       }
   }
+
+
+
+  template <int dim, int spacedim>
+  void
+  adjust_quad_dof_index_for_face_orientation(
+    const FiniteElement<dim, spacedim> &fe,
+    std::vector<Table<2, int>>
+      &adjust_quad_dof_index_for_face_orientation_table)
+  {
+    AssertDimension(dim, 3);
+
+    const unsigned int degree = fe.degree;
+
+    const auto reference_cell = fe.reference_cell();
+
+    // loop over the faces and fill
+    // adjust_quad_dof_index_for_face_orientation_table
+    // if there is only one type of face, fill only the first entry
+    for (unsigned int face_no = 0; face_no < fe.n_unique_2d_subobjects();
+         ++face_no)
+      {
+        const unsigned int n_dofs_per_quad = fe.n_dofs_per_quad(face_no);
+
+        Assert(adjust_quad_dof_index_for_face_orientation_table[face_no]
+                   .n_elements() ==
+                 reference_cell.n_face_orientations(face_no) * n_dofs_per_quad,
+               ExcInternalError());
+
+        const auto face_reference_cell =
+          reference_cell.face_reference_cell(face_no);
+
+        if (face_reference_cell == ReferenceCells::Triangle)
+          {
+            if (degree > 2)
+              {
+                Assert((degree - 2) * (degree - 1) / 2 == n_dofs_per_quad,
+                       ExcInternalError());
+
+                // the interior nodes build a new triangle with lower degree r
+                const unsigned int r = degree - 3;
+
+                // now loop over all DoFs on the triangle
+                // 0 <= i + j <= r holds on the triangle
+                for (unsigned int j = 0, dof_index = 0; j <= r; ++j)
+                  for (unsigned int i = 0; i <= r - j; ++i, ++dof_index)
+                    {
+                      // index in the style of barycentric coordinates
+                      // the first entry is the remainder as i + j <= r has to
+                      // hold
+                      const std::array<unsigned int, 3> local_indices{
+                        {r - i - j, i, j}};
+
+                      // go over all possible orientations
+                      for (types::geometric_orientation orientation = 0;
+                           orientation <
+                           reference_cell.n_face_orientations(face_no);
+                           ++orientation)
+                        {
+                          // get the correct permutation for the current
+                          // orientation
+                          const auto permuted_indices =
+                            face_reference_cell.permute_by_combined_orientation(
+                              make_array_view(local_indices),
+                              face_reference_cell
+                                .get_inverse_combined_orientation(orientation));
+
+                          // now reconstruct the index of from the permuted i
+                          // and j take orientation 0 which is the standard
+                          // orientation then the index k is k =  i + j*(r+1) -
+                          // (j*(j-1))/2
+                          const unsigned int k =
+                            permuted_indices[1] +
+                            permuted_indices[2] * (r + 1) -
+                            (permuted_indices[2] * (permuted_indices[2] - 1)) /
+                              2;
+
+                          const int offset =
+                            static_cast<int>(k) - static_cast<int>(dof_index);
+                          adjust_quad_dof_index_for_face_orientation_table
+                            [face_no](dof_index, orientation) = offset;
+                        }
+                    }
+              }
+          }
+        else if (face_reference_cell == ReferenceCells::Quadrilateral)
+          {
+            // see also FE_Q
+            const unsigned int n = degree - 1;
+            Assert(n * n == n_dofs_per_quad, ExcInternalError());
+
+            for (unsigned int local = 0; local < n_dofs_per_quad; ++local)
+              // face support points are in lexicographic ordering with x
+              // running fastest. invert that (y running fastest)
+              {
+                unsigned int i = local % n, j = local / n;
+
+                // face_orientation=false, face_flip=false, face_rotation=false
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(
+                    false, false, false)) = j + i * n - local;
+                // face_orientation=false, face_flip=false, face_rotation=true
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(
+                    false, true, false)) = i + (n - 1 - j) * n - local;
+                // face_orientation=false, face_flip=true,  face_rotation=false
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(false,
+                                                              false,
+                                                              true)) =
+                  (n - 1 - j) + (n - 1 - i) * n - local;
+                // face_orientation=false, face_flip=true,  face_rotation=true
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(
+                    false, true, true)) = (n - 1 - i) + j * n - local;
+                // face_orientation=true,  face_flip=false, face_rotation=false
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(true,
+                                                              false,
+                                                              false)) = 0;
+                // face_orientation=true,  face_flip=false, face_rotation=true
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(
+                    true, true, false)) = j + (n - 1 - i) * n - local;
+                // face_orientation=true,  face_flip=true,  face_rotation=false
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(
+                    true, false, true)) = (n - 1 - i) + (n - 1 - j) * n - local;
+                // face_orientation=true,  face_flip=true,  face_rotation=true
+                adjust_quad_dof_index_for_face_orientation_table[face_no](
+                  local,
+                  dealii::internal::combined_face_orientation(
+                    true, true, true)) = (n - 1 - j) + i * n - local;
+              }
+          }
+        else
+          DEAL_II_ASSERT_UNREACHABLE();
+      }
+  }
 } // namespace FETools
 
 
