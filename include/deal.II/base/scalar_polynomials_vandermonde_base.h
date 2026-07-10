@@ -131,7 +131,7 @@ public:
   Tensor<2, dim>
   compute_grad_grad(const unsigned int i, const Point<dim> &p) const override;
 
-protected:
+  // protected:
   /**
    * The Vandermonde matrix evaluates each modal basis function at the chosen
    * nodal points.
@@ -139,6 +139,7 @@ protected:
    * basis to the nodal basis.
    */
   FullMatrix<double> vandermonde_matrix_inverse;
+  FullMatrix<double> vandermonde_matrix;
 
   /*
    * Evaluate the modal basis at all support points @p support_points to construct

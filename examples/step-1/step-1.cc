@@ -1,280 +1,1052 @@
-/* ------------------------------------------------------------------------
- *
- * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 1999 - 2023 by the deal.II authors
- *
- * This file is part of the deal.II library.
- *
- * Part of the source code is dual licensed under Apache-2.0 WITH
- * LLVM-exception OR LGPL-2.1-or-later. Detailed license information
- * governing the source code and code contributions can be found in
- * LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
- *
- * ------------------------------------------------------------------------
- */
+#include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/fe_wedge_p.h>
+#include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/polynomials_pyramid.h>
+#include <deal.II/base/polynomials_simplex.h>
+#include <deal.II/base/polynomial.h>
 
-// @sect3{Include files}
+#include <deal.II/lac/lapack_full_matrix.h>
+#include <deal.II/lac/vector.h>
 
-// The most fundamental class in the library is the Triangulation class, which
-// is declared here:
-#include <deal.II/grid/tria.h>
-// Here are some functions to generate standard grids:
-#include <deal.II/grid/grid_generator.h>
-// Output of grids in various graphics formats:
-#include <deal.II/grid/grid_out.h>
+#include <deal.II/lac/householder.h>
 
 // This is needed for C++ output:
 #include <iostream>
 #include <fstream>
 // And this for the declarations of the `std::sqrt` and `std::fabs` functions:
 #include <cmath>
-
-// The final step in importing deal.II is this: All deal.II functions and
-// classes are in a namespace <code>dealii</code>, to make sure they don't
-// clash with symbols from other libraries you may want to use in conjunction
-// with deal.II. One could use these functions and classes by prefixing every
-// use of these names by <code>dealii::</code>, but that would quickly become
-// cumbersome and annoying. Rather, we simply import the entire deal.II
-// namespace for general use:
 using namespace dealii;
 
-// @sect3{Creating the first mesh}
-
-// In the following, first function, we simply use the unit square as domain
-// and produce a globally refined grid from it.
-void first_grid()
+std::vector<unsigned int> get_dpo_vector_fe_p(const unsigned int dim,
+                                              const unsigned int degree)
 {
-  // The first thing to do is to define an object for a triangulation of a
-  // two-dimensional domain:
-  Triangulation<2> triangulation;
-  // Here and in many following cases, the string "<2>" after a class name
-  // indicates that this is an object that shall work in two space
-  // dimensions. Likewise, there are versions of the triangulation class that
-  // are working in one ("<1>") and three ("<3>") space dimensions. The way
-  // this works is through some template magic that we will investigate in
-  // some more detail in later example programs; there, we will also see how
-  // to write programs in an essentially dimension independent way.
+  Assert(degree != 0, ExcNotImplemented());
 
-  // Next, we want to fill the triangulation with a single cell for a square
-  // domain. The triangulation is the refined four times, to yield $4^4=256$
-  // cells in total:
-  GridGenerator::hyper_cube(triangulation);
-  triangulation.refine_global(4);
+  switch (dim)
+    {
+      case 1:
+        return {1, degree - 1};
+      case 2:
+        // the number of support points on the face is
+        // \sum_{i=1}^{degree - 2} i = (degree-2)*(degree-1)/2
+        return {1, degree - 1, (degree - 2) * (degree - 1) / 2};
+      case 3:
+        // the number of support points in the volume are that of a tet
+        // with a lower degree (degree-4)
+        return {1,
+                degree - 1,
+                (degree - 2) * (degree - 1) / 2,
+                (degree - 3) * (degree - 2) * (degree - 1) / 6};
+    }
 
-  // Now we want to write a graphical representation of the mesh to an output
-  // file. The GridOut class of deal.II can do that in a number of different
-  // output formats; here, we choose scalable vector graphics (SVG) format
-  // that you can visualize using the web browser of your choice:
-  std::ofstream out("grid-1.svg");
-  GridOut       grid_out;
-  grid_out.write_svg(triangulation, out);
-  std::cout << "Grid written to grid-1.svg" << std::endl;
+  DEAL_II_ASSERT_UNREACHABLE();
+  return {};
 }
 
 
 
-// @sect3{Creating the second mesh}
-
-// The grid in the following, second function is slightly more complicated in
-// that we use a ring domain and refine the result once globally.
-void second_grid()
+/**
+ * Set up a vector that contains the unit (reference) cell support points
+ * for FE_SimplexPoly and sufficiently similar elements.
+ */
+template <int dim>
+std::vector<Point<dim>>
+equidistant_support_points_fe_p(const unsigned int degree)
 {
-  // We start again by defining an object for a triangulation of a
-  // two-dimensional domain:
-  Triangulation<2> triangulation;
+  Assert(dim != 0, ExcInternalError());
+  std::vector<Point<dim>> unit_points;
+  const auto              reference_cell = ReferenceCells::get_simplex<dim>();
 
-  // We then fill it with a ring domain. The center of the ring shall be the
-  // point (1,0), and inner and outer radius shall be 0.5 and 1. The number of
-  // circumferential cells could be adjusted automatically by this function,
-  // but we choose to set it explicitly to 10 as the last argument:
-  const Point<2> center(1, 0);
-  const double   inner_radius = 0.5, outer_radius = 1.0;
-  GridGenerator::hyper_shell(
-    triangulation, center, inner_radius, outer_radius, 10);
-  // By default, the triangulation assumes that all boundaries are straight
-  // lines, and all cells are bi-linear quads or tri-linear hexes, and that
-  // they are defined by the cells of the coarse grid (which we just
-  // created). Unless we do something special, when new points need to be
-  // introduced the domain is assumed to be delineated by the straight
-  // lines of the coarse mesh, and new points will simply be in the middle
-  // of the surrounding ones. Here, however, we know that the domain is
-  // curved, and we would like to have the Triangulation place new points
-  // according to the underlying geometry. Fortunately, some good soul
-  // implemented an object which describes a spherical domain, of which the
-  // ring is a section; it only needs the center of the ring and
-  // automatically figures out how to instruct the Triangulation where to
-  // place the new points. The way this works in deal.II is that you tag
-  // parts of the triangulation you want to be curved with a number that is
-  // usually referred to as "manifold indicator" and then tell the
-  // triangulation to use a particular "manifold object" for all places
-  // with this manifold indicator. How exactly this works is not important
-  // at this point (you can read up on it in step-53 and @ref manifold).
-  // The functions in GridGenerator handle this for us in most
-  // circumstances: they attach the correct manifold to a domain so that
-  // when the triangulation is refined new cells are placed in the correct
-  // places. In the present case GridGenerator::hyper_shell attaches a
-  // SphericalManifold to all cells: this causes cells to be refined with
-  // calculations in spherical coordinates (so new cells have edges that
-  // are either radial or lie along concentric circles around the origin).
-  //
-  // By default (i.e., for a Triangulation created by hand or without a
-  // call to a GridGenerator function like GridGenerator::hyper_shell or
-  // GridGenerator::hyper_ball), all cells and faces of the Triangulation
-  // have their manifold_id set to numbers::flat_manifold_id, which is
-  // the default if you want a manifold that produces straight edges, but
-  // you can change this number for individual cells and faces. In that
-  // case, the curved manifold thus associated with number zero will not
-  // apply to those parts with a non-zero manifold indicator, but other
-  // manifold description objects can be associated with those non-zero
-  // indicators. If no manifold description is associated with a particular
-  // manifold indicator, a manifold that produces straight edges is
-  // implied. (Manifold indicators are a slightly complicated topic; if
-  // you're confused about what exactly is happening here, you may want to
-  // look at the
-  // @ref GlossManifoldIndicator "glossary entry on this topic".)
-  // Since the default chosen by GridGenerator::hyper_shell is reasonable
-  // we leave things alone.
-  //
-  // In order to demonstrate how to write a loop over all cells, we will
-  // refine the grid in five steps towards the inner circle of the domain:
-  for (unsigned int step = 0; step < 5; ++step)
+  // Piecewise constants are a special case: use a support point at the
+  // centroid and only the centroid
+  if (degree == 0)
     {
-      // Next, we need to loop over the active cells of the triangulation. You
-      // can think of a triangulation as a collection of cells. If it were an
-      // array, you would just get a pointer that you increment from one
-      // element to the next using the operator `++`. The cells of a
-      // triangulation aren't stored as a simple array, but the concept of an
-      // <i>iterator</i> generalizes how pointers work to arbitrary collections
-      // of objects (see <a href=
-      // "http://en.wikipedia.org/wiki/Iterator#C.2B.2B">wikipedia</a> for more
-      // information). Typically, any container type in C++ will return an
-      // iterator pointing to the start of the collection with a method called
-      // `begin`, and an iterator point to 1 past the end of the collection with
-      // a method called `end`. We can increment an iterator `it` with the
-      // operator `++it`, dereference it to get the underlying data with `*it`,
-      // and check to see if we're done by comparing `it != collection.end()`.
-      //
-      // The second important piece is that we only need the active cells.
-      // Active cells are those that are not further refined, and the only
-      // ones that can be marked for further refinement. deal.II provides
-      // iterator categories that allow us to iterate over <i>all</i> cells
-      // (including the parent cells of active ones) or only over the active
-      // cells. Because we want the latter, we need to call the method
-      // Triangulation::active_cell_iterators().
-      //
-      // Putting all of this together, we can loop over all the active cells of
-      // a triangulation with
-      // @code{.cpp}
-      //     for (auto it = triangulation.active_cell_iterators().begin();
-      //          it != triangulation.active_cell_iterators().end();
-      //          ++it)
-      //       {
-      //         auto cell = *it;
-      //         // Then a miracle occurs...
-      //       }
-      // @endcode
-      // In the initializer of this loop, we've used the `auto` keyword for the
-      // type of the iterator `it`. The `auto` keyword means that the type of
-      // the object being declared will be inferred from the context. This
-      // keyword is useful when the actual type names are long or possibly even
-      // redundant. If you're unsure of what the type is and want to look up
-      // what operations the result supports, you can go to the documentation
-      // for the method Triangulation::active_cell_iterators(). In this case,
-      // the type of `it` is `Triangulation::active_cell_iterator`.
-      //
-      // While the `auto` keyword can save us from having to type out long names
-      // of data types, we still have to type a lot of redundant declarations
-      // about the start and end iterator and how to increment it. Instead of
-      // doing that, we'll use
-      // <a href="http://en.cppreference.com/w/cpp/language/range-for">range-
-      // based for loops</a>, which wrap up all of the syntax shown above into a
-      // much shorter form:
-      for (const auto &cell : triangulation.active_cell_iterators())
-        {
-          // @note See @ref Iterators for more information about the iterator
-          // classes used in deal.II, and @ref CPP11 for more information about
-          // range-based for loops and the `auto` keyword.
-          //
-          // Next, we loop over all vertices of the cells. For that purpose
-          // we query an iterator over the vertex indices (in 2d, this is an
-          // array that contains the elements `{0,1,2,3}`, but since
-          // `cell->vertex_indices()` knows the dimension the cell lives in, the
-          // array so returned is correct in all dimensions and this enables
-          // this code to be correct whether we run it in 2d or 3d, i.e., it
-          // enables "dimension-independent programming" -- a big part of what
-          // we will discuss in step-4).
-          for (const auto v : cell->vertex_indices())
-            {
-              // If this cell is at the inner boundary, then at least one of its
-              // vertices must sit on the inner ring and therefore have a radial
-              // distance from the center of exactly 0.5, up to floating point
-              // accuracy. So we compute this distance, and if we find a vertex
-              // with this property, we flag this cell for later refinement. We
-              // can then also break the loop over all vertices and move on to
-              // the next cell.
-              //
-              // Because the distance from the center is computed as a floating
-              // point number, we have to expect that whatever we compute is
-              // only accurate to within
-              // [round-off](https://en.wikipedia.org/wiki/Round-off_error). As
-              // a consequence, we can never expect to compare the distance
-              // with the inner radius by equality: A statement such as
-              // `if (distance_from_center == inner_radius)` will fail
-              // unless we get exceptionally lucky. Rather, we need to do this
-              // comparison with a certain tolerance, and the usual way to do
-              // this is to write it as `if (std::abs(distance_from_center -
-              // inner_radius) <= tolerance)`
-              // where `tolerance` is some small number larger
-              // than round-off. The question is how to choose it: We could just
-              // pick, say, `1e-10`, but this is only appropriate if the objects
-              // we compare are of size one. If we had created a mesh with cells
-              // of size `1e+10`, then `1e-10` would be far lower than round-off
-              // and, as before, the comparison will only succeed if we get
-              // exceptionally lucky. Rather, it is almost always useful to make
-              // the tolerance *relative* to a typical "scale" of the objects
-              // being compared. Here, the "scale" would be the inner radius, or
-              // maybe the diameter of cells. We choose the former and set the
-              // tolerance equal to $10^{-6}$ times the inner radius of the
-              // annulus.
-              const double distance_from_center =
-                center.distance(cell->vertex(v));
+      unit_points.emplace_back(reference_cell.barycenter());
+      return unit_points;
+    }
 
-              if (std::fabs(distance_from_center - inner_radius) <=
-                  1e-6 * inner_radius)
-                {
-                  cell->set_refine_flag();
-                  break;
-                }
+  // otherwise write everything as linear combinations of vertices
+  const auto dpo = get_dpo_vector_fe_p(dim, degree);
+  Assert(dpo.size() == dim + 1, ExcInternalError());
+  Assert(dpo[0] == 1, ExcNotImplemented());
+
+  // vertices:
+  for (const unsigned int d : reference_cell.vertex_indices())
+    unit_points.push_back(reference_cell.vertex(d));
+
+  // lines:
+  for (const unsigned int l : reference_cell.line_indices())
+    {
+      const Point<dim> p0 =
+        unit_points[reference_cell.line_to_cell_vertices(l, 0)];
+      const Point<dim> p1 =
+        unit_points[reference_cell.line_to_cell_vertices(l, 1)];
+      for (unsigned int p = 0; p < dpo[1]; ++p)
+        unit_points.push_back((double(dpo[1] - p) / (dpo[1] + 1)) * p0 +
+                              (double(p + 1) / (dpo[1] + 1)) * p1);
+    }
+
+  // faces:
+  if constexpr (dim == 2)
+    {
+      unsigned int counter = 0;
+      for (unsigned int i = 1; i < degree; ++i)
+        for (unsigned int j = 1; j < degree - i; ++j, ++counter)
+          {
+            const double x = static_cast<double>(j) / degree;
+            const double y = static_cast<double>(i) / degree;
+
+            unit_points.push_back(Point<dim>(x, y));
+          }
+      Assert(counter == dpo[2], ExcInternalError());
+    }
+
+  if constexpr (dim == 3)
+    for (const unsigned int f : reference_cell.face_indices())
+      {
+        const Point<dim> p0 = unit_points[reference_cell.face_to_cell_vertices(
+          f, 0, numbers::default_geometric_orientation)];
+        const Point<dim> p1 = unit_points[reference_cell.face_to_cell_vertices(
+          f, 1, numbers::default_geometric_orientation)];
+        const Point<dim> p2 = unit_points[reference_cell.face_to_cell_vertices(
+          f, 2, numbers::default_geometric_orientation)];
+
+        unsigned int counter = 0;
+        for (unsigned int i = 1; i < degree; ++i)
+          for (unsigned int j = 1; j < degree - i; ++j, ++counter)
+            {
+              const double a = static_cast<double>(j) / degree;
+              const double b = static_cast<double>(i) / degree;
+              const double c = 1.0 - a - b;
+              unit_points.push_back(c * p0 + a * p1 + b * p2);
+            }
+        Assert(counter == dpo[2], ExcInternalError());
+      }
+
+  // interior
+  if constexpr (dim == 3)
+    {
+      unsigned int counter = 0;
+      for (unsigned int i = 1; i < degree; ++i)
+        for (unsigned int j = 1; j < degree - i; ++j)
+          for (unsigned int k = 1; k < degree - i - j; ++k, ++counter)
+            {
+              const double x = static_cast<double>(i) / degree;
+              const double y = static_cast<double>(j) / degree;
+              const double z = static_cast<double>(k) / degree;
+
+              unit_points.push_back(Point<dim>(x, y, z));
+            }
+      Assert(counter == dpo[3], ExcInternalError());
+    }
+
+  return unit_points;
+}
+
+/**
+ * Set up a vector that contains the electrostatic support points
+ * for FE_SimplexPoly and sufficiently similar elements.
+ * The points are constructed by the blend and warp alogrithm described
+ * by Hesthaven and Warburton.
+ */
+template <int dim>
+std::vector<Point<dim>>
+electrostatic_support_points_fe_p(const unsigned int degree)
+{
+  Assert(degree > 0, ExcNotImplemented());
+
+  if constexpr (dim == 1)
+    {
+      const FE_Q<dim> feq(degree);
+      return feq.get_unit_support_points();
+    }
+
+  constexpr double tol = 1e-12;
+
+  // get equidistant nodes
+  const std::vector<Point<dim>> equidistant_nodes =
+    equidistant_support_points_fe_p<dim>(degree);
+
+  // reserve space for electrostatic nodes
+  std::vector<Point<dim>> electrostatic_nodes;
+  electrostatic_nodes.reserve(equidistant_nodes.size());
+
+  // equidistant feq
+  const FE_Q<1> feq_equi(QIterated<1>(QTrapezoid<1>(), degree));
+  // feq Gauss-Lobatto
+  const FE_Q<1> feq_gl(degree);
+
+  // compute the shift in support points
+  std::vector<double> support_points_shift(feq_equi.n_dofs_per_cell());
+  for (unsigned int i = 0; i < feq_equi.n_dofs_per_cell(); ++i)
+    support_points_shift[i] =
+      feq_gl.unit_support_point(i)[0] - feq_equi.unit_support_point(i)[0];
+
+  // warp function
+  // interpolates between GL nodes and equidistant nodes
+  auto warpfactor = [&support_points_shift, &feq_equi, tol](const double x) {
+    // if the node is one of the vertices, i.e. it is at +-1
+    // then there is no shift
+    if (std::abs(1.0 - std::abs(x)) < tol)
+      return 0.0;
+
+    const double scaling = 2.0 / (1.0 - x * x);
+
+    // rescale from [-1,1] to interval [0,1]
+    const Point<1> p(0.5 * x + 0.5);
+
+    double warp = 0.0;
+    for (unsigned int i = 0; i < feq_equi.n_dofs_per_cell(); ++i)
+      warp += support_points_shift[i] * feq_equi.shape_value(i, p);
+
+    return scaling * warp;
+  };
+
+  // compute the warp in one face, use barycentric coordinates l0, l1, l2
+  auto face_warp = [&warpfactor](const double l0,
+                                 const double l1,
+                                 const double l2,
+                                 const double alpha) {
+    const double warp0 =
+      2.0 * l0 * l1 * warpfactor(l1 - l0) * (1.0 + alpha * alpha * l2 * l2);
+    const double warp1 =
+      2.0 * l1 * l2 * warpfactor(l2 - l1) * (1.0 + alpha * alpha * l0 * l0);
+    const double warp2 =
+      2.0 * l2 * l0 * warpfactor(l0 - l2) * (1.0 + alpha * alpha * l1 * l1);
+
+    return std::array<double, 3>{{warp0, warp1, warp2}};
+  };
+
+  if constexpr (dim == 2)
+    {
+      // optimized alpha values
+      const std::array<double, 15> alpha_opt = {{0.0000,
+                                                 0.0000,
+                                                 1.4152,
+                                                 0.1001,
+                                                 0.2751,
+                                                 0.9800,
+                                                 1.0999,
+                                                 1.2832,
+                                                 1.3648,
+                                                 1.4773,
+                                                 1.4959,
+                                                 1.5743,
+                                                 1.5770,
+                                                 1.6223,
+                                                 1.6258}};
+
+      const double alpha =
+        degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 5.0 / 3.0;
+
+      // go over all equidistant points and adjust
+      for (const auto &p : equidistant_nodes)
+        {
+          const double x = p[0];
+          const double y = p[1];
+          const double l = 1.0 - x - y;
+
+          // get combined blend and warp
+          const std::array<double, 3> warp = face_warp(l, x, y, alpha);
+
+          // accumulate deformation
+          const double x_electrostatic = x + warp[0] - warp[1];
+          const double y_electrostatic = y + warp[1] - warp[2];
+
+          electrostatic_nodes.emplace_back(x_electrostatic, y_electrostatic);
+        }
+    }
+  else if constexpr (dim == 3)
+    {
+      const auto reference_cell = ReferenceCells::Tetrahedron;
+
+      // optimized alpha values for tetrahedra
+      const std::array<double, 15> alpha_opt = {{0.0000,
+                                                 0.0000,
+                                                 0.0000,
+                                                 0.1002,
+                                                 1.1332,
+                                                 1.5608,
+                                                 1.3413,
+                                                 1.2577,
+                                                 1.1603,
+                                                 1.10153,
+                                                 0.6080,
+                                                 0.4523,
+                                                 0.8856,
+                                                 0.8717,
+                                                 0.9655}};
+
+      const double alpha =
+        degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 1.0;
+
+      // go over all equidistant points and adjust
+      for (const auto &p : equidistant_nodes)
+        {
+          const double x = p[0];
+          const double y = p[1];
+          const double z = p[2];
+
+          // write in barycentric coordinates
+          const std::array<double, 4> l = {{1.0 - x - y - z, x, y, z}};
+
+          // reserve space for the shift
+          std::array<double, 4> dl = {{0.0, 0.0, 0.0, 0.0}};
+
+          // check if we are on a vertex, edge, face or volume
+          unsigned int n_pos = 0;
+          for (const auto barycentric_coordinate : l)
+            if (std::abs(barycentric_coordinate) > tol)
+              ++n_pos;
+
+          // on the vertex
+          if (n_pos < 2)
+            {
+              // nothing to do
+            }
+          // on the edge apply the warp exactly once
+          else if (n_pos == 2)
+            {
+              // get the two positive coordinates
+              std::array<unsigned int, 2> idx;
+
+              unsigned int j = 0;
+              for (unsigned int i = 0; i < l.size(); ++i)
+                if (std::abs(l[i]) > tol)
+                  idx[j++] = i;
+
+              const double l0 = l[idx[0]];
+              const double l1 = l[idx[1]];
+
+              // get the warp
+              const std::array<double, 3> warp = face_warp(l0, l1, 0.0, alpha);
+
+              // apply to the edge
+              dl[idx[0]] = -warp[0];
+              dl[idx[1]] = warp[0];
+            }
+          else
+            // in the other cases loop over all faces and accumulate the
+            // contributions
+            for (const auto f : reference_cell.face_indices())
+              {
+                // get the vertex ids for the barycentric coordinates
+                std::array<unsigned int, 4> idx;
+
+                // the first entry is the vertex opposite the face
+                idx[0] = 3 - f;
+
+                // get the vertices in the face
+                for (unsigned int i = 0; i < idx.size() - 1; ++i)
+                  idx[i + 1] = reference_cell.face_to_cell_vertices(
+                    f, i, numbers::default_geometric_orientation);
+
+                // get coordinates of face
+                const double l0 = l[idx[0]];
+                const double l1 = l[idx[1]];
+                const double l2 = l[idx[2]];
+                const double l3 = l[idx[3]];
+
+                // get face warp
+                const std::array<double, 3> warp = face_warp(l1, l2, l3, alpha);
+
+                // volume blend
+                const double blend_linear =
+                  (l1 + 0.5 * l0) * (l2 + 0.5 * l0) * (l3 + 0.5 * l0);
+
+                const double blend = (blend_linear > tol) ?
+                                       (1.0 + alpha * alpha * l0 * l0) * l1 *
+                                         l2 * l3 / blend_linear :
+                                       0.0;
+
+                dl[idx[1]] += blend * (warp[2] - warp[0]);
+                dl[idx[2]] += blend * (warp[0] - warp[1]);
+                dl[idx[3]] += blend * (warp[1] - warp[2]);
+              }
+
+          electrostatic_nodes.emplace_back(x + dl[1], y + dl[2], z + dl[3]);
+        }
+    }
+  else
+    DEAL_II_ASSERT_UNREACHABLE();
+
+  return electrostatic_nodes;
+}
+
+
+
+template <int dim>
+std::vector<Point<dim>>
+get_support_points_fe_pyramid_p(const unsigned int degree)
+{
+  AssertDimension(dim, 3);
+  Assert(degree > 0, ExcInternalError("Degree must be larger than 0."));
+
+
+  std::vector<Point<dim>> support_points;
+  const unsigned int      n_dofs =
+    (degree + 1) * (degree + 2) * (2 * degree + 3) / 6;
+  support_points.resize(n_dofs);
+
+  const double z_equidistance = 1.0 / degree;
+
+  // the support points on the 8 lines excluding the vertices
+  const unsigned int n_dofs_per_line = degree - 1;
+
+  // support points on the bottom quad face and on the 4 triangular faces,
+  // on the triangular faces the number of points is the sum from 1 to
+  // (degree - 2) so 4*0.5*(degree - 2)*(degree - 1)
+  const unsigned int n_dofs_per_quad = n_dofs_per_line * n_dofs_per_line;
+  const unsigned int total_dofs_faces =
+    n_dofs_per_quad + 2 * (degree - 2) * (degree - 1);
+
+  // starting indices for lines 4 - 7
+  std::vector<unsigned int> start_lines(4);
+  // line 4 starts after the DoFs at the vertices and the DoFs on the lines of
+  // the bottom quad
+  start_lines[0] = 5 + 4 * n_dofs_per_line;
+  // the rest increments with the number of DoFs on the edges 4 - 7
+  for (unsigned int i = 1; i < 4; ++i)
+    start_lines[i] = start_lines[i - 1] + n_dofs_per_line;
+
+  // same applies to the triangular faces 1 - 4
+  std::vector<unsigned int> start_faces(4);
+  start_faces[0] = 5 + 8 * n_dofs_per_line + n_dofs_per_quad;
+
+  for (unsigned int i = 1; i < 4; ++i)
+    start_faces[i] = start_faces[i - 1] + (degree - 2) * (degree - 1) / 2;
+
+  unsigned int start_hex = 5 + 8 * n_dofs_per_line + total_dofs_faces;
+
+  auto lift_point =
+    [](const Point<2> &p2d, const double scale, const double z) {
+      return Point<dim>(scale * (2.0 * p2d[0] - 1.0),
+                        scale * (2.0 * p2d[1] - 1.0),
+                        z);
+    };
+  {
+    // this gives all info on the vertices, the first 4 edges and the
+    // first face
+    // switch to FE_Q when simplex supports electrostatic points
+    // FE_Q<2> fe_q(degree);
+    FE_Q<2> fe_q(QIterated<1>(QTrapezoid<1>(), degree));
+
+    // vertices
+    for (unsigned int v = 0; v < fe_q.reference_cell().n_vertices(); ++v)
+      {
+        support_points[v] =
+          lift_point(fe_q.get_unit_support_points()[v], 1.0, 0.0);
+      }
+    // lines
+    for (unsigned int l = 0;
+         l < fe_q.reference_cell().n_lines() * fe_q.n_dofs_per_line();
+         ++l)
+      {
+        support_points[5 + l] = lift_point(
+          fe_q
+            .get_unit_support_points()[fe_q.reference_cell().n_vertices() + l],
+          1.0,
+          0.0);
+      }
+    // quad
+    for (unsigned int q = 0; q < fe_q.n_dofs_per_quad(); ++q)
+      {
+        support_points[5 + 8 * n_dofs_per_line + q] = lift_point(
+          fe_q.get_unit_support_points()[fe_q.reference_cell().n_vertices() +
+                                         fe_q.reference_cell().n_lines() *
+                                           fe_q.n_dofs_per_line() +
+                                         q],
+          1.0,
+          0.0);
+      }
+  }
+  // now add the other layers
+  for (unsigned int current_degree = degree - 1; current_degree > 0;
+       --current_degree)
+    {
+      // switch to FE_Q when simplex supports electrostatic points
+      // FE_Q<2> fe_q(current_degree);
+      FE_Q<2> fe_q(QIterated<1>(QTrapezoid<1>(), current_degree));
+
+
+      const auto  &points = fe_q.get_unit_support_points();
+      unsigned int p      = 0;
+
+      const double z     = (degree - current_degree) * z_equidistance;
+      const double scale = current_degree * z_equidistance;
+
+      // vertices are on lines
+      for (unsigned int line = 0; line < fe_q.reference_cell().n_vertices();
+           ++line)
+        {
+          support_points[start_lines[line]++] =
+            lift_point(points[p++], scale, z);
+        }
+      // lines are on face
+      for (unsigned int face = 0; face < fe_q.reference_cell().n_lines();
+           ++face)
+        {
+          for (unsigned int n_dof = 0; n_dof < fe_q.n_dofs_per_line(); ++n_dof)
+            support_points[start_faces[face]++] =
+              lift_point(points[p++], scale, z);
+        }
+      // faces are on hex
+      for (unsigned int hex = 0; hex < fe_q.n_dofs_per_quad(); ++hex)
+        {
+          support_points[start_hex++] = lift_point(points[p++], scale, z);
+        }
+    }
+  Point<dim> tip;
+  for (unsigned int d = 0; d < dim; ++d)
+    {
+      if (d == 2)
+        tip[d] = 1.0;
+      else
+        tip[d] = 0.0;
+    }
+  support_points[4] = tip;
+
+  return support_points;
+}
+
+
+
+template <int dim>
+std::vector<Point<dim>>
+get_blend_and_warp_support_points(const unsigned int degree)
+{
+  if constexpr (dim == 3)
+    {
+      const auto reference_cell = ReferenceCells::Pyramid;
+
+      const unsigned int n_dofs_per_line = degree - 1;
+      const unsigned int n_dofs_per_tri =
+        degree == 1 ? 0 : (degree - 1) * (degree - 2) / 2;
+      const unsigned int n_boundary_nodes = 3 * degree * degree + 2;
+
+      // the idea of the algorithm is to construct support points compatible
+      // with triangles and quads on the faces then take the boundary support
+      // points and compute the displacement to the equidistant support points
+      // on the faces in the last step interpolate the displacement to the
+      // interior nodes
+
+      // get the equidistant support points
+      const auto equidistant_points =
+        get_support_points_fe_pyramid_p<dim>(degree);
+
+      // helper to evaluate the basis functions for the boundary elements
+      // the basis is defined with equidistant support points
+      const FE_Q<1> fe_equi(QIterated<1>(QTrapezoid<1>(), degree));
+
+      // const FE_SimplexP<2> fe_triangle(degree);
+      const auto support_points_triangle_equi =
+        equidistant_support_points_fe_p<2>(degree);
+
+      const auto poly_triangle_equi =
+        ScalarLagrangePolynomialSimplex(degree, support_points_triangle_equi);
+
+      const FE_Q<2> fe_quad_equi(QIterated<1>(QTrapezoid<1>(), degree));
+
+      // basis function of boundary entities adopted from Chan and Warburton
+      auto boundary_basis = [&](const unsigned int i, const Point<dim> &p) {
+        // there are 3 * degree^2 + 2 shape functions on the vertices, edges and
+        // faces
+        Assert(i < n_boundary_nodes, ExcInternalError());
+
+        double phi = 0.0;
+        // first 5 are for the vertices, so just the linear shape functions
+        if (i < reference_cell.n_vertices())
+          {
+            phi = reference_cell.d_linear_shape_function(p, i);
+          }
+        // now are the edge shape functions, there are degree - 1 dofs on each
+        // edge
+        else if (i < reference_cell.n_vertices() +
+                       reference_cell.n_lines() * n_dofs_per_line)
+          {
+            // here the basis functions are just the linear basis functions
+            // multiplied by the 1D line basis function get the line index
+            const unsigned int line_index =
+              (i - reference_cell.n_vertices()) / n_dofs_per_line;
+            const unsigned int index_on_line =
+              (i - reference_cell.n_vertices()) % n_dofs_per_line;
+
+            // get the vertex  indices determining the line
+            const unsigned int v0 =
+              reference_cell.line_to_cell_vertices(line_index, 0);
+            const unsigned int v1 =
+              reference_cell.line_to_cell_vertices(line_index, 1);
+
+            const double l0 = reference_cell.d_linear_shape_function(p, v0);
+            const double l1 = reference_cell.d_linear_shape_function(p, v1);
+
+            // shift to be in the interval [0,1]
+            // const double x = 0.5 * (l0 - l1) + 0.5;
+
+            phi = l0 * l1 *
+                  dealii::Polynomials::jacobi_polynomial_value<double>(
+                    index_on_line, 1, 1, l0 - l1, false);
+            // fe_equi.shape_value(fe_equi.get_first_line_index() +
+            //                       index_on_line,
+            //                     Point<1>(x));
+          }
+        // on the quad face
+        else if (i < reference_cell.n_vertices() +
+                       reference_cell.n_lines() * n_dofs_per_line +
+                       n_dofs_per_line * n_dofs_per_line)
+          {
+            // get the index on the face
+            const unsigned int index_on_quad =
+              i - (reference_cell.n_vertices() +
+                   reference_cell.n_lines() * n_dofs_per_line);
+
+            const double l0 = reference_cell.d_linear_shape_function(p, 0);
+            const double l1 = reference_cell.d_linear_shape_function(p, 1);
+            const double l2 = reference_cell.d_linear_shape_function(p, 2);
+            const double l3 = reference_cell.d_linear_shape_function(p, 3);
+
+            // from the index on the tri get the degrees of the jacobi
+            // polynomials
+            unsigned int jacobi_poly_degree_i, jacobi_poly_degree_j;
+            for (unsigned int a = 0, counter = 0; a < degree - 1; ++a)
+              for (unsigned int b = 0; b < degree - 1; ++b, ++counter)
+                if (index_on_quad == counter)
+                  {
+                    jacobi_poly_degree_i = a;
+                    jacobi_poly_degree_j = b;
+                  }
+
+            phi = l0 * l1 * l2 * l3 *
+                  dealii::Polynomials::jacobi_polynomial_value<double>(
+                    jacobi_poly_degree_i, 1, 1, p[0], false) *
+                  dealii::Polynomials::jacobi_polynomial_value<double>(
+                    jacobi_poly_degree_j, 1, 1, p[1], false);
+            // fe_quad_equi.shape_value(fe_quad_equi.get_first_quad_index() +
+            //                            index_on_quad,
+            //                          p2d);
+          }
+        // on a triangular face
+        else if (i < reference_cell.n_vertices() +
+                       reference_cell.n_lines() * n_dofs_per_line +
+                       n_dofs_per_line * n_dofs_per_line + 4 * n_dofs_per_tri)
+          {
+            // get the face index
+            const unsigned int face_index =
+              (i - (reference_cell.n_vertices() +
+                    reference_cell.n_lines() * n_dofs_per_line +
+                    n_dofs_per_line * n_dofs_per_line)) /
+                n_dofs_per_tri +
+              1;
+            const unsigned int index_on_tri =
+              (i - (reference_cell.n_vertices() +
+                    reference_cell.n_lines() * n_dofs_per_line +
+                    n_dofs_per_line * n_dofs_per_line)) %
+              n_dofs_per_tri;
+
+            const unsigned int v0 = reference_cell.face_to_cell_vertices(
+              face_index, 0, numbers::default_geometric_orientation);
+            const unsigned int v1 = reference_cell.face_to_cell_vertices(
+              face_index, 1, numbers::default_geometric_orientation);
+            const unsigned int v2 = reference_cell.face_to_cell_vertices(
+              face_index, 2, numbers::default_geometric_orientation);
+
+            const double l0 = reference_cell.d_linear_shape_function(p, v0);
+            const double l1 = reference_cell.d_linear_shape_function(p, v1);
+            const double l2 = reference_cell.d_linear_shape_function(p, v2);
+
+            // from the index on the tri get the degrees of the jacobi
+            // polynomials
+            unsigned int jacobi_poly_degree_i = numbers::invalid_unsigned_int;
+            unsigned int jacobi_poly_degree_j = numbers::invalid_unsigned_int;
+            for (unsigned int a = 0, counter = 0; a < degree - 2; ++a)
+              for (unsigned int b = 0; b < degree - a - 2; ++b, ++counter)
+                if (index_on_tri == counter)
+                  {
+                    jacobi_poly_degree_i = a;
+                    jacobi_poly_degree_j = b;
+                  }
+
+            Assert(jacobi_poly_degree_i != numbers::invalid_unsigned_int, ExcInternalError());
+            Assert(jacobi_poly_degree_j != numbers::invalid_unsigned_int, ExcInternalError());
+
+            {
+              
+              const double r = 4./3. * l1 - 2./3. * l0 - 2./3. * l2 - 1./3.;
+              const double s = - 2./3. * l1 - 2./3.0 * l0 + 1./3.;
+             
+              
+              const double r_a = std::abs(1.0 - s) < 1e-14 ? -1.0 : 2.0 * (1.0 + r) / (1.0 - s) - 1.0;
+              const double s_b = s;
+
+              const double h1 = dealii::Polynomials::jacobi_polynomial_value<double>(
+                    jacobi_poly_degree_i, 0, 0, r_a, false);
+              const double h2 = dealii::Polynomials::jacobi_polynomial_value<double>(
+                    jacobi_poly_degree_j, 2*jacobi_poly_degree_i+1, 0, s_b, false);
+              const double exponentional_factor = jacobi_poly_degree_i == 0 ? 1.0 : std::pow(1.0 - s_b, jacobi_poly_degree_i);
+              const double P = 2.0 * std::sqrt(2.0) * h1 * h2 * exponentional_factor;
+
+              phi = l0 * l1 * l2 * P;
+
+              const double x = 0.5 * r + 0.5; //l1
+              const double y = 0.5 * s + 0.5; //l2;
+              const double factor =
+                std::abs(1.0 - y) < 1e-14 ? 1.0 : 1.0 / (1.0 - y);
+
+              const double x_contribution =
+                jacobi_poly_degree_i == 0 ?
+                  1.0 :
+                  dealii::Polynomials::jacobi_polynomial_value<double>(
+                    jacobi_poly_degree_i, 0, 0, 2.0 * x * factor - 1.0, false) *
+                    std::pow(1.0 - y, i);
+
+              const double y_contribution =
+                dealii::Polynomials::jacobi_polynomial_value<double>(
+                  jacobi_poly_degree_j,
+                  2 * jacobi_poly_degree_i + 1,
+                  0,
+                  y,
+                  true);
+
+              std::cout << "x contrib: " << h1 * exponentional_factor << " compared to " << x_contribution << std::endl;
+              std::cout << "y contrib: " << h2 << " compared to " << y_contribution << std::endl;
+              phi = l0 * l1 * l2 * x_contribution * y_contribution;
+            }
+            // phi = l0 * l1 * l2 *
+            // Polynomial::jacobi_polynomial_value<double>(jacobi_poly_degree_i,
+            // 0, 0, l2, true) *
+            // Polynomial::jacobi_polynomial_value<double>(jacobi_poly_degree_j,
+            // 2 * jacobi_poly_degree_i + 1, 0, l1/(1.0-l2), true) *
+            // std::pow((1.0-l2), jacobi_poly_degree_i);
+            //  poly_triangle_equi.compute_value(3 + 3 * n_dofs_per_line +
+            //                                    index_on_tri,
+            //                                 Point<2>(l1, l2));
+          }
+        else
+          DEAL_II_ASSERT_UNREACHABLE();
+
+        return phi;
+      };
+
+      // start by constructing the vertices, edges and faces
+      // use GL points and warp and blend nodes
+      const FE_Q<1> fe_line(degree);
+      const FE_Q<2> fe_quad(degree);
+
+      const auto support_points_triangle =
+        electrostatic_support_points_fe_p<2>(degree);
+
+      std::vector<Point<dim>> gl_points;
+      // start with the vertices
+      for (const unsigned int v : reference_cell.vertex_indices())
+        gl_points.push_back(reference_cell.vertex(v));
+
+      // lines
+      for (const unsigned int l : reference_cell.line_indices())
+        {
+          const Point<dim> v0 =
+            reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 0));
+          const Point<dim> v1 =
+            reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 1));
+
+          const auto direction = v1 - v0;
+
+          for (unsigned int i = 0; i < degree - 1; ++i)
+            {
+              // shift the point on the line such that the support points on
+              // the edges are compatible
+              const double distance = fe_line.unit_support_point(
+                fe_line.get_first_line_index() + i)[0];
+              gl_points.push_back(v0 + distance * direction);
             }
         }
 
-      // Now that we have marked all the cells that we want refined, we let
-      // the triangulation actually do this refinement. The function that does
-      // so owes its long name to the fact that one can also mark cells for
-      // coarsening, and the function does coarsening and refinement all at
-      // once:
-      triangulation.execute_coarsening_and_refinement();
+      // faces
+      for (const unsigned int f : reference_cell.face_indices())
+        {
+          const auto face_reference_cell =
+            reference_cell.face_reference_cell(f);
+
+          const bool is_triangular_face =
+            reference_cell.face_reference_cell(f).is_simplex();
+
+          const unsigned int n_dofs_per_quad =
+            is_triangular_face ?
+              n_dofs_per_tri : // fe_triangle.n_dofs_per_quad() :
+              fe_quad.n_dofs_per_quad();
+
+          const std::vector<Point<2>> &face_support_points =
+            is_triangular_face ?
+              support_points_triangle : // fe_triangle.get_unit_support_points()
+                                        // :
+                                        fe_quad.get_unit_support_points();
+
+          const unsigned int first_quad_index =
+            is_triangular_face ?
+              3 + 3 * n_dofs_per_line : // fe_triangle.get_first_quad_index() :
+              fe_quad.get_first_quad_index();
+
+          // go over all DoFs on the face
+          for (unsigned int i = 0; i < n_dofs_per_quad; ++i)
+            {
+              Point<dim> p(0.0, 0.0, 0.0);
+              // linear interpolate the point form the vertices of the face
+              // looking at the triangle it is the same as using barycentric
+              // coordinates as the linear shape functions are: 1-x-y, x, y
+              for (unsigned int v = 0; v < face_reference_cell.n_vertices();
+                   ++v)
+                {
+                  const auto vertex =
+                    reference_cell.vertex(reference_cell.face_to_cell_vertices(
+                      f, v, numbers::default_geometric_orientation));
+
+                  p += face_reference_cell.d_linear_shape_function(
+                         face_support_points[first_quad_index + i], v) *
+                       vertex;
+                }
+              gl_points.push_back(p);
+            }
+        }
+
+      // needs to contain all nodes on the boundary
+      Assert(gl_points.size() == n_boundary_nodes, ExcInternalError());
+
+      // get the displacements between the electrostatic and the equidistant
+      // points
+      Vector<double> nodal_displacements_x(n_boundary_nodes);
+      Vector<double> nodal_displacements_y(n_boundary_nodes);
+      Vector<double> nodal_displacements_z(n_boundary_nodes);
+      for (unsigned int i = 0; i < n_boundary_nodes; ++i)
+        {
+          const auto displacement_vector = gl_points[i] - equidistant_points[i];
+
+          nodal_displacements_x[i] = displacement_vector[0];
+          nodal_displacements_y[i] = displacement_vector[1];
+          nodal_displacements_z[i] = displacement_vector[2];
+        }
+
+      // build the transformation matrix
+      FullMatrix<double> VandermondeMatrix(n_boundary_nodes, n_boundary_nodes);
+      for (unsigned int i = 0; i < VandermondeMatrix.m(); ++i)
+        for (unsigned int j = 0; j < VandermondeMatrix.n(); ++j)
+          VandermondeMatrix[i][j] = boundary_basis(j, equidistant_points[i]);
+
+      // solve Vandermondematrix * displacements = nodal_displacement
+      Vector<double> displacements_x(n_boundary_nodes);
+      Vector<double> displacements_y(n_boundary_nodes);
+      Vector<double> displacements_z(n_boundary_nodes);
+
+      Householder<double> householder(VandermondeMatrix);
+      householder.least_squares(displacements_x, nodal_displacements_x);
+      householder.least_squares(displacements_y, nodal_displacements_y);
+      householder.least_squares(displacements_z, nodal_displacements_z);
+
+      // to get the interior nodes interpolate the difference between the
+      // boundary nodes to the interor ones
+      for (unsigned int i = n_boundary_nodes; i < equidistant_points.size();
+           ++i)
+        {
+          const auto eq_point = equidistant_points[i];
+
+          Point<dim> displacement(0.0, 0.0, 0.0);
+
+          for (unsigned int j = 0; j < displacements_x.size(); ++j)
+            {
+              const double basis_value = boundary_basis(j, eq_point);
+              displacement[0] += basis_value * displacements_x[j];
+              displacement[1] += basis_value * displacements_y[j];
+              displacement[2] += basis_value * displacements_z[j];
+            }
+
+          gl_points.emplace_back(eq_point + displacement);
+        }
+
+      for (unsigned int i = 0; i < gl_points.size(); ++i)
+        for (unsigned int d = 0; d < dim; ++d)
+          if (std::abs(gl_points[i][d]) < 1e-12)
+            gl_points[i][d] = 0.0;
+
+      return gl_points;
     }
-
-
-  // Finally, after these five iterations of refinement, we want to again
-  // write the resulting mesh to a file, again in SVG format. This works just
-  // as above:
-  std::ofstream out("grid-2.svg");
-  GridOut       grid_out;
-  grid_out.write_svg(triangulation, out);
-
-  std::cout << "Grid written to grid-2.svg" << std::endl;
+  else
+    DEAL_II_ASSERT_UNREACHABLE();
+  return {};
 }
 
+template <int dim>
+double
+compute_VDM_condition_number(const unsigned int             degree,
+                             const std::vector<Point<dim>> &support_points)
+{
+  ScalarLagrangePolynomialPyramid poly(degree,
+                                       support_points.size(),
+                                       support_points);
+
+  LAPACKFullMatrix<double> VDM;
+  VDM.copy_from(poly.vandermonde_matrix);
+
+  VDM.compute_lu_factorization();
+  double determinant = VDM.determinant();
+
+  VDM.copy_from(poly.vandermonde_matrix);
+  VDM.compute_svd();
+
+  double min = std::numeric_limits<double>::max();
+  double max = std::numeric_limits<double>::lowest();
+
+  for (unsigned int i = 0; i < support_points.size(); ++i)
+    {
+      min = std::min(min, VDM.singular_value(i));
+      max = std::max(max, VDM.singular_value(i));
+    }
+
+  // std::cout << "eigenvalue (min/max), determinant " << min << " " << max << "
+  // " << determinant <<std::endl;
+
+  const double condition_number = max / min;
+
+  return condition_number;
+}
+
+template <int dim>
+void print_points(const unsigned int degree)
+{
+  const auto reference_cell = ReferenceCells::Pyramid;
+
+  std::cout << "Degree " << degree << std::endl;
+  const auto points_1 = get_blend_and_warp_support_points<dim>(degree);
+  std::cout << std::endl;
+  std::cout << "Blend and Warp support points" << std::endl;
+
+  bool all_inside = true;
+  for (unsigned int i = 0; i < points_1.size(); ++i)
+    {
+      if (reference_cell.contains_point(points_1[i], 1e-12))
+        {
+           std::cout << points_1[i] << std::endl;
+        }
+      else
+        {
+          all_inside = false;
+          std::cout << "Point " << points_1[i] << " is outside" << std::endl;
+        }
+    }
+  std::cout << std::endl;
+  if (all_inside)
+    std::cout << "all points are inside" << std::endl;
+  else
+    std::cout << "not all point are inside" << std::endl;
+  std::cout << std::endl;
+}
+
+std::vector<Point<3>> reference_points_p4 = {
+  Point<3>(-1, -1, 0),
+  Point<3>(-1, -0.6546536707079773, 0),
+  Point<3>(-1, -5.551115123125783e-17, 0),
+  Point<3>(-1, 0.6546536707079772, 0),
+  Point<3>(-1, 1, 0),
+  Point<3>(-0.6546536707079773, -1, 0),
+  Point<3>(-0.6546536707079771, -0.6546536707079773, 0),
+  Point<3>(-0.6546536707079771, 2.775557561562891e-17, 0),
+  Point<3>(-0.6546536707079771, 0.6546536707079772, 0),
+  Point<3>(-0.6546536707079772, 1, 0),
+  Point<3>(-5.551115123125783e-17, -1, 0),
+  Point<3>(-5.551115123125783e-17, -0.6546536707079771, 0),
+  Point<3>(-3.165870341226791e-17, -3.165870338194613e-17, 0),
+  Point<3>(-2.775557561562891e-17, 0.6546536707079773, 0),
+  Point<3>(-5.551115123125783e-17, 0.9999999999999999, 0),
+  Point<3>(0.6546536707079773, -1, 0),
+  Point<3>(0.6546536707079771, -0.6546536707079771, 0),
+  Point<3>(0.6546536707079774, 2.775557561562891e-17, 0),
+  Point<3>(0.6546536707079771, 0.6546536707079771, 0),
+  Point<3>(0.6546536707079772, 0.9999999999999999, 0),
+  Point<3>(1, -1, 0),
+  Point<3>(1, -0.6546536707079773, 0),
+  Point<3>(1, -5.551115123125783e-17, 0),
+  Point<3>(1, 0.6546536707079772, 0),
+  Point<3>(1, 1, 0),
+  Point<3>(-0.8273268353539887, -0.8273268353539888, 0.1726731646460113),
+  Point<3>(-0.7757917860454968, -0.3273753581364906, 0.2242082139545032),
+  Point<3>(-0.7757917860454968, 0.32737535813649, 0.2242082139545032),
+  Point<3>(-0.8273268353539887, 0.8273268353539885, 0.1726731646460113),
+  Point<3>(-0.3273753581364905, -0.775791786045497, 0.2242082139545032),
+  Point<3>(-0.2978566582945021, -0.2978566582945021, 0.2528675511466786),
+  Point<3>(-0.297856658294502, 0.297856658294502, 0.2528675511466785),
+  Point<3>(-0.3273753581364902, 0.7757917860454967, 0.2242082139545032),
+  Point<3>(0.3273753581364903, -0.7757917860454968, 0.2242082139545032),
+  Point<3>(0.297856658294502, -0.2978566582945021, 0.2528675511466785),
+  Point<3>(0.297856658294502, 0.297856658294502, 0.2528675511466786),
+  Point<3>(0.3273753581364902, 0.7757917860454968, 0.2242082139545032),
+  Point<3>(0.8273268353539889, -0.8273268353539887, 0.1726731646460113),
+  Point<3>(0.7757917860454968, -0.3273753581364905, 0.2242082139545032),
+  Point<3>(0.7757917860454966, 0.3273753581364902, 0.2242082139545032),
+  Point<3>(0.8273268353539885, 0.8273268353539887, 0.1726731646460113),
+  Point<3>(-0.5, -0.5, 0.4999999999999999),
+  Point<3>(-0.4484164279090065, 2.775557561562891e-17, 0.5515835720909934),
+  Point<3>(-0.4999999999999999, 0.5, 0.5),
+  Point<3>(2.775557561562891e-17, -0.4484164279090065, 0.5515835720909934),
+  Point<3>(-6.267885512499976e-18, 4.343337876593664e-17, 0.5773753581376365),
+  Point<3>(-8.326672684688674e-17, 0.4484164279090064, 0.5515835720909934),
+  Point<3>(0.5, -0.5, 0.5),
+  Point<3>(0.4484164279090064, 2.775557561562891e-17, 0.5515835720909936),
+  Point<3>(0.5000000000000001, 0.5, 0.4999999999999999),
+  Point<3>(-0.1726731646460114, -0.1726731646460114, 0.8273268353539885),
+  Point<3>(-0.1726731646460113, 0.1726731646460115, 0.8273268353539887),
+  Point<3>(0.1726731646460113, -0.1726731646460114, 0.8273268353539887),
+  Point<3>(0.1726731646460114, 0.1726731646460113, 0.8273268353539885),
+  Point<3>(-5.551115123125783e-17, -5.551115123125783e-17, 1)
+};
 
 
-// @sect3{The main function}
+template<int dim>
+void compare_points(const unsigned int degree)
+{
+  if(degree == 4)
+  {
+    const auto points_reference = reference_points_p4;
+    const auto points_blend_and_warp =
+        get_blend_and_warp_support_points<dim>(degree);
 
-// Finally, the main function. There isn't much to do here, only to call the
-// two subfunctions, which produce the two grids.
+    for(unsigned int i = 0; i < points_blend_and_warp.size(); ++i)
+    {
+      bool found_point = false;
+      for(unsigned int j = 0; j < points_reference.size(); ++j)
+        if(points_reference[j].distance(points_blend_and_warp[i]) < 1e-12)
+        {
+          found_point = true;
+        }
+
+      if(found_point == false)
+        std::cout << "Did not find point " << points_blend_and_warp[i] << std::endl;
+    }
+  }
+  else
+    DEAL_II_NOT_IMPLEMENTED();
+}
+
 int main()
 {
-  first_grid();
-  second_grid();
+  constexpr int dim = 3;
+
+  for (unsigned int degree = 3; degree < 5; ++degree)
+    {
+      //compare_points<3>(degree);
+      print_points<3>(degree);
+      const auto points_blend_and_warp =
+        get_blend_and_warp_support_points<dim>(degree);
+      const auto points_eqi = get_support_points_fe_pyramid_p<dim>(degree);
+
+      const double condition_number_blend_and_warp =
+        compute_VDM_condition_number(degree, points_blend_and_warp);
+      const double condition_number_equi =
+        compute_VDM_condition_number(degree, points_eqi);
+
+      std::cout << "Degree " << degree << " gives condition numbers of "
+                << condition_number_blend_and_warp
+                << " for blend and warp points and " << condition_number_equi
+                << " for equidistant points" << std::endl;
+    }
+
+  return 0;
 }
