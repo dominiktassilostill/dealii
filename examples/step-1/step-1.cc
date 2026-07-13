@@ -515,6 +515,117 @@ get_support_points_fe_pyramid_p(const unsigned int degree)
 
 template <int dim>
 std::vector<Point<dim>>
+equi_unit_support_points_fe_pyramid_p(const unsigned int degree)
+{
+  Assert(degree > 0, ExcNotImplemented());
+
+  if constexpr (dim == 3)
+    {
+      std::vector<Point<dim>> unit_points;
+
+      const auto reference_cell = ReferenceCells::Pyramid;
+
+
+      const FE_Q<1> fe_line(QIterated<1>(QTrapezoid<1>(), degree));
+      // const FE_SimplexP<2> fe_triangle(degree);
+      const auto triangle_support_points =
+        equidistant_support_points_fe_p<2>(degree);
+      const FE_Q<2> fe_quad(QIterated<1>(QTrapezoid<1>(), degree));
+
+      // start with the vertices
+      for (const unsigned int v : reference_cell.vertex_indices())
+        unit_points.push_back(reference_cell.vertex(v));
+
+      // lines
+      for (const unsigned int l : reference_cell.line_indices())
+        {
+          const Point<dim> v0 =
+            reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 0));
+          const Point<dim> v1 =
+            reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 1));
+
+          for (unsigned int i = 0; i < degree - 1; ++i)
+            {
+              // shift the point on the line such that the support points on
+              // the edges are compatible
+              const double distance = fe_line.unit_support_point(
+                fe_line.get_first_line_index() + i)[0];
+              unit_points.push_back(v0 + distance * (v1 - v0));
+            }
+        }
+
+      // faces
+      for (const unsigned int f : reference_cell.face_indices())
+        {
+          const auto face_reference_cell =
+            reference_cell.face_reference_cell(f);
+
+          const bool is_triangular_face =
+            reference_cell.face_reference_cell(f).is_simplex();
+
+          const unsigned int n_dofs_per_quad =
+            is_triangular_face ? (degree - 2) * (degree - 1) / 2 :
+                                 fe_quad.n_dofs_per_quad();
+
+          const std::vector<Point<2>> face_support_points =
+            is_triangular_face ? triangle_support_points :
+                                 fe_quad.get_unit_support_points();
+
+          const unsigned int first_quad_index =
+            is_triangular_face ? 3 + 3 * (degree - 1) :
+                                 fe_quad.get_first_quad_index();
+
+          // go over all DoFs on the face
+          for (unsigned int i = 0; i < n_dofs_per_quad; ++i)
+            {
+              Point<dim> p(0.0, 0.0, 0.0);
+              // linear interpolate the point form the vertices of the face
+              // looking at the triangle it is the same as using barycentric
+              // coordinates as the linear shape functions are: 1-x-y, x, y
+              for (unsigned int v = 0; v < face_reference_cell.n_vertices();
+                   ++v)
+                {
+                  const auto vertex =
+                    reference_cell.vertex(reference_cell.face_to_cell_vertices(
+                      f, v, numbers::default_geometric_orientation));
+
+                  p += face_reference_cell.d_linear_shape_function(
+                         face_support_points[first_quad_index + i], v) *
+                       vertex;
+                }
+              unit_points.push_back(p);
+            }
+        }
+
+      // interior, this is just the tensor product of the interior nodes of
+      // the quad with the line but scaled
+      for (unsigned int i = 0; i < degree - 1; ++i)
+        {
+          FE_Q<2> fe(QIterated<1>(QTrapezoid<1>(), degree - i - 1));
+          for (unsigned int j = 0; j < fe.n_dofs_per_quad(); ++j)
+            {
+              const double z = fe_line.unit_support_point(
+                fe_line.get_first_line_index() + i)[0];
+
+              const Point<2> x_y =
+                fe.unit_support_point(fe.get_first_quad_index() + j);
+
+              unit_points.push_back(Point<dim>((1 - z) * (2.0 * x_y[0] - 1.0),
+                                               (1 - z) * (2.0 * x_y[1] - 1.0),
+                                               z));
+            }
+        }
+      return unit_points;
+    }
+  else
+    DEAL_II_ASSERT_UNREACHABLE();
+  return {};
+}
+
+
+
+template <int dim>
+std::vector<Point<dim>>
 get_blend_and_warp_support_points(const unsigned int degree)
 {
   if constexpr (dim == 3)
@@ -534,7 +645,7 @@ get_blend_and_warp_support_points(const unsigned int degree)
 
       // get the equidistant support points
       const auto equidistant_points =
-        get_support_points_fe_pyramid_p<dim>(degree);
+        equi_unit_support_points_fe_pyramid_p<dim>(degree);
 
       // helper to evaluate the basis functions for the boundary elements
       // the basis is defined with equidistant support points
@@ -582,15 +693,9 @@ get_blend_and_warp_support_points(const unsigned int degree)
             const double l0 = reference_cell.d_linear_shape_function(p, v0);
             const double l1 = reference_cell.d_linear_shape_function(p, v1);
 
-            // shift to be in the interval [0,1]
-            // const double x = 0.5 * (l0 - l1) + 0.5;
-
             phi = l0 * l1 *
                   dealii::Polynomials::jacobi_polynomial_value<double>(
                     index_on_line, 1, 1, l0 - l1, false);
-            // fe_equi.shape_value(fe_equi.get_first_line_index() +
-            //                       index_on_line,
-            //                     Point<1>(x));
           }
         // on the quad face
         else if (i < reference_cell.n_vertices() +
@@ -607,25 +712,16 @@ get_blend_and_warp_support_points(const unsigned int degree)
             const double l2 = reference_cell.d_linear_shape_function(p, 2);
             const double l3 = reference_cell.d_linear_shape_function(p, 3);
 
-            // from the index on the tri get the degrees of the jacobi
+            // from the index on the quad get the degrees of the jacobi
             // polynomials
-            unsigned int jacobi_poly_degree_i, jacobi_poly_degree_j;
-            for (unsigned int a = 0, counter = 0; a < degree - 1; ++a)
-              for (unsigned int b = 0; b < degree - 1; ++b, ++counter)
-                if (index_on_quad == counter)
-                  {
-                    jacobi_poly_degree_i = a;
-                    jacobi_poly_degree_j = b;
-                  }
+            const unsigned int degree_x = index_on_quad / n_dofs_per_line;
+            const unsigned int degree_y = index_on_quad % n_dofs_per_line;
 
             phi = l0 * l1 * l2 * l3 *
                   dealii::Polynomials::jacobi_polynomial_value<double>(
-                    jacobi_poly_degree_i, 1, 1, p[0], false) *
+                    degree_x, 1, 1, p[0], false) *
                   dealii::Polynomials::jacobi_polynomial_value<double>(
-                    jacobi_poly_degree_j, 1, 1, p[1], false);
-            // fe_quad_equi.shape_value(fe_quad_equi.get_first_quad_index() +
-            //                            index_on_quad,
-            //                          p2d);
+                    degree_y, 1, 1, p[1], false);
           }
         // on a triangular face
         else if (i < reference_cell.n_vertices() +
@@ -668,60 +764,27 @@ get_blend_and_warp_support_points(const unsigned int degree)
                     jacobi_poly_degree_j = b;
                   }
 
-            Assert(jacobi_poly_degree_i != numbers::invalid_unsigned_int, ExcInternalError());
-            Assert(jacobi_poly_degree_j != numbers::invalid_unsigned_int, ExcInternalError());
+            Assert(jacobi_poly_degree_i != numbers::invalid_unsigned_int,
+                   ExcInternalError());
+            Assert(jacobi_poly_degree_j != numbers::invalid_unsigned_int,
+                   ExcInternalError());
 
-            {
-              
-              const double r = 4./3. * l1 - 2./3. * l0 - 2./3. * l2 - 1./3.;
-              const double s = - 2./3. * l1 - 2./3.0 * l0 + 1./3.;
-             
-              
-              const double r_a = std::abs(1.0 - s) < 1e-14 ? -1.0 : 2.0 * (1.0 + r) / (1.0 - s) - 1.0;
-              const double s_b = s;
+            // transforming from l0, l1, l2 to the local coordinates x,y on
+            // the triangle the problem is l0 + l1 + l2 = 1 does not hold
+            // here, as we had to sum up all pyramid shape functions to reach
+            // unity so this normalizes the values
+            const double x = 1. / 3. * (2.0 * l1 - l0 - l2 + 1.0);
+            const double y = 1. / 3. * (2.0 * l2 - l1 - l0 + 1.0);
 
-              const double h1 = dealii::Polynomials::jacobi_polynomial_value<double>(
-                    jacobi_poly_degree_i, 0, 0, r_a, false);
-              const double h2 = dealii::Polynomials::jacobi_polynomial_value<double>(
-                    jacobi_poly_degree_j, 2*jacobi_poly_degree_i+1, 0, s_b, false);
-              const double exponentional_factor = jacobi_poly_degree_i == 0 ? 1.0 : std::pow(1.0 - s_b, jacobi_poly_degree_i);
-              const double P = 2.0 * std::sqrt(2.0) * h1 * h2 * exponentional_factor;
+            const double x_contribution =
+              Polynomials::jacobi_polynomial_homogenized_value<double>(
+                jacobi_poly_degree_i, 0, 0, x, 1 - y);
 
-              phi = l0 * l1 * l2 * P;
+            const double y_contribution =
+              dealii::Polynomials::jacobi_polynomial_value<double>(
+                jacobi_poly_degree_j, 2 * jacobi_poly_degree_i + 1, 0, y, true);
 
-              const double x = 0.5 * r + 0.5; //l1
-              const double y = 0.5 * s + 0.5; //l2;
-              const double factor =
-                std::abs(1.0 - y) < 1e-14 ? 1.0 : 1.0 / (1.0 - y);
-
-              const double x_contribution =
-                jacobi_poly_degree_i == 0 ?
-                  1.0 :
-                  dealii::Polynomials::jacobi_polynomial_value<double>(
-                    jacobi_poly_degree_i, 0, 0, 2.0 * x * factor - 1.0, false) *
-                    std::pow(1.0 - y, i);
-
-              const double y_contribution =
-                dealii::Polynomials::jacobi_polynomial_value<double>(
-                  jacobi_poly_degree_j,
-                  2 * jacobi_poly_degree_i + 1,
-                  0,
-                  y,
-                  true);
-
-              std::cout << "x contrib: " << h1 * exponentional_factor << " compared to " << x_contribution << std::endl;
-              std::cout << "y contrib: " << h2 << " compared to " << y_contribution << std::endl;
-              phi = l0 * l1 * l2 * x_contribution * y_contribution;
-            }
-            // phi = l0 * l1 * l2 *
-            // Polynomial::jacobi_polynomial_value<double>(jacobi_poly_degree_i,
-            // 0, 0, l2, true) *
-            // Polynomial::jacobi_polynomial_value<double>(jacobi_poly_degree_j,
-            // 2 * jacobi_poly_degree_i + 1, 0, l1/(1.0-l2), true) *
-            // std::pow((1.0-l2), jacobi_poly_degree_i);
-            //  poly_triangle_equi.compute_value(3 + 3 * n_dofs_per_line +
-            //                                    index_on_tri,
-            //                                 Point<2>(l1, l2));
+            phi = l0 * l1 * l2 * x_contribution * y_contribution;
           }
         else
           DEAL_II_ASSERT_UNREACHABLE();
@@ -902,7 +965,7 @@ compute_VDM_condition_number(const unsigned int             degree,
     }
 
   // std::cout << "eigenvalue (min/max), determinant " << min << " " << max << "
-  // " << determinant <<std::endl;
+  std::cout << "determinant " << determinant << std::endl;
 
   const double condition_number = max / min;
 
@@ -924,7 +987,7 @@ void print_points(const unsigned int degree)
     {
       if (reference_cell.contains_point(points_1[i], 1e-12))
         {
-           std::cout << points_1[i] << std::endl;
+          // std::cout << points_1[i] << std::endl;
         }
       else
         {
@@ -995,47 +1058,95 @@ std::vector<Point<3>> reference_points_p4 = {
   Point<3>(-0.1726731646460113, 0.1726731646460115, 0.8273268353539887),
   Point<3>(0.1726731646460113, -0.1726731646460114, 0.8273268353539887),
   Point<3>(0.1726731646460114, 0.1726731646460113, 0.8273268353539885),
-  Point<3>(-5.551115123125783e-17, -5.551115123125783e-17, 1)
-};
+  Point<3>(-5.551115123125783e-17, -5.551115123125783e-17, 1)};
 
 
-template<int dim>
+template <int dim>
 void compare_points(const unsigned int degree)
 {
-  if(degree == 4)
-  {
-    const auto points_reference = reference_points_p4;
-    const auto points_blend_and_warp =
+  if (degree == 4)
+    {
+      double       min_distance       = 1000000.0;
+      unsigned int min_distance_index = 0;
+
+      const auto points_reference = reference_points_p4;
+      const auto points_blend_and_warp =
         get_blend_and_warp_support_points<dim>(degree);
 
-    for(unsigned int i = 0; i < points_blend_and_warp.size(); ++i)
-    {
-      bool found_point = false;
-      for(unsigned int j = 0; j < points_reference.size(); ++j)
-        if(points_reference[j].distance(points_blend_and_warp[i]) < 1e-12)
+      for (unsigned int i = 0; i < points_blend_and_warp.size(); ++i)
         {
-          found_point = true;
+          bool found_point = false;
+          for (unsigned int j = 0; j < points_reference.size(); ++j)
+            {
+              const double distance =
+                points_reference[j].distance(points_blend_and_warp[i]);
+              if (distance < 1e-6)
+                {
+                  found_point = true;
+                }
+              else
+                {
+                  if (distance < min_distance)
+                    {
+                      min_distance       = distance;
+                      min_distance_index = j;
+                    }
+                }
+            }
+          if (found_point == false)
+            {
+              std::cout << "Did not find point " << i << " "
+                        << points_blend_and_warp[i] << std::endl;
+              std::cout << "nearest points was "
+                        << points_reference[min_distance_index]
+                        << " at distance " << min_distance << std::endl;
+            }
         }
-
-      if(found_point == false)
-        std::cout << "Did not find point " << points_blend_and_warp[i] << std::endl;
     }
-  }
   else
-    DEAL_II_NOT_IMPLEMENTED();
+    std::cout << "no data at degree " << degree << std::endl;
 }
 
 int main()
 {
   constexpr int dim = 3;
 
-  for (unsigned int degree = 3; degree < 5; ++degree)
+  if (false)
+    for (unsigned int degree = 3; degree < 5; ++degree)
+      {
+        std::cout << "Degree " << degree << " with " << 3 * degree * degree + 2
+                  << " boundary nodes" << std::endl;
+        const auto p = equi_unit_support_points_fe_pyramid_p<3>(degree);
+        const auto points_eqi = get_support_points_fe_pyramid_p<dim>(degree);
+        std::cout << "Size " << p.size() << " " << points_eqi.size()
+                  << std::endl;
+
+        for (unsigned int i = 0; i < points_eqi.size(); ++i)
+          if (p[i].distance(points_eqi[i]) > 1e-12)
+            {
+              std::cout << "Point new " << p[i] << std::endl;
+              std::cout << "Point old " << points_eqi[i] << std::endl;
+              std::cout << "Diff " << p[i] - points_eqi[i] << " at index " << i
+                        << std::endl;
+            }
+        std::cout << std::endl;
+      }
+  // return 1;
+
+  for (unsigned int degree = 4; degree < 9; ++degree)
     {
-      //compare_points<3>(degree);
-      print_points<3>(degree);
+      compare_points<3>(degree);
+      // print_points<3>(degree);
+
       const auto points_blend_and_warp =
         get_blend_and_warp_support_points<dim>(degree);
-      const auto points_eqi = get_support_points_fe_pyramid_p<dim>(degree);
+      const auto points_eqi =
+        equi_unit_support_points_fe_pyramid_p<dim>(degree);
+
+      // if(true)
+      // for(unsigned int i = 0; i < points_blend_and_warp.size(); ++i)
+      //  std::cout <<  points_eqi[i] << std::endl; //points_blend_and_warp[i] -
+      // return 0;
 
       const double condition_number_blend_and_warp =
         compute_VDM_condition_number(degree, points_blend_and_warp);
