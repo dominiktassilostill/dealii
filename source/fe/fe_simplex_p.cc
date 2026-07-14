@@ -168,14 +168,14 @@ namespace
   }
 
   /**
-   * Set up a vector that contains the electrostatic support points
+   * Set up a vector that contains the blend and warp support points
    * for FE_SimplexPoly and sufficiently similar elements.
    * The points are constructed by the blend and warp alogrithm described
    * by Hesthaven and Warburton.
    */
   template <int dim>
   std::vector<Point<dim>>
-  electrostatic_support_points_fe_p(const unsigned int degree)
+  blend_and_warp_support_points_fe_p(const unsigned int degree)
   {
     Assert(degree > 0, ExcNotImplemented());
 
@@ -187,13 +187,36 @@ namespace
 
     constexpr double tol = 1e-12;
 
+
+    // optimized alpha values for tetrahedra
+    // we always want to use the tetrahedra values, else we get different
+    // support points on the face of the tetrahedron and an triangle
+    const std::array<double, 15> alpha_opt = {{0.0000,
+                                               0.0000,
+                                               0.0000,
+                                               0.1002,
+                                               1.1332,
+                                               1.5608,
+                                               1.3413,
+                                               1.2577,
+                                               1.1603,
+                                               1.10153,
+                                               0.6080,
+                                               0.4523,
+                                               0.8856,
+                                               0.8717,
+                                               0.9655}};
+
+    const double alpha =
+      degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 1.0;
+
     // get equidistant nodes
     const std::vector<Point<dim>> equidistant_nodes =
       equidistant_support_points_fe_p<dim>(degree);
 
-    // reserve space for electrostatic nodes
-    std::vector<Point<dim>> electrostatic_nodes;
-    electrostatic_nodes.reserve(equidistant_nodes.size());
+    // reserve space for blend and warp nodes
+    std::vector<Point<dim>> nodes;
+    nodes.reserve(equidistant_nodes.size());
 
     // equidistant feq
     const FE_Q<1> feq_equi(QIterated<1>(QTrapezoid<1>(), degree));
@@ -244,24 +267,24 @@ namespace
     if constexpr (dim == 2)
       {
         // optimized alpha values
-        const std::array<double, 15> alpha_opt = {{0.0000,
-                                                   0.0000,
-                                                   1.4152,
-                                                   0.1001,
-                                                   0.2751,
-                                                   0.9800,
-                                                   1.0999,
-                                                   1.2832,
-                                                   1.3648,
-                                                   1.4773,
-                                                   1.4959,
-                                                   1.5743,
-                                                   1.5770,
-                                                   1.6223,
-                                                   1.6258}};
+        // const std::array<double, 15> alpha_opt = {{0.0000,
+        //                                            0.0000,
+        //                                            1.4152,
+        //                                            0.1001,
+        //                                            0.2751,
+        //                                            0.9800,
+        //                                            1.0999,
+        //                                            1.2832,
+        //                                            1.3648,
+        //                                            1.4773,
+        //                                            1.4959,
+        //                                            1.5743,
+        //                                            1.5770,
+        //                                            1.6223,
+        //                                            1.6258}};
 
-        const double alpha =
-          degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 5.0 / 3.0;
+        // const double alpha =
+        //   degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 5.0 / 3.0;
 
         // go over all equidistant points and adjust
         for (const auto &p : equidistant_nodes)
@@ -277,32 +300,12 @@ namespace
             const double x_electrostatic = x + warp[0] - warp[1];
             const double y_electrostatic = y + warp[1] - warp[2];
 
-            electrostatic_nodes.emplace_back(x_electrostatic, y_electrostatic);
+            nodes.emplace_back(x_electrostatic, y_electrostatic);
           }
       }
     else if constexpr (dim == 3)
       {
         const auto reference_cell = ReferenceCells::Tetrahedron;
-
-        // optimized alpha values for tetrahedra
-        const std::array<double, 15> alpha_opt = {{0.0000,
-                                                   0.0000,
-                                                   0.0000,
-                                                   0.1002,
-                                                   1.1332,
-                                                   1.5608,
-                                                   1.3413,
-                                                   1.2577,
-                                                   1.1603,
-                                                   1.10153,
-                                                   0.6080,
-                                                   0.4523,
-                                                   0.8856,
-                                                   0.8717,
-                                                   0.9655}};
-
-        const double alpha =
-          degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 1.0;
 
         // go over all equidistant points and adjust
         for (const auto &p : equidistant_nodes)
@@ -390,13 +393,13 @@ namespace
                   dl[idx[3]] += blend * (warp[1] - warp[2]);
                 }
 
-            electrostatic_nodes.emplace_back(x + dl[1], y + dl[2], z + dl[3]);
+            nodes.emplace_back(x + dl[1], y + dl[2], z + dl[3]);
           }
       }
     else
       DEAL_II_ASSERT_UNREACHABLE();
 
-    return electrostatic_nodes;
+    return nodes;
   }
 
   template <int dim>
@@ -405,7 +408,7 @@ namespace
   {
     if (degree < 4)
       return equidistant_support_points_fe_p<dim>(degree);
-    return electrostatic_support_points_fe_p<dim>(degree);
+    return blend_and_warp_support_points_fe_p<dim>(degree);
   }
 
   template <>
