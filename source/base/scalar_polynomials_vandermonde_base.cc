@@ -52,6 +52,8 @@ ScalarPolynomialsVandermondeBase<dim>::reinit(
     for (unsigned j = 0; j < n; ++j)
       VDM[i][j] = evaluate_orthogonal_basis_function(i, support_points[j]);
 
+  vandermonde_matrix = VDM;
+
   // get the inverse matrix
   Householder<double> householder(VDM);
   Vector<double>      e(n);

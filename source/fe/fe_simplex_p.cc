@@ -74,6 +74,7 @@ namespace
   template <int dim>
   std::vector<Point<dim>>
   equidistant_support_points_fe_p(const unsigned int degree)
+  equidistant_support_points_fe_p(const unsigned int degree)
   {
     Assert(dim != 0, ExcInternalError());
     std::vector<Point<dim>> unit_points;
