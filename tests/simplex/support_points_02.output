@@ -1,0 +1,163 @@
+
+DEAL:2D::Edge 0.172673 0.00000  is at a valid position
+DEAL:2D::Edge 0.500000 0.00000  is at a valid position
+DEAL:2D::Edge 0.827327 0.00000  is at a valid position
+DEAL:2D::Edge 0.827327 0.172673  is at a valid position
+DEAL:2D::Edge 0.500000 0.500000  is at a valid position
+DEAL:2D::Edge 0.172673 0.827327  is at a valid position
+DEAL:2D::Edge 0.00000 0.827327  is at a valid position
+DEAL:2D::Edge 0.00000 0.500000  is at a valid position
+DEAL:2D::Edge 0.00000 0.172673  is at a valid position
+DEAL:2D::Edge 0.117472 0.00000  is at a valid position
+DEAL:2D::Edge 0.357384 0.00000  is at a valid position
+DEAL:2D::Edge 0.642616 0.00000  is at a valid position
+DEAL:2D::Edge 0.882528 0.00000  is at a valid position
+DEAL:2D::Edge 0.882528 0.117472  is at a valid position
+DEAL:2D::Edge 0.642616 0.357384  is at a valid position
+DEAL:2D::Edge 0.357384 0.642616  is at a valid position
+DEAL:2D::Edge 0.117472 0.882528  is at a valid position
+DEAL:2D::Edge 0.00000 0.882528  is at a valid position
+DEAL:2D::Edge 0.00000 0.642616  is at a valid position
+DEAL:2D::Edge 0.00000 0.357384  is at a valid position
+DEAL:2D::Edge 0.00000 0.117472  is at a valid position
+DEAL:2D::Edge 0.0848881 0.00000  is at a valid position
+DEAL:2D::Edge 0.265576 0.00000  is at a valid position
+DEAL:2D::Edge 0.500000 0.00000  is at a valid position
+DEAL:2D::Edge 0.734424 0.00000  is at a valid position
+DEAL:2D::Edge 0.915112 0.00000  is at a valid position
+DEAL:2D::Edge 0.915112 0.0848881  is at a valid position
+DEAL:2D::Edge 0.734424 0.265576  is at a valid position
+DEAL:2D::Edge 0.500000 0.500000  is at a valid position
+DEAL:2D::Edge 0.265576 0.734424  is at a valid position
+DEAL:2D::Edge 0.0848881 0.915112  is at a valid position
+DEAL:2D::Edge 0.00000 0.915112  is at a valid position
+DEAL:2D::Edge 0.00000 0.734424  is at a valid position
+DEAL:2D::Edge 0.00000 0.500000  is at a valid position
+DEAL:2D::Edge 0.00000 0.265576  is at a valid position
+DEAL:2D::Edge 0.00000 0.0848881  is at a valid position
+DEAL:2D::Edge 0.0641299 0.00000  is at a valid position
+DEAL:2D::Edge 0.204150 0.00000  is at a valid position
+DEAL:2D::Edge 0.395350 0.00000  is at a valid position
+DEAL:2D::Edge 0.604650 0.00000  is at a valid position
+DEAL:2D::Edge 0.795850 0.00000  is at a valid position
+DEAL:2D::Edge 0.935870 0.00000  is at a valid position
+DEAL:2D::Edge 0.935870 0.0641299  is at a valid position
+DEAL:2D::Edge 0.795850 0.204150  is at a valid position
+DEAL:2D::Edge 0.604650 0.395350  is at a valid position
+DEAL:2D::Edge 0.395350 0.604650  is at a valid position
+DEAL:2D::Edge 0.204150 0.795850  is at a valid position
+DEAL:2D::Edge 0.0641299 0.935870  is at a valid position
+DEAL:2D::Edge 0.00000 0.935870  is at a valid position
+DEAL:2D::Edge 0.00000 0.795850  is at a valid position
+DEAL:2D::Edge 0.00000 0.604650  is at a valid position
+DEAL:2D::Edge 0.00000 0.395350  is at a valid position
+DEAL:2D::Edge 0.00000 0.204150  is at a valid position
+DEAL:2D::Edge 0.00000 0.0641299  is at a valid position
+DEAL:3D::Edge 0.172673 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.500000 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.827327 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.827327 0.172673 0.00000  is at a valid position
+DEAL:3D::Edge 0.500000 0.500000 0.00000  is at a valid position
+DEAL:3D::Edge 0.172673 0.827327 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.827327 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.500000 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.172673 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.172673  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.500000  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.827327  is at a valid position
+DEAL:3D::Edge 0.827327 0.00000 0.172673  is at a valid position
+DEAL:3D::Edge 0.500000 0.00000 0.500000  is at a valid position
+DEAL:3D::Edge 0.172673 0.00000 0.827327  is at a valid position
+DEAL:3D::Edge 0.00000 0.827327 0.172673  is at a valid position
+DEAL:3D::Edge 0.00000 0.500000 0.500000  is at a valid position
+DEAL:3D::Edge 0.00000 0.172673 0.827327  is at a valid position
+DEAL:3D::Edge 0.117472 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.357384 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.642616 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.882528 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.882528 0.117472 0.00000  is at a valid position
+DEAL:3D::Edge 0.642616 0.357384 0.00000  is at a valid position
+DEAL:3D::Edge 0.357384 0.642616 0.00000  is at a valid position
+DEAL:3D::Edge 0.117472 0.882528 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.882528 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.642616 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.357384 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.117472 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.117472  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.357384  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.642616  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.882528  is at a valid position
+DEAL:3D::Edge 0.882528 0.00000 0.117472  is at a valid position
+DEAL:3D::Edge 0.642616 0.00000 0.357384  is at a valid position
+DEAL:3D::Edge 0.357384 0.00000 0.642616  is at a valid position
+DEAL:3D::Edge 0.117472 0.00000 0.882528  is at a valid position
+DEAL:3D::Edge 0.00000 0.882528 0.117472  is at a valid position
+DEAL:3D::Edge 0.00000 0.642616 0.357384  is at a valid position
+DEAL:3D::Edge 0.00000 0.357384 0.642616  is at a valid position
+DEAL:3D::Edge 0.00000 0.117472 0.882528  is at a valid position
+DEAL:3D::Edge 0.0848881 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.265576 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.500000 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.734424 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.915112 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.915112 0.0848881 0.00000  is at a valid position
+DEAL:3D::Edge 0.734424 0.265576 0.00000  is at a valid position
+DEAL:3D::Edge 0.500000 0.500000 0.00000  is at a valid position
+DEAL:3D::Edge 0.265576 0.734424 0.00000  is at a valid position
+DEAL:3D::Edge 0.0848881 0.915112 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.915112 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.734424 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.500000 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.265576 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.0848881 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.0848881  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.265576  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.500000  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.734424  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.915112  is at a valid position
+DEAL:3D::Edge 0.915112 0.00000 0.0848881  is at a valid position
+DEAL:3D::Edge 0.734424 0.00000 0.265576  is at a valid position
+DEAL:3D::Edge 0.500000 0.00000 0.500000  is at a valid position
+DEAL:3D::Edge 0.265576 0.00000 0.734424  is at a valid position
+DEAL:3D::Edge 0.0848881 0.00000 0.915112  is at a valid position
+DEAL:3D::Edge 0.00000 0.915112 0.0848881  is at a valid position
+DEAL:3D::Edge 0.00000 0.734424 0.265576  is at a valid position
+DEAL:3D::Edge 0.00000 0.500000 0.500000  is at a valid position
+DEAL:3D::Edge 0.00000 0.265576 0.734424  is at a valid position
+DEAL:3D::Edge 0.00000 0.0848881 0.915112  is at a valid position
+DEAL:3D::Edge 0.0641299 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.204150 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.395350 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.604650 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.795850 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.935870 0.00000 0.00000  is at a valid position
+DEAL:3D::Edge 0.935870 0.0641299 0.00000  is at a valid position
+DEAL:3D::Edge 0.795850 0.204150 0.00000  is at a valid position
+DEAL:3D::Edge 0.604650 0.395350 0.00000  is at a valid position
+DEAL:3D::Edge 0.395350 0.604650 0.00000  is at a valid position
+DEAL:3D::Edge 0.204150 0.795850 0.00000  is at a valid position
+DEAL:3D::Edge 0.0641299 0.935870 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.935870 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.795850 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.604650 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.395350 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.204150 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.0641299 0.00000  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.0641299  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.204150  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.395350  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.604650  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.795850  is at a valid position
+DEAL:3D::Edge 0.00000 0.00000 0.935870  is at a valid position
+DEAL:3D::Edge 0.935870 0.00000 0.0641299  is at a valid position
+DEAL:3D::Edge 0.795850 0.00000 0.204150  is at a valid position
+DEAL:3D::Edge 0.604650 0.00000 0.395350  is at a valid position
+DEAL:3D::Edge 0.395350 0.00000 0.604650  is at a valid position
+DEAL:3D::Edge 0.204150 0.00000 0.795850  is at a valid position
+DEAL:3D::Edge 0.0641299 0.00000 0.935870  is at a valid position
+DEAL:3D::Edge 0.00000 0.935870 0.0641299  is at a valid position
+DEAL:3D::Edge 0.00000 0.795850 0.204150  is at a valid position
+DEAL:3D::Edge 0.00000 0.604650 0.395350  is at a valid position
+DEAL:3D::Edge 0.00000 0.395350 0.604650  is at a valid position
+DEAL:3D::Edge 0.00000 0.204150 0.795850  is at a valid position
+DEAL:3D::Edge 0.00000 0.0641299 0.935870  is at a valid position

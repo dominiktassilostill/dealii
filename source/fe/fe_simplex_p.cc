@@ -16,6 +16,7 @@
 #include <deal.II/base/polynomials_barycentric.h>
 #include <deal.II/base/polynomials_simplex.h>
 #include <deal.II/base/qprojector.h>
+#include <deal.II/base/quadrature_lib.h>
 #include <deal.II/base/types.h>
 
 #include <deal.II/fe/fe_dgq.h>
@@ -72,7 +73,7 @@ namespace
    */
   template <int dim>
   std::vector<Point<dim>>
-  unit_support_points_fe_p(const unsigned int degree)
+  equidistant_support_points_fe_p(const unsigned int degree)
   {
     Assert(dim != 0, ExcInternalError());
     std::vector<Point<dim>> unit_points;
@@ -165,6 +166,250 @@ namespace
       }
 
     return unit_points;
+  }
+
+  /**
+   * Set up a vector that contains the blend and warp support points
+   * for FE_SimplexPoly and sufficiently similar elements.
+   * The points are constructed by the blend and warp alogrithm described
+   * by Hesthaven and Warburton.
+   */
+  template <int dim>
+  std::vector<Point<dim>>
+  blend_and_warp_support_points_fe_p(const unsigned int degree)
+  {
+    Assert(degree > 0, ExcNotImplemented());
+
+    if constexpr (dim == 1)
+      {
+        const FE_Q<dim> feq(degree);
+        return feq.get_unit_support_points();
+      }
+
+    constexpr double tol = 1e-12;
+
+
+    // optimized alpha values for tetrahedra
+    // we always want to use the tetrahedra values, else we get different
+    // support points on the face of the tetrahedron and an triangle
+    const std::array<double, 15> alpha_opt = {{0.0000,
+                                               0.0000,
+                                               0.0000,
+                                               0.1002,
+                                               1.1332,
+                                               1.5608,
+                                               1.3413,
+                                               1.2577,
+                                               1.1603,
+                                               1.10153,
+                                               0.6080,
+                                               0.4523,
+                                               0.8856,
+                                               0.8717,
+                                               0.9655}};
+
+    const double alpha =
+      degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 1.0;
+
+    // get equidistant nodes
+    const std::vector<Point<dim>> equidistant_nodes =
+      equidistant_support_points_fe_p<dim>(degree);
+
+    // reserve space for blend and warp nodes
+    std::vector<Point<dim>> nodes;
+    nodes.reserve(equidistant_nodes.size());
+
+    // equidistant feq
+    const FE_Q<1> feq_equi(QIterated<1>(QTrapezoid<1>(), degree));
+    // feq Gauss-Lobatto
+    const FE_Q<1> feq_gl(degree);
+
+    // compute the shift in support points
+    std::vector<double> support_points_shift(feq_equi.n_dofs_per_cell());
+    for (unsigned int i = 0; i < feq_equi.n_dofs_per_cell(); ++i)
+      support_points_shift[i] =
+        feq_gl.unit_support_point(i)[0] - feq_equi.unit_support_point(i)[0];
+
+    // warp function
+    // interpolates between GL nodes and equidistant nodes
+    auto warpfactor = [&support_points_shift, &feq_equi, tol](const double x) {
+      // if the node is one of the vertices, i.e. it is at +-1
+      // then there is no shift
+      if (std::abs(1.0 - std::abs(x)) < tol)
+        return 0.0;
+
+      const double scaling = 2.0 / (1.0 - x * x);
+
+      // rescale from [-1,1] to interval [0,1]
+      const Point<1> p(0.5 * x + 0.5);
+
+      double warp = 0.0;
+      for (unsigned int i = 0; i < feq_equi.n_dofs_per_cell(); ++i)
+        warp += support_points_shift[i] * feq_equi.shape_value(i, p);
+
+      return scaling * warp;
+    };
+
+    // compute the warp in one face, use barycentric coordinates l0, l1, l2
+    auto face_warp = [&warpfactor](const double l0,
+                                   const double l1,
+                                   const double l2,
+                                   const double alpha) {
+      const double warp0 =
+        2.0 * l0 * l1 * warpfactor(l1 - l0) * (1.0 + alpha * alpha * l2 * l2);
+      const double warp1 =
+        2.0 * l1 * l2 * warpfactor(l2 - l1) * (1.0 + alpha * alpha * l0 * l0);
+      const double warp2 =
+        2.0 * l2 * l0 * warpfactor(l0 - l2) * (1.0 + alpha * alpha * l1 * l1);
+
+      return std::array<double, 3>{{warp0, warp1, warp2}};
+    };
+
+    if constexpr (dim == 2)
+      {
+        // optimized alpha values
+        // const std::array<double, 15> alpha_opt = {{0.0000,
+        //                                            0.0000,
+        //                                            1.4152,
+        //                                            0.1001,
+        //                                            0.2751,
+        //                                            0.9800,
+        //                                            1.0999,
+        //                                            1.2832,
+        //                                            1.3648,
+        //                                            1.4773,
+        //                                            1.4959,
+        //                                            1.5743,
+        //                                            1.5770,
+        //                                            1.6223,
+        //                                            1.6258}};
+
+        // const double alpha =
+        //   degree <= alpha_opt.size() ? alpha_opt[degree - 1] : 5.0 / 3.0;
+
+        // go over all equidistant points and adjust
+        for (const auto &p : equidistant_nodes)
+          {
+            const double x = p[0];
+            const double y = p[1];
+            const double l = 1.0 - x - y;
+
+            // get combined blend and warp
+            const std::array<double, 3> warp = face_warp(l, x, y, alpha);
+
+            // accumulate deformation
+            const double x_electrostatic = x + warp[0] - warp[1];
+            const double y_electrostatic = y + warp[1] - warp[2];
+
+            nodes.emplace_back(x_electrostatic, y_electrostatic);
+          }
+      }
+    else if constexpr (dim == 3)
+      {
+        const auto reference_cell = ReferenceCells::Tetrahedron;
+
+        // go over all equidistant points and adjust
+        for (const auto &p : equidistant_nodes)
+          {
+            const double x = p[0];
+            const double y = p[1];
+            const double z = p[2];
+
+            // write in barycentric coordinates
+            const std::array<double, 4> l = {{1.0 - x - y - z, x, y, z}};
+
+            // reserve space for the shift
+            std::array<double, 4> dl = {{0.0, 0.0, 0.0, 0.0}};
+
+            // check if we are on a vertex, edge, face or volume
+            unsigned int n_pos = 0;
+            for (const auto barycentric_coordinate : l)
+              if (std::abs(barycentric_coordinate) > tol)
+                ++n_pos;
+
+            // on the vertex
+            if (n_pos < 2)
+              {
+                // nothing to do
+              }
+            // on the edge apply the warp exactly once
+            else if (n_pos == 2)
+              {
+                // get the two positive coordinates
+                std::array<unsigned int, 2> idx;
+
+                unsigned int j = 0;
+                for (unsigned int i = 0; i < l.size(); ++i)
+                  if (std::abs(l[i]) > tol)
+                    idx[j++] = i;
+
+                const double l0 = l[idx[0]];
+                const double l1 = l[idx[1]];
+
+                // get the warp
+                const std::array<double, 3> warp =
+                  face_warp(l0, l1, 0.0, alpha);
+
+                // apply to the edge
+                dl[idx[0]] = -warp[0];
+                dl[idx[1]] = warp[0];
+              }
+            else
+              // in the other cases loop over all faces and accumulate the
+              // contributions
+              for (const auto f : reference_cell.face_indices())
+                {
+                  // get the vertex ids for the barycentric coordinates
+                  std::array<unsigned int, 4> idx;
+
+                  // the first entry is the vertex opposite the face
+                  idx[0] = 3 - f;
+
+                  // get the vertices in the face
+                  for (unsigned int i = 0; i < idx.size() - 1; ++i)
+                    idx[i + 1] = reference_cell.face_to_cell_vertices(
+                      f, i, numbers::default_geometric_orientation);
+
+                  // get coordinates of face
+                  const double l0 = l[idx[0]];
+                  const double l1 = l[idx[1]];
+                  const double l2 = l[idx[2]];
+                  const double l3 = l[idx[3]];
+
+                  // get face warp
+                  const std::array<double, 3> warp =
+                    face_warp(l1, l2, l3, alpha);
+
+                  // volume blend
+                  const double blend_linear =
+                    (l1 + 0.5 * l0) * (l2 + 0.5 * l0) * (l3 + 0.5 * l0);
+
+                  const double blend = (blend_linear > tol) ?
+                                         (1.0 + alpha * alpha * l0 * l0) * l1 *
+                                           l2 * l3 / blend_linear :
+                                         0.0;
+
+                  dl[idx[1]] += blend * (warp[2] - warp[0]);
+                  dl[idx[2]] += blend * (warp[0] - warp[1]);
+                  dl[idx[3]] += blend * (warp[1] - warp[2]);
+                }
+
+            nodes.emplace_back(x + dl[1], y + dl[2], z + dl[3]);
+          }
+      }
+    else
+      DEAL_II_ASSERT_UNREACHABLE();
+
+    return nodes;
+  }
+
+  template <int dim>
+  std::vector<Point<dim>>
+  unit_support_points_fe_p(const unsigned int degree)
+  {
+    if (degree < 4)
+      return equidistant_support_points_fe_p<dim>(degree);
+    return blend_and_warp_support_points_fe_p<dim>(degree);
   }
 
   template <>
