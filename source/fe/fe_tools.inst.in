@@ -179,6 +179,11 @@ for (deal_II_dimension : DIMENSIONS; deal_II_space_dimension : SPACE_DIMENSIONS)
         const unsigned int,
         const unsigned int,
         const types::geometric_orientation);
+
+      template void
+      adjust_quad_dof_index_for_face_orientation(
+        const FiniteElement<deal_II_dimension, deal_II_space_dimension> &,
+        std::vector<Table<2, int>> &);
 #endif
 
 #if deal_II_dimension == deal_II_space_dimension

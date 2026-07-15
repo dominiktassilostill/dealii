@@ -988,6 +988,13 @@ namespace FETools
                      const unsigned int                  face_no,
                      const types::geometric_orientation  combined_orientation);
 
+  template <int dim, int spacedim>
+  void
+  adjust_quad_dof_index_for_face_orientation(
+    const FiniteElement<dim, spacedim> &fe,
+    std::vector<Table<2, int>>
+      &adjust_quad_dof_index_for_face_orientation_table);
+
   /**
    * A namespace that contains functions that help setting up internal
    * data structures when implementing FiniteElement which are build

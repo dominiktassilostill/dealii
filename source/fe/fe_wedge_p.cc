@@ -270,7 +270,7 @@ const bool use_equidistant_support_points)
 
   this->unit_support_points = unit_support_points_fe_wedge_p<dim>(degree, use_equidistant_support_points);
 
-  this->unit_face_support_points.resize(this->reference_cell().n_faces());
+      this->unit_face_support_points.resize(this->reference_cell().n_faces());
 
   if(conformity == FiniteElementData<dim>::H1)
   {
@@ -319,9 +319,18 @@ FE_WedgeP<dim, spacedim>::FE_WedgeP(const unsigned int degree, const bool use_eq
   : FE_WedgePoly<dim, spacedim>(degree,
                                 get_dpo_vector_fe_wedge_p(degree),
                                 false,
-                                FiniteElementData<dim>::H1,
-                              use_equidistant_support_points)
-{}
+                                FiniteElementData<dim>::H1)
+{
+  if (degree > 2)
+    {
+      for (unsigned int i = 0; i < this->n_dofs_per_line(); ++i)
+        this->adjust_line_dof_index_for_line_orientation_table[i] =
+          this->n_dofs_per_line() - 1 - i - i;
+
+      FETools::adjust_quad_dof_index_for_face_orientation(
+        *this, this->adjust_quad_dof_index_for_face_orientation_table);
+    }
+}
 
 
 
