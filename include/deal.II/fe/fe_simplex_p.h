@@ -156,7 +156,7 @@ public:
   /**
    * Constructor.
    */
-  FE_SimplexP(const unsigned int degree);
+  FE_SimplexP(const unsigned int degree, const bool use_equidistant_points);
 
   /**
    * @copydoc dealii::FiniteElement::clone()
@@ -219,7 +219,7 @@ public:
   /**
    * Constructor.
    */
-  FE_SimplexDGP(const unsigned int degree);
+  FE_SimplexDGP(const unsigned int degree, const bool use_equidistant_points);
 
   /**
    * @copydoc dealii::FiniteElement::clone()
