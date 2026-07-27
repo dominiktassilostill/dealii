@@ -301,10 +301,10 @@ void PoissonProblem<dim>::process_solution(const unsigned int cycle)
 template <int dim>
 void PoissonProblem<dim>::run()
 {
-  const unsigned int n_cells_max = 20000000;
+  const unsigned int n_cells_max = 200000000;
   unsigned int       n_cells     = 1;
 
-  for (unsigned int cycle = 0; n_cells < n_cells_max && cycle < 4; ++cycle)
+  for (unsigned int cycle = 0; n_cells < n_cells_max && cycle < 10; ++cycle)
     {
       // if (cycle == 0)
       {
@@ -320,9 +320,9 @@ void PoissonProblem<dim>::run()
               GridGenerator::subdivided_hyper_cube_with_wedges(tria_serial, 2);
             else if (fe->reference_cell().is_simplex())
               GridGenerator::subdivided_hyper_cube_with_simplices(tria_serial,
-                                                                  1);
+                                                                  2);
             else if (fe->reference_cell().is_hyper_cube())
-              GridGenerator::subdivided_hyper_cube(tria_serial, 1);
+              GridGenerator::subdivided_hyper_cube(tria_serial, 2);
             else
               DEAL_II_NOT_IMPLEMENTED();
 
@@ -430,10 +430,10 @@ int main(int argc, char **argv)
 
   try
     {
-      for (unsigned int i = 2; i < 5; ++i)
+      for (unsigned int i = 1; i < 5; ++i)
         for (const bool use_equidistant_points :
              std::vector<bool>{{true, false}})
-          for (unsigned int degree = 1; degree <= 4; ++degree)
+          for (unsigned int degree = 1; degree <= 7; ++degree)
             {
               if (i == 1)
                 {
