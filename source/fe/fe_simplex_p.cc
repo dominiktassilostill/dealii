@@ -74,7 +74,6 @@ namespace
   template <int dim>
   std::vector<Point<dim>>
   equidistant_support_points_fe_p(const unsigned int degree)
-  equidistant_support_points_fe_p(const unsigned int degree)
   {
     Assert(dim != 0, ExcInternalError());
     std::vector<Point<dim>> unit_points;
@@ -268,6 +267,7 @@ namespace
 
     if constexpr (dim == 2)
       {
+        // use values of tet instead
         // optimized alpha values
         // const std::array<double, 15> alpha_opt = {{0.0000,
         //                                            0.0000,
@@ -406,7 +406,8 @@ namespace
 
   template <int dim>
   std::vector<Point<dim>>
-  unit_support_points_fe_p(const unsigned int degree, const bool equidistant_points)
+  unit_support_points_fe_p(const unsigned int degree,
+                           const bool         equidistant_points)
   {
     if (equidistant_points || degree < 3)
       return equidistant_support_points_fe_p<dim>(degree);
@@ -415,7 +416,8 @@ namespace
 
   template <>
   std::vector<Point<0>>
-  unit_support_points_fe_p(const unsigned int /*degree*/, const bool /*equidistant_points*/)
+  unit_support_points_fe_p(const unsigned int /*degree*/,
+                           const bool /*equidistant_points*/)
   {
     return {Point<0>()};
   }
@@ -428,7 +430,7 @@ namespace
   std::vector<std::vector<Point<dim - 1>>>
   unit_face_support_points_fe_p(
     const unsigned int                          degree,
-    const bool equidistant_points,
+    const bool                                  equidistant_points,
     typename FiniteElementData<dim>::Conformity conformity)
   {
     // Discontinuous elements don't have face support points
@@ -459,7 +461,8 @@ namespace
    */
   template <int dim>
   FullMatrix<double>
-  constraints_fe_p(const unsigned int /*degree*/, const bool /*equidistant_points*/)
+  constraints_fe_p(const unsigned int /*degree*/,
+                   const bool /*equidistant_points*/)
   {
     // no constraints in 1d
     // constraints in 3d not implemented yet
@@ -1032,11 +1035,12 @@ FE_SimplexPoly<dim, spacedim>::
 
 
 template <int dim, int spacedim>
-FE_SimplexP<dim, spacedim>::FE_SimplexP(const unsigned int degree, const bool use_equidistant_points)
+FE_SimplexP<dim, spacedim>::FE_SimplexP(const unsigned int degree,
+                                        const bool use_equidistant_points)
   : FE_SimplexPoly<dim, spacedim>(
-      ScalarLagrangePolynomialSimplex<dim>(degree,
-                                           unit_support_points_fe_p<dim>(
-                                             degree, use_equidistant_points)),
+      ScalarLagrangePolynomialSimplex<dim>(
+        degree,
+        unit_support_points_fe_p<dim>(degree, use_equidistant_points)),
       FiniteElementData<dim>(get_dpo_vector_fe_p(dim, degree),
                              ReferenceCells::get_simplex<dim>(),
                              1,
@@ -1044,7 +1048,9 @@ FE_SimplexP<dim, spacedim>::FE_SimplexP(const unsigned int degree, const bool us
                              FiniteElementData<dim>::H1),
       false,
       unit_support_points_fe_p<dim>(degree, use_equidistant_points),
-      unit_face_support_points_fe_p<dim>(degree, use_equidistant_points, FiniteElementData<dim>::H1),
+      unit_face_support_points_fe_p<dim>(degree,
+                                         use_equidistant_points,
+                                         FiniteElementData<dim>::H1),
       constraints_fe_p<dim>(degree, use_equidistant_points))
 {
   if (degree > 2)
@@ -1350,11 +1356,12 @@ FE_SimplexP<dim, spacedim>::hp_quad_dof_identities(
 
 
 template <int dim, int spacedim>
-FE_SimplexDGP<dim, spacedim>::FE_SimplexDGP(const unsigned int degree, const bool use_equidistant_points)
+FE_SimplexDGP<dim, spacedim>::FE_SimplexDGP(const unsigned int degree,
+                                            const bool use_equidistant_points)
   : FE_SimplexPoly<dim, spacedim>(
-      ScalarLagrangePolynomialSimplex<dim>(degree,
-                                           unit_support_points_fe_p<dim>(
-                                             degree, use_equidistant_points)),
+      ScalarLagrangePolynomialSimplex<dim>(
+        degree,
+        unit_support_points_fe_p<dim>(degree, use_equidistant_points)),
       FiniteElementData<dim>(get_dpo_vector_fe_dgp(dim, degree),
                              ReferenceCells::get_simplex<dim>(),
                              1,
@@ -1362,7 +1369,9 @@ FE_SimplexDGP<dim, spacedim>::FE_SimplexDGP(const unsigned int degree, const boo
                              FiniteElementData<dim>::L2),
       true,
       unit_support_points_fe_p<dim>(degree, use_equidistant_points),
-      unit_face_support_points_fe_p<dim>(degree, use_equidistant_points, FiniteElementData<dim>::L2),
+      unit_face_support_points_fe_p<dim>(degree,
+                                         use_equidistant_points,
+                                         FiniteElementData<dim>::L2),
       constraints_fe_p<dim>(degree, use_equidistant_points))
 {}
 

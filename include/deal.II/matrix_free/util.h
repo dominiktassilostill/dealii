@@ -45,21 +45,30 @@ namespace internal
     {
       if (dim == 2 || dim == 3)
         {
-          for (unsigned int i = 1; i <= 4; ++i)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
             if (quad == QGaussSimplex<dim>(i))
               return {ReferenceCells::get_simplex<dim>(),
                       dealii::hp::QCollection<dim - 1>(
                         QGaussSimplex<dim - 1>(i))};
 
-          for (unsigned int i = 1; i <= 5; ++i)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
             if (quad == QWitherdenVincentSimplex<dim>(i))
               return {ReferenceCells::get_simplex<dim>(),
                       dealii::hp::QCollection<dim - 1>(
                         QWitherdenVincentSimplex<dim - 1>(i))};
 
-          for (unsigned int i = 1; i <= 3; ++i)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
             {
-              const FE_SimplexP<dim> fe(i);
+              const FE_SimplexP<dim> fe(i, false);
+              if (quad == Quadrature<dim>(fe.get_unit_support_points()))
+                return {ReferenceCells::get_simplex<dim>(),
+                        dealii::hp::QCollection<dim - 1>(Quadrature<dim - 1>(
+                          fe.get_unit_face_support_points()))};
+            }
+
+          for (unsigned int i = 1; i <= quad.size(); ++i)
+            {
+              const FE_SimplexP<dim> fe(i, true);
               if (quad == Quadrature<dim>(fe.get_unit_support_points()))
                 return {ReferenceCells::get_simplex<dim>(),
                         dealii::hp::QCollection<dim - 1>(Quadrature<dim - 1>(
@@ -68,7 +77,7 @@ namespace internal
         }
 
       if constexpr (dim == 3)
-        for (unsigned int i = 1; i <= 3; ++i)
+        for (unsigned int i = 1; i <= quad.size(); ++i)
           if (quad == QGaussWedge<dim>(i))
             {
               QGauss<dim - 1>        quad(i);
@@ -80,7 +89,7 @@ namespace internal
             }
 
       if constexpr (dim == 3)
-        for (unsigned int i = 1; i <= 2; ++i)
+        for (unsigned int i = 1; i <= quad.size(); ++i)
           if (quad == QGaussPyramid<dim>(i))
             {
               QGauss<dim - 1>        quad(i);
@@ -93,7 +102,7 @@ namespace internal
 
       // note: handle hypercubes last since normally this function is not
       // called for hypercubes
-      for (unsigned int i = 1; i <= 5; ++i)
+      for (unsigned int i = 1; i <= quad.size(); ++i)
         if (quad == QGauss<dim>(i))
           return {ReferenceCells::get_hypercube<dim>(),
                   dealii::hp::QCollection<dim - 1>(QGauss<dim - 1>(i))};
@@ -127,7 +136,7 @@ namespace internal
 
       if (dim == 2 || dim == 3)
         {
-          for (unsigned int i = 1; i <= 4; ++i)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
             if (quad == QGaussSimplex<dim>(i))
               {
                 if (dim == 2)
@@ -137,7 +146,7 @@ namespace internal
                   return {Quadrature<dim - 1>(), QGaussSimplex<dim - 1>(i)};
               }
 
-          for (unsigned int i = 1; i <= 5; ++i)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
             if (quad == QWitherdenVincentSimplex<dim>(i))
               {
                 if (dim == 2)
@@ -148,9 +157,25 @@ namespace internal
                           QWitherdenVincentSimplex<dim - 1>(i)};
               }
 
-          for (unsigned int i = 1; i <= 3; ++i)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
             {
-              const FE_SimplexP<dim> fe(i);
+              const FE_SimplexP<dim> fe(i, false);
+              if (quad == Quadrature<dim>(fe.get_unit_support_points()))
+                {
+                  if (dim == 2)
+                    return {Quadrature<dim - 1>(
+                              fe.get_unit_face_support_points()), // line!
+                            Quadrature<dim - 1>()};
+                  else
+                    return {Quadrature<dim - 1>(),
+                            Quadrature<dim - 1>(
+                              fe.get_unit_face_support_points())};
+                }
+            }
+
+          for (unsigned int i = 1; i <= quad.size(); ++i)
+            {
+              const FE_SimplexP<dim> fe(i, true);
               if (quad == Quadrature<dim>(fe.get_unit_support_points()))
                 {
                   if (dim == 2)
@@ -166,18 +191,18 @@ namespace internal
         }
 
       if (dim == 3)
-        for (unsigned int i = 1; i <= 3; ++i)
+        for (unsigned int i = 1; i <= quad.size(); ++i)
           if (quad == QGaussWedge<dim>(i))
             return {QGauss<dim - 1>(i), QGaussSimplex<dim - 1>(i)};
 
       if (dim == 3)
-        for (unsigned int i = 1; i <= 2; ++i)
+        for (unsigned int i = 1; i <= quad.size(); ++i)
           if (quad == QGaussPyramid<dim>(i))
             return {QGauss<dim - 1>(i), QGaussSimplex<dim - 1>(i)};
 
       // note: handle hypercubes last since normally this function is not
       // called for hypercubes
-      for (unsigned int i = 1; i <= 5; ++i)
+      for (unsigned int i = 1; i <= quad.size(); ++i)
         if (quad == QGauss<dim>(i))
           return {QGauss<dim - 1>(i), Quadrature<dim - 1>()};
 

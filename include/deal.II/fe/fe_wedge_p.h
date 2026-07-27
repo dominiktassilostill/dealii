@@ -40,7 +40,7 @@ public:
                const internal::GenericDoFsPerObject &dpos,
                const bool                            prolongation_is_additive,
                const typename FiniteElementData<dim>::Conformity conformity,
-              const bool use_equidistant_support_points);
+               const bool use_equidistant_support_points);
 
   /**
    * @copydoc dealii::FiniteElement::convert_generalized_support_point_values_to_dof_values()
@@ -72,7 +72,8 @@ public:
   /**
    * Constructor.
    */
-  FE_WedgeP(const unsigned int degree, const bool use_equidistant_support_points);
+  FE_WedgeP(const unsigned int degree,
+            const bool         use_equidistant_support_points);
 
   /**
    * @copydoc dealii::FiniteElement::clone()
@@ -136,7 +137,8 @@ public:
   /**
    * Constructor.
    */
-  FE_WedgeDGP(const unsigned int degree, const bool use_equidistant_support_points);
+  FE_WedgeDGP(const unsigned int degree,
+              const bool         use_equidistant_support_points);
 
   /**
    * @copydoc dealii::FiniteElement::clone()

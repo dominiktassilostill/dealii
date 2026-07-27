@@ -5036,10 +5036,10 @@ namespace internal
 
         if (fe.reference_cell().is_simplex() && (degree == 0))
           dof_handler_support_points->distribute_dofs(
-            FE_SimplexDGP<dim, spacedim>(degree));
+            FE_SimplexDGP<dim, spacedim>(degree, false));
         else if (fe.reference_cell().is_simplex())
           dof_handler_support_points->distribute_dofs(
-            FE_SimplexP<dim, spacedim>(degree));
+            FE_SimplexP<dim, spacedim>(degree, false));
         else if (degree == 0)
           dof_handler_support_points->distribute_dofs(
             FE_DGQ<dim, spacedim>(degree));
@@ -5259,9 +5259,8 @@ MGTwoLevelTransferNonNested<dim, VectorType>::reinit(
     fe_coarse = std::make_unique<FESystem<dim>>(FE_DGQ<dim>(fe->get_degree()),
                                                 n_components);
   else if (const auto fe = dynamic_cast<const FE_SimplexP<dim> *>(&fe_base))
-    fe_coarse =
-      std::make_unique<FESystem<dim>>(FE_SimplexDGP<dim>(fe->get_degree()),
-                                      n_components);
+    fe_coarse = std::make_unique<FESystem<dim>>(
+      FE_SimplexDGP<dim>(fe->get_degree(), false), n_components);
   else if (dynamic_cast<const FE_DGQ<dim> *>(&fe_base) ||
            dynamic_cast<const FE_SimplexP<dim> *>(&fe_base))
     fe_coarse = dof_handler_coarse.get_fe().clone();

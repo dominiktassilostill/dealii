@@ -25,6 +25,8 @@
 #include <deal.II/fe/fe_tools.h>
 #include <deal.II/fe/fe_wedge_p.h>
 
+#include <deal.II/lac/householder.h>
+
 DEAL_II_NAMESPACE_OPEN
 
 namespace
@@ -39,141 +41,443 @@ namespace
     return (degree + 1) * (degree + 2) * (2 * degree + 3) / 6;
   }
 
+
+  /**
+   * Helper function to get equidistant support points on the pyramid
+   */
+  template <int dim>
+  std::vector<Point<dim>>
+  equidistant_support_points_fe_pyramid_p(const unsigned int degree)
+  {
+    Assert(degree > 0, ExcNotImplemented());
+
+    if constexpr (dim == 3)
+      {
+        std::vector<Point<dim>> unit_points;
+
+        const auto reference_cell = ReferenceCells::Pyramid;
+
+
+        const FE_Q<1> fe_line(QIterated<1>(QTrapezoid<1>(), degree));
+        // second argument is use_equidistant_support_points
+        const FE_SimplexP<2> fe_triangle(degree, true);
+        const FE_Q<2>        fe_quad(QIterated<1>(QTrapezoid<1>(), degree));
+
+        // start with the vertices
+        for (const unsigned int v : reference_cell.vertex_indices())
+          unit_points.push_back(reference_cell.vertex(v));
+
+        // lines
+        for (const unsigned int l : reference_cell.line_indices())
+          {
+            const Point<dim> v0 =
+              reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 0));
+            const Point<dim> v1 =
+              reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 1));
+
+            for (unsigned int i = 0; i < degree - 1; ++i)
+              {
+                // shift the point on the line such that the support points on
+                // the edges are compatible
+                const double distance = fe_line.unit_support_point(
+                  fe_line.get_first_line_index() + i)[0];
+                unit_points.push_back(v0 + distance * (v1 - v0));
+              }
+          }
+
+        // faces
+        for (const unsigned int f : reference_cell.face_indices())
+          {
+            const auto face_reference_cell =
+              reference_cell.face_reference_cell(f);
+
+            const bool is_triangular_face =
+              reference_cell.face_reference_cell(f).is_simplex();
+
+            const unsigned int n_dofs_per_quad =
+              is_triangular_face ? fe_triangle.n_dofs_per_quad() :
+                                   fe_quad.n_dofs_per_quad();
+
+            const std::vector<Point<2>> face_support_points =
+              is_triangular_face ? fe_triangle.get_unit_support_points() :
+                                   fe_quad.get_unit_support_points();
+
+            const unsigned int first_quad_index =
+              is_triangular_face ? fe_triangle.get_first_quad_index() :
+                                   fe_quad.get_first_quad_index();
+
+            // go over all DoFs on the face
+            for (unsigned int i = 0; i < n_dofs_per_quad; ++i)
+              {
+                Point<dim> p(0.0, 0.0, 0.0);
+                // linear interpolate the point form the vertices of the face
+                // looking at the triangle it is the same as using barycentric
+                // coordinates as the linear shape functions are: 1-x-y, x, y
+                for (unsigned int v = 0; v < face_reference_cell.n_vertices();
+                     ++v)
+                  {
+                    const auto vertex = reference_cell.vertex(
+                      reference_cell.face_to_cell_vertices(
+                        f, v, numbers::default_geometric_orientation));
+
+                    p += face_reference_cell.d_linear_shape_function(
+                           face_support_points[first_quad_index + i], v) *
+                         vertex;
+                  }
+                unit_points.push_back(p);
+              }
+          }
+
+        // interior, this is just the tensor product of the interior nodes of
+        // the quad with the line but scaled
+        for (unsigned int i = 0; i < degree - 1; ++i)
+          {
+            FE_Q<2> fe(QIterated<1>(QTrapezoid<1>(), degree - i - 1));
+            for (unsigned int j = 0; j < fe.n_dofs_per_quad(); ++j)
+              {
+                const double z = fe_line.unit_support_point(
+                  fe_line.get_first_line_index() + i)[0];
+
+                const Point<2> x_y =
+                  fe.unit_support_point(fe.get_first_quad_index() + j);
+
+                unit_points.push_back(Point<dim>((1 - z) * (2.0 * x_y[0] - 1.0),
+                                                 (1 - z) * (2.0 * x_y[1] - 1.0),
+                                                 z));
+              }
+          }
+        return unit_points;
+      }
+    else
+      DEAL_II_ASSERT_UNREACHABLE();
+    return {};
+  }
+
+  template <int dim>
+  std::vector<Point<dim>>
+  blend_and_warp_support_points_fe_pyramid_p(const unsigned int degree)
+  {
+    if constexpr (dim == 3)
+      {
+        const auto reference_cell = ReferenceCells::Pyramid;
+
+        // the idea of the algorithm is to construct support points compatible
+        // with triangles and quads on the faces, then take the boundary support
+        // points and compute the displacement to the equidistant support points
+        // on the faces, the last step is then to interpolate the displacement
+        // to the interior nodes of the pyramid
+
+        // get the equidistant support points
+        const auto equidistant_points =
+          equidistant_support_points_fe_pyramid_p<dim>(degree);
+
+
+        const unsigned int n_dofs_per_line = degree - 1;
+        const unsigned int n_dofs_per_tri =
+          degree < 3 ? 0 : (degree - 1) * (degree - 2) / 2;
+
+        const unsigned int n_boundary_nodes = 3 * degree * degree + 2;
+
+        // basis function of boundary entities adopted from Chan and Warburton
+        // returns the value of the hierarchical basis function i, which has
+        // support on the vertices, edges and faces
+        auto boundary_basis = [&](const unsigned int i, const Point<dim> &p) {
+          // there are 3 * degree^2 + 2 shape functions on the vertices, edges
+          // and faces
+          Assert(i < n_boundary_nodes, ExcInternalError());
+
+          double phi = 0.0;
+          if (i < reference_cell.n_vertices())
+            {
+              // first are the vertices, use the linear shape functions
+              phi = reference_cell.d_linear_shape_function(p, i);
+            }
+          else if (i < reference_cell.n_vertices() +
+                         reference_cell.n_lines() * n_dofs_per_line)
+            {
+              // on the edge the basis functions are the linear basis functions
+              // multiplied by 1D modal functions
+
+              // get the line number and the index on the line
+              const unsigned int line_index =
+                (i - reference_cell.n_vertices()) / n_dofs_per_line;
+              const unsigned int index_on_line =
+                (i - reference_cell.n_vertices()) % n_dofs_per_line;
+
+              // get the vertex indices determining the line
+              const unsigned int v0 =
+                reference_cell.line_to_cell_vertices(line_index, 0);
+              const unsigned int v1 =
+                reference_cell.line_to_cell_vertices(line_index, 1);
+
+              const double l0 = reference_cell.d_linear_shape_function(p, v0);
+              const double l1 = reference_cell.d_linear_shape_function(p, v1);
+
+              phi = l0 * l1 *
+                    dealii::Polynomials::jacobi_polynomial_value<double>(
+                      index_on_line, 1, 1, l0 - l1, false);
+            }
+          else if (i < reference_cell.n_vertices() +
+                         reference_cell.n_lines() * n_dofs_per_line +
+                         n_dofs_per_line * n_dofs_per_line)
+            {
+              // on the quad face
+              // get the index on the face
+              const unsigned int index_on_quad =
+                i - (reference_cell.n_vertices() +
+                     reference_cell.n_lines() * n_dofs_per_line);
+
+              // the quad face is made up of vertices 0, 1, 2, 3
+              const double l0 = reference_cell.d_linear_shape_function(p, 0);
+              const double l1 = reference_cell.d_linear_shape_function(p, 1);
+              const double l2 = reference_cell.d_linear_shape_function(p, 2);
+              const double l3 = reference_cell.d_linear_shape_function(p, 3);
+
+              // from the index on the quad get the degrees of the jacobi
+              // polynomials
+              const unsigned int degree_x = index_on_quad / n_dofs_per_line;
+              const unsigned int degree_y = index_on_quad % n_dofs_per_line;
+
+              phi = l0 * l1 * l2 * l3 *
+                    dealii::Polynomials::jacobi_polynomial_value<double>(
+                      degree_x, 1, 1, p[0], false) *
+                    dealii::Polynomials::jacobi_polynomial_value<double>(
+                      degree_y, 1, 1, p[1], false);
+            }
+          else if (i < reference_cell.n_vertices() +
+                         reference_cell.n_lines() * n_dofs_per_line +
+                         n_dofs_per_line * n_dofs_per_line + 4 * n_dofs_per_tri)
+            {
+              // on a triangular face
+              // get the face number and the index on the face
+              const unsigned int offset =
+                reference_cell.n_vertices() +
+                reference_cell.n_lines() * n_dofs_per_line +
+                n_dofs_per_line * n_dofs_per_line;
+              const unsigned int face_index = (i - offset) / n_dofs_per_tri + 1;
+              const unsigned int index_on_tri = (i - offset) % n_dofs_per_tri;
+
+              // get the vertex indices for the face
+              const unsigned int v0 = reference_cell.face_to_cell_vertices(
+                face_index, 0, numbers::default_geometric_orientation);
+              const unsigned int v1 = reference_cell.face_to_cell_vertices(
+                face_index, 1, numbers::default_geometric_orientation);
+              const unsigned int v2 = reference_cell.face_to_cell_vertices(
+                face_index, 2, numbers::default_geometric_orientation);
+
+              const double l0 = reference_cell.d_linear_shape_function(p, v0);
+              const double l1 = reference_cell.d_linear_shape_function(p, v1);
+              const double l2 = reference_cell.d_linear_shape_function(p, v2);
+
+              // get the degrees of the basis function from the index on the
+              // face
+              unsigned int jacobi_poly_degree_i = numbers::invalid_unsigned_int;
+              unsigned int jacobi_poly_degree_j = numbers::invalid_unsigned_int;
+              for (unsigned int a = 0, counter = 0; a < degree - 2; ++a)
+                for (unsigned int b = 0; b < degree - a - 2; ++b, ++counter)
+                  if (index_on_tri == counter)
+                    {
+                      jacobi_poly_degree_i = a;
+                      jacobi_poly_degree_j = b;
+                    }
+
+              // check if we found a valid index
+              Assert(jacobi_poly_degree_i != numbers::invalid_unsigned_int,
+                     ExcInternalError());
+              Assert(jacobi_poly_degree_j != numbers::invalid_unsigned_int,
+                     ExcInternalError());
+
+              // now transform l0, l1, l2 to the local coordinates x,y on
+              // the triangle, normally x,y = l1,l2 gives the correct results
+              // the problem is l0 + l1 + l2 = 1 does not hold
+              // but l0 + l1 + l2 = S_f
+              // so normalize the barycentric coordinates by subtracting the
+              // additional contributions as L_i = l_i + (1-S_f)/3 thus
+              // L0 + L1 + L2 = 1 and setting x,y = L_1, L_2
+              const double x = 1. / 3. * (2.0 * l1 - l0 - l2 + 1.0);
+              const double y = 1. / 3. * (2.0 * l2 - l1 - l0 + 1.0);
+
+              const double x_contribution =
+                Polynomials::jacobi_polynomial_homogenized_value<double>(
+                  jacobi_poly_degree_i, 0, 0, x, 1 - y);
+
+              const double y_contribution =
+                dealii::Polynomials::jacobi_polynomial_value<double>(
+                  jacobi_poly_degree_j,
+                  2 * jacobi_poly_degree_i + 1,
+                  0,
+                  y,
+                  true);
+
+              phi = l0 * l1 * l2 * x_contribution * y_contribution;
+            }
+          else
+            DEAL_II_ASSERT_UNREACHABLE();
+
+          return phi;
+        };
+
+        // start by constructing the vertices, edges and faces for the
+        // compatible support points, use GL points and warp and blend nodes
+        const FE_Q<1>        fe_line(degree);
+        const FE_Q<2>        fe_quad(degree);
+        const FE_SimplexP<2> fe_triangle(
+          degree, /*use_equidistant_support_points*/ false);
+
+        std::vector<Point<dim>> gl_points;
+        // start with the vertices
+        for (const unsigned int v : reference_cell.vertex_indices())
+          gl_points.push_back(reference_cell.vertex(v));
+
+        // lines
+        for (const unsigned int l : reference_cell.line_indices())
+          {
+            const Point<dim> v0 =
+              reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 0));
+            const Point<dim> v1 =
+              reference_cell.vertex(reference_cell.line_to_cell_vertices(l, 1));
+
+            const auto direction = v1 - v0;
+
+            for (unsigned int i = 0; i < degree - 1; ++i)
+              {
+                // shift the point on the line such that the support points on
+                // the edges are compatible
+                const double distance = fe_line.unit_support_point(
+                  fe_line.get_first_line_index() + i)[0];
+                gl_points.push_back(v0 + distance * direction);
+              }
+          }
+
+        // faces
+        for (const unsigned int f : reference_cell.face_indices())
+          {
+            const auto face_reference_cell =
+              reference_cell.face_reference_cell(f);
+
+            const bool is_triangular_face =
+              reference_cell.face_reference_cell(f).is_simplex();
+
+            const unsigned int n_dofs_per_quad =
+              is_triangular_face ? fe_triangle.n_dofs_per_quad() :
+                                   fe_quad.n_dofs_per_quad();
+
+            const std::vector<Point<2>> &face_support_points =
+              is_triangular_face ? fe_triangle.get_unit_support_points() :
+                                   fe_quad.get_unit_support_points();
+
+            const unsigned int first_quad_index =
+              is_triangular_face ? fe_triangle.get_first_quad_index() :
+                                   fe_quad.get_first_quad_index();
+
+            // go over all DoFs on the face
+            for (unsigned int i = 0; i < n_dofs_per_quad; ++i)
+              {
+                const auto face_support_point =
+                  face_support_points[first_quad_index + i];
+
+                Point<dim> p(0.0, 0.0, 0.0);
+                // linear interpolate the point form the vertices of the face
+                // looking at the triangle it is the same as using barycentric
+                // coordinates as the linear shape functions are: 1-x-y, x, y
+                for (unsigned int v = 0; v < face_reference_cell.n_vertices();
+                     ++v)
+                  {
+                    const unsigned int vertex_index =
+                      reference_cell.face_to_cell_vertices(
+                        f, v, numbers::default_geometric_orientation);
+                    const auto vertex = reference_cell.vertex(vertex_index);
+
+                    p += face_reference_cell.d_linear_shape_function(
+                           face_support_point, v) *
+                         vertex;
+                  }
+                gl_points.push_back(p);
+              }
+          }
+        // needs to contain all nodes on the boundary
+        Assert(gl_points.size() == n_boundary_nodes, ExcInternalError());
+
+        // get the displacements between the blend and warp nodes and the
+        // equidistant points on the boundary
+        Vector<double> nodal_displacements_x(n_boundary_nodes);
+        Vector<double> nodal_displacements_y(n_boundary_nodes);
+        Vector<double> nodal_displacements_z(n_boundary_nodes);
+        for (unsigned int i = 0; i < gl_points.size(); ++i)
+          {
+            const auto displacement_vector =
+              gl_points[i] - equidistant_points[i];
+
+            nodal_displacements_x[i] = displacement_vector[0];
+            nodal_displacements_y[i] = displacement_vector[1];
+            nodal_displacements_z[i] = displacement_vector[2];
+          }
+
+        // build the Vandermonde matrix to transform the boundary basis to a
+        // nodal basis
+        FullMatrix<double> VandermondeMatrix(n_boundary_nodes,
+                                             n_boundary_nodes);
+        for (unsigned int i = 0; i < VandermondeMatrix.m(); ++i)
+          for (unsigned int j = 0; j < VandermondeMatrix.n(); ++j)
+            VandermondeMatrix[i][j] = boundary_basis(j, equidistant_points[i]);
+
+        // solve Vandermondematrix * displacements = nodal_displacements to get
+        // the displacements expressed in the boundary basis
+        Vector<double> displacements_x(n_boundary_nodes);
+        Vector<double> displacements_y(n_boundary_nodes);
+        Vector<double> displacements_z(n_boundary_nodes);
+
+        Householder<double> householder(VandermondeMatrix);
+        householder.least_squares(displacements_x, nodal_displacements_x);
+        householder.least_squares(displacements_y, nodal_displacements_y);
+        householder.least_squares(displacements_z, nodal_displacements_z);
+
+        // interpolate the displacement to the interor nodes
+        for (unsigned int i = n_boundary_nodes; i < equidistant_points.size();
+             ++i)
+          {
+            const auto eq_point = equidistant_points[i];
+
+            Point<dim> displacement(0.0, 0.0, 0.0);
+
+            for (unsigned int j = 0; j < displacements_x.size(); ++j)
+              {
+                const double basis_value = boundary_basis(j, eq_point);
+                displacement[0] += basis_value * displacements_x[j];
+                displacement[1] += basis_value * displacements_y[j];
+                displacement[2] += basis_value * displacements_z[j];
+              }
+
+            gl_points.emplace_back(eq_point + displacement);
+          }
+
+        for (unsigned int i = 0; i < gl_points.size(); ++i)
+          for (unsigned int d = 0; d < dim; ++d)
+            if (std::abs(gl_points[i][d]) < 1e-12)
+              gl_points[i][d] = 0.0;
+
+        return gl_points;
+      }
+    else
+      DEAL_II_ASSERT_UNREACHABLE();
+    return {};
+  }
+
+
+
   /**
    * Helper function to set up the dpo vector of FE_PyramidP for a given @p degree.
    */
   template <int dim>
   std::vector<Point<dim>>
-  get_support_points(const unsigned int degree)
+  support_points_fe_pyramid_p(const unsigned int degree,
+                              const bool         use_equidistant_support_points)
   {
-    AssertDimension(dim, 3);
-    Assert(degree > 0, ExcInternalError("Degree must be larger than 0."));
-
-
-    std::vector<Point<dim>> support_points;
-    support_points.resize(compute_n_dofs(dim, degree));
-
-    const double z_equidistance = 1.0 / degree;
-
-    // the support points on the 8 lines excluding the vertices
-    const unsigned int n_dofs_per_line = degree - 1;
-
-    // support points on the bottom quad face and on the 4 triangular faces,
-    // on the triangular faces the number of points is the sum from 1 to
-    // (degree - 2) so 4*0.5*(degree - 2)*(degree - 1)
-    const unsigned int n_dofs_per_quad = n_dofs_per_line * n_dofs_per_line;
-    const unsigned int total_dofs_faces =
-      n_dofs_per_quad + 2 * (degree - 2) * (degree - 1);
-
-    // starting indices for lines 4 - 7
-    std::vector<unsigned int> start_lines(4);
-    // line 4 starts after the DoFs at the vertices and the DoFs on the lines of
-    // the bottom quad
-    start_lines[0] = 5 + 4 * n_dofs_per_line;
-    // the rest increments with the number of DoFs on the edges 4 - 7
-    for (unsigned int i = 1; i < 4; ++i)
-      start_lines[i] = start_lines[i - 1] + n_dofs_per_line;
-
-    // same applies to the triangular faces 1 - 4
-    std::vector<unsigned int> start_faces(4);
-    start_faces[0] = 5 + 8 * n_dofs_per_line + n_dofs_per_quad;
-
-    for (unsigned int i = 1; i < 4; ++i)
-      start_faces[i] = start_faces[i - 1] + (degree - 2) * (degree - 1) / 2;
-
-    unsigned int start_hex = 5 + 8 * n_dofs_per_line + total_dofs_faces;
-
-    auto lift_point =
-      [](const Point<2> &p2d, const double scale, const double z) {
-        return Point<dim>(scale * (2.0 * p2d[0] - 1.0),
-                          scale * (2.0 * p2d[1] - 1.0),
-                          z);
-      };
-    {
-      // this gives all info on the vertices, the first 4 edges and the
-      // first face
-      // switch to FE_Q when simplex supports electrostatic points
-      // FE_Q<2> fe_q(degree);
-      FE_Q<2> fe_q(QIterated<1>(QTrapezoid<1>(), degree));
-
-      // vertices
-      for (unsigned int v = 0; v < fe_q.reference_cell().n_vertices(); ++v)
-        {
-          support_points[v] =
-            lift_point(fe_q.get_unit_support_points()[v], 1.0, 0.0);
-        }
-      // lines
-      for (unsigned int l = 0;
-           l < fe_q.reference_cell().n_lines() * fe_q.n_dofs_per_line();
-           ++l)
-        {
-          support_points[5 + l] = lift_point(
-            fe_q.get_unit_support_points()[fe_q.reference_cell().n_vertices() +
-                                           l],
-            1.0,
-            0.0);
-        }
-      // quad
-      for (unsigned int q = 0; q < fe_q.n_dofs_per_quad(); ++q)
-        {
-          support_points[5 + 8 * n_dofs_per_line + q] = lift_point(
-            fe_q.get_unit_support_points()[fe_q.reference_cell().n_vertices() +
-                                           fe_q.reference_cell().n_lines() *
-                                             fe_q.n_dofs_per_line() +
-                                           q],
-            1.0,
-            0.0);
-        }
-    }
-    // now add the other layers
-    for (unsigned int current_degree = degree - 1; current_degree > 0;
-         --current_degree)
-      {
-        // switch to FE_Q when simplex supports electrostatic points
-        // FE_Q<2> fe_q(current_degree);
-        FE_Q<2> fe_q(QIterated<1>(QTrapezoid<1>(), current_degree));
-
-
-        const auto  &points = fe_q.get_unit_support_points();
-        unsigned int p      = 0;
-
-        const double z     = (degree - current_degree) * z_equidistance;
-        const double scale = current_degree * z_equidistance;
-
-        // vertices are on lines
-        for (unsigned int line = 0; line < fe_q.reference_cell().n_vertices();
-             ++line)
-          {
-            support_points[start_lines[line]++] =
-              lift_point(points[p++], scale, z);
-          }
-        // lines are on face
-        for (unsigned int face = 0; face < fe_q.reference_cell().n_lines();
-             ++face)
-          {
-            for (unsigned int n_dof = 0; n_dof < fe_q.n_dofs_per_line();
-                 ++n_dof)
-              support_points[start_faces[face]++] =
-                lift_point(points[p++], scale, z);
-          }
-        // faces are on hex
-        for (unsigned int hex = 0; hex < fe_q.n_dofs_per_quad(); ++hex)
-          {
-            support_points[start_hex++] = lift_point(points[p++], scale, z);
-          }
-      }
-    Point<dim> tip;
-    for (unsigned int d = 0; d < dim; ++d)
-      {
-        if (d == 2)
-          tip[d] = 1.0;
-        else
-          tip[d] = 0.0;
-      }
-    support_points[4] = tip;
-
-    return support_points;
+    if (use_equidistant_support_points || degree < 3)
+      return equidistant_support_points_fe_pyramid_p<dim>(degree);
+    return blend_and_warp_support_points_fe_pyramid_p<dim>(degree);
   }
+
 
 
   /**
@@ -313,46 +617,6 @@ FE_PyramidPoly<dim, spacedim>::FE_PyramidPoly(
 
   for (auto &support_point : support_points)
     this->unit_support_points.emplace_back(support_point);
-
-  if (conformity == FiniteElementData<dim>::H1)
-    {
-      // face support points
-      this->unit_face_support_points.resize(this->reference_cell().n_faces());
-
-      for (const auto f : this->reference_cell().face_indices())
-        {
-          const auto face_reference_cell =
-            this->reference_cell().face_reference_cell(f);
-
-          if (face_reference_cell == ReferenceCells::Quadrilateral)
-            {
-              // switch to FE_Q when simplex supports electrostatic points
-              // FE_Q<2> fe_face(degree);
-              FE_Q<2> fe_face(QIterated<1>(QTrapezoid<1>(), degree));
-
-              for (const auto &face_support_point :
-                   fe_face.get_unit_support_points())
-                {
-                  Point<dim - 1> p;
-                  for (unsigned int d = 0; d < dim - 1; ++d)
-                    p[d] = face_support_point[d];
-                  this->unit_face_support_points[f].emplace_back(p);
-                }
-            }
-          else if (face_reference_cell == ReferenceCells::Triangle)
-            {
-              FE_SimplexP<2> fe_face(degree);
-              for (const auto &face_support_point :
-                   fe_face.get_unit_support_points())
-                {
-                  Point<dim - 1> p;
-                  for (unsigned int d = 0; d < dim - 1; ++d)
-                    p[d] = face_support_point[d];
-                  this->unit_face_support_points[f].emplace_back(p);
-                }
-            }
-        }
-    }
 }
 
 
@@ -380,14 +644,54 @@ FE_PyramidPoly<dim, spacedim>::
 
 
 template <int dim, int spacedim>
-FE_PyramidP<dim, spacedim>::FE_PyramidP(const unsigned int degree)
-  : FE_PyramidPoly<dim, spacedim>(degree,
-                                  get_dpo<dim>(degree,
-                                               FiniteElementData<dim>::H1),
-                                  get_support_points<dim>(degree),
-                                  false,
-                                  FiniteElementData<dim>::H1)
+FE_PyramidP<dim, spacedim>::FE_PyramidP(
+  const unsigned int degree,
+  const bool         use_equidistant_support_points)
+  : FE_PyramidPoly<dim, spacedim>(
+      degree,
+      get_dpo<dim>(degree, FiniteElementData<dim>::H1),
+      support_points_fe_pyramid_p<dim>(degree, use_equidistant_support_points),
+      false,
+      FiniteElementData<dim>::H1)
 {
+  // face support points
+  this->unit_face_support_points.resize(this->reference_cell().n_faces());
+
+  for (const auto f : this->reference_cell().face_indices())
+    {
+      const auto face_reference_cell =
+        this->reference_cell().face_reference_cell(f);
+
+      if (face_reference_cell == ReferenceCells::Quadrilateral)
+        {
+          FE_Q<2> fe_face = use_equidistant_support_points ?
+                              FE_Q<2>(QIterated<1>(QTrapezoid<1>(), degree)) :
+                              FE_Q<2>(degree);
+
+          for (const auto &face_support_point :
+               fe_face.get_unit_support_points())
+            {
+              Point<dim - 1> p;
+              for (unsigned int d = 0; d < dim - 1; ++d)
+                p[d] = face_support_point[d];
+              this->unit_face_support_points[f].emplace_back(p);
+            }
+        }
+      else if (face_reference_cell == ReferenceCells::Triangle)
+        {
+          FE_SimplexP<2> fe_face(degree, use_equidistant_support_points);
+          for (const auto &face_support_point :
+               fe_face.get_unit_support_points())
+            {
+              Point<dim - 1> p;
+              for (unsigned int d = 0; d < dim - 1; ++d)
+                p[d] = face_support_point[d];
+              this->unit_face_support_points[f].emplace_back(p);
+            }
+        }
+    }
+
+  // adjust line and face indices
   if (degree > 2)
     {
       // adjust DoFs on lines
@@ -642,13 +946,15 @@ FE_PyramidP<dim, spacedim>::hp_quad_dof_identities(
 
 
 template <int dim, int spacedim>
-FE_PyramidDGP<dim, spacedim>::FE_PyramidDGP(const unsigned int degree)
-  : FE_PyramidPoly<dim, spacedim>(degree,
-                                  get_dpo<dim>(degree,
-                                               FiniteElementData<dim>::L2),
-                                  get_support_points<dim>(degree),
-                                  true,
-                                  FiniteElementData<dim>::L2)
+FE_PyramidDGP<dim, spacedim>::FE_PyramidDGP(
+  const unsigned int degree,
+  const bool         use_equidistant_support_points)
+  : FE_PyramidPoly<dim, spacedim>(
+      degree,
+      get_dpo<dim>(degree, FiniteElementData<dim>::L2),
+      support_points_fe_pyramid_p<dim>(degree, use_equidistant_support_points),
+      true,
+      FiniteElementData<dim>::L2)
 {}
 
 

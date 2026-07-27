@@ -71,7 +71,8 @@ public:
   /**
    * Constructor.
    */
-  FE_PyramidP(const unsigned int degree);
+  FE_PyramidP(const unsigned int degree,
+              const bool         use_equidistant_support_points);
 
   /**
    * @copydoc dealii::FiniteElement::clone()
@@ -134,7 +135,8 @@ public:
   /**
    * Constructor.
    */
-  FE_PyramidDGP(const unsigned int degree);
+  FE_PyramidDGP(const unsigned int degree,
+                const bool         use_equidistant_support_points);
 
   /**
    * @copydoc dealii::FiniteElement::clone()

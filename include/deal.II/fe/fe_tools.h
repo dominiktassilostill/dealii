@@ -26,6 +26,9 @@
 #include <deal.II/distributed/tria.h>
 
 #include <deal.II/fe/component_mask.h>
+#include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/fe_wedge_p.h>
 
 #include <deal.II/lac/la_parallel_vector.h>
 
@@ -1512,7 +1515,16 @@ namespace FETools
   std::unique_ptr<FiniteElement<FE::dimension, FE::space_dimension>>
   FEFactory<FE>::get(const unsigned int degree) const
   {
-    return std::make_unique<FE>(degree);
+    if constexpr (
+      std::is_same_v<FE, FE_SimplexP<FE::dimension, FE::space_dimension>> ||
+      std::is_same_v<FE, FE_SimplexDGP<FE::dimension, FE::space_dimension>> ||
+      std::is_same_v<FE, FE_WedgeP<FE::dimension, FE::space_dimension>> ||
+      std::is_same_v<FE, FE_WedgeDGP<FE::dimension, FE::space_dimension>> ||
+      std::is_same_v<FE, FE_PyramidP<FE::dimension, FE::space_dimension>> ||
+      std::is_same_v<FE, FE_PyramidDGP<FE::dimension, FE::space_dimension>>)
+      return std::make_unique<FE>(degree, false);
+    else
+      return std::make_unique<FE>(degree);
   }
 
   namespace Compositing

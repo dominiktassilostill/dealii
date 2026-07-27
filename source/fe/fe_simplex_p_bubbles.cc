@@ -61,7 +61,7 @@ namespace FE_P_BubblesImplementation
   {
     Assert(degree < 3, ExcNotImplemented());
     // Start with the points used by FE_SimplexP, and then add bubbles.
-    FE_SimplexP<dim>        fe_p(degree);
+    FE_SimplexP<dim>        fe_p(degree, true);
     std::vector<Point<dim>> points = fe_p.get_unit_support_points();
 
     const auto       reference_cell = fe_p.reference_cell();

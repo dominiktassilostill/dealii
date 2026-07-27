@@ -1061,11 +1061,11 @@ namespace VTKWrappers
           {
             if (n_comp == 1)
               fe_collection.push_back(
-                std::make_shared<FE_SimplexP<dim, spacedim>>(1));
+                std::make_shared<FE_SimplexP<dim, spacedim>>(1, true));
             else
               // Use FESystem for vector fields
               fe_collection.push_back(std::make_shared<FESystem<dim, spacedim>>(
-                FE_SimplexP<dim, spacedim>(1), n_comp));
+                FE_SimplexP<dim, spacedim>(1, true), n_comp));
           }
         else
           {
@@ -1092,11 +1092,11 @@ namespace VTKWrappers
           {
             if (n_comp == 1)
               fe_collection.push_back(
-                std::make_shared<FE_SimplexDGP<dim, spacedim>>(0));
+                std::make_shared<FE_SimplexDGP<dim, spacedim>>(0, true));
             else
               // Use FESystem for vector fields
               fe_collection.push_back(std::make_shared<FESystem<dim, spacedim>>(
-                FE_SimplexDGP<dim, spacedim>(0), n_comp));
+                FE_SimplexDGP<dim, spacedim>(0, true), n_comp));
           }
         else
           {

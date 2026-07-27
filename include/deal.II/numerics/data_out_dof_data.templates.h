@@ -297,7 +297,8 @@ namespace internal
                   generate_simplex_evaluation_points<dim>(n_subdivisions));
               else if constexpr (dim == 3)
                 quadrature_simplex = std::make_unique<Quadrature<dim>>(
-                  FE_SimplexP<dim>(n_subdivisions).get_unit_support_points());
+                  FE_SimplexP<dim>(n_subdivisions, false)
+                    .get_unit_support_points());
               else
                 DEAL_II_ASSERT_UNREACHABLE();
             }
@@ -2367,15 +2368,15 @@ DataOut_DoFData<dim, patch_dim, spacedim, patch_spacedim>::get_fes() const
           else if (reference_cell.is_simplex())
             finite_elements.emplace_back(
               std::make_shared<dealii::hp::FECollection<dim, spacedim>>(
-                FE_SimplexDGP<dim, spacedim>(1)));
+                FE_SimplexDGP<dim, spacedim>(1, false)));
           else if (reference_cell == ReferenceCells::Wedge)
             finite_elements.emplace_back(
               std::make_shared<dealii::hp::FECollection<dim, spacedim>>(
-                FE_WedgeDGP<dim, spacedim>(1)));
+                FE_WedgeDGP<dim, spacedim>(1, false)));
           else if (reference_cell == ReferenceCells::Pyramid)
             finite_elements.emplace_back(
               std::make_shared<dealii::hp::FECollection<dim, spacedim>>(
-                FE_PyramidDGP<dim, spacedim>(1)));
+                FE_PyramidDGP<dim, spacedim>(1, false)));
           else
             DEAL_II_NOT_IMPLEMENTED();
         }

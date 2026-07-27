@@ -116,7 +116,8 @@ namespace
    */
   template <int dim>
   std::vector<Point<dim>>
-  unit_support_points_fe_wedge_p(const unsigned int degree, const bool use_equidistant_support_points)
+  unit_support_points_fe_wedge_p(const unsigned int degree,
+                                 const bool use_equidistant_support_points)
   {
     Assert(degree > 0, ExcNotImplemented());
 
@@ -135,8 +136,12 @@ namespace
         // when FE_SimplexP has electrostatic support points switch to FE_Q
         // until then assert that we are not at a degree larger than 2
         const FE_SimplexP<1> fe_line(degree, use_equidistant_support_points);
-        const FE_SimplexP<2> fe_triangle(degree, use_equidistant_support_points);
-        const FE_Q<2> fe_quad = use_equidistant_support_points ? FE_Q<2>(QIterated<1>(QTrapezoid<1>(), degree)) : FE_Q<2>(degree);
+        const FE_SimplexP<2> fe_triangle(degree,
+                                         use_equidistant_support_points);
+        const FE_Q<2>        fe_quad =
+          use_equidistant_support_points ?
+                   FE_Q<2>(QIterated<1>(QTrapezoid<1>(), degree)) :
+                   FE_Q<2>(degree);
 
         // start with the vertices
         for (const unsigned int v : reference_cell.vertex_indices())
@@ -233,11 +238,12 @@ FE_WedgePoly<dim, spacedim>::FE_WedgePoly(
   const internal::GenericDoFsPerObject             &dpos,
   const bool                                        prolongation_is_additive,
   const typename FiniteElementData<dim>::Conformity conformity,
-const bool use_equidistant_support_points)
+  const bool use_equidistant_support_points)
   : dealii::FE_Poly<dim, spacedim>(
-      ScalarLagrangePolynomialWedge<dim>(degree,
-                                         unit_support_points_fe_wedge_p<dim>(
-                                           degree, use_equidistant_support_points)),
+      ScalarLagrangePolynomialWedge<dim>(
+        degree,
+        unit_support_points_fe_wedge_p<dim>(degree,
+                                            use_equidistant_support_points)),
       FiniteElementData<dim>(dpos,
                              reinterpret_cast<const ReferenceCell<dim> &>(
                                ReferenceCells::Wedge),
@@ -263,31 +269,32 @@ const bool use_equidistant_support_points)
 {
   AssertDimension(dim, 3);
 
-  Assert(1 <= degree && degree <= 2, ExcNotImplemented());
-
   const FE_SimplexP<2> fe_triangle(degree, use_equidistant_support_points);
-  const FE_Q<2>        fe_quad = use_equidistant_support_points ? FE_Q<2>(QIterated<1>(QTrapezoid<1>(), degree)): FE_Q<2>(degree);
+  const FE_Q<2>        fe_quad = use_equidistant_support_points ?
+                                   FE_Q<2>(QIterated<1>(QTrapezoid<1>(), degree)) :
+                                   FE_Q<2>(degree);
 
-  this->unit_support_points = unit_support_points_fe_wedge_p<dim>(degree, use_equidistant_support_points);
+  this->unit_support_points =
+    unit_support_points_fe_wedge_p<dim>(degree, use_equidistant_support_points);
 
+  // if continuous also add face support points
+  if (conformity == FiniteElementData<dim>::H1)
+    {
       this->unit_face_support_points.resize(this->reference_cell().n_faces());
-
-  if(conformity == FiniteElementData<dim>::H1)
-  {
-  for (const auto f : this->reference_cell().face_indices())
-  {
-    if (this->reference_cell().face_reference_cell(f) ==
-        ReferenceCells::Triangle)
-      for (const auto &p : fe_triangle.get_unit_support_points())
-        this->unit_face_support_points[f].emplace_back(p[0], p[1]);
-    else if (this->reference_cell().face_reference_cell(f) ==
-             ReferenceCells::Quadrilateral)
-      for (const auto &p : fe_quad.get_unit_support_points())
-        this->unit_face_support_points[f].emplace_back(p[0], p[1]);
-    else
-      DEAL_II_ASSERT_UNREACHABLE();
+      for (const auto f : this->reference_cell().face_indices())
+        {
+          if (this->reference_cell().face_reference_cell(f) ==
+              ReferenceCells::Triangle)
+            for (const auto &p : fe_triangle.get_unit_support_points())
+              this->unit_face_support_points[f].emplace_back(p[0], p[1]);
+          else if (this->reference_cell().face_reference_cell(f) ==
+                   ReferenceCells::Quadrilateral)
+            for (const auto &p : fe_quad.get_unit_support_points())
+              this->unit_face_support_points[f].emplace_back(p[0], p[1]);
+          else
+            DEAL_II_ASSERT_UNREACHABLE();
+        }
     }
-  }
 }
 
 
@@ -315,11 +322,13 @@ FE_WedgePoly<dim, spacedim>::
 
 
 template <int dim, int spacedim>
-FE_WedgeP<dim, spacedim>::FE_WedgeP(const unsigned int degree, const bool use_equidistant_support_points)
+FE_WedgeP<dim, spacedim>::FE_WedgeP(const unsigned int degree,
+                                    const bool use_equidistant_support_points)
   : FE_WedgePoly<dim, spacedim>(degree,
                                 get_dpo_vector_fe_wedge_p(degree),
                                 false,
-                                FiniteElementData<dim>::H1)
+                                FiniteElementData<dim>::H1,
+                                use_equidistant_support_points)
 {
   if (degree > 2)
     {
@@ -567,7 +576,9 @@ FE_WedgeP<dim, spacedim>::hp_quad_dof_identities(
 
 
 template <int dim, int spacedim>
-FE_WedgeDGP<dim, spacedim>::FE_WedgeDGP(const unsigned int degree, const bool use_equidistant_support_points)
+FE_WedgeDGP<dim, spacedim>::FE_WedgeDGP(
+  const unsigned int degree,
+  const bool         use_equidistant_support_points)
   : FE_WedgePoly<dim, spacedim>(degree,
                                 get_dpo_vector_fe_wedge_dgp(degree),
                                 true,

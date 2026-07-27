@@ -448,13 +448,13 @@ ReferenceCell<dim>::get_default_mapping(const unsigned int degree) const
       return std::make_unique<MappingP1<dim, spacedim>>();
     else
       return std::make_unique<MappingFE<dim, spacedim>>(
-        FE_SimplexP<dim, spacedim>(degree));
+        FE_SimplexP<dim, spacedim>(degree, false));
   else if (*this == ReferenceCells::Pyramid)
     return std::make_unique<MappingFE<dim, spacedim>>(
-      FE_PyramidP<dim, spacedim>(degree));
+      FE_PyramidP<dim, spacedim>(degree, false));
   else if (*this == ReferenceCells::Wedge)
     return std::make_unique<MappingFE<dim, spacedim>>(
-      FE_WedgeP<dim, spacedim>(degree));
+      FE_WedgeP<dim, spacedim>(degree, false));
   else
     {
       DEAL_II_NOT_IMPLEMENTED();
@@ -482,13 +482,13 @@ ReferenceCell<dim>::get_default_linear_mapping() const
   else if (*this == ReferenceCells::Pyramid)
     {
       static const MappingFE<dim, spacedim> mapping(
-        FE_PyramidP<dim, spacedim>(1));
+        FE_PyramidP<dim, spacedim>(1, false));
       return mapping;
     }
   else if (*this == ReferenceCells::Wedge)
     {
       static const MappingFE<dim, spacedim> mapping(
-        FE_WedgeP<dim, spacedim>(1));
+        FE_WedgeP<dim, spacedim>(1, false));
       return mapping;
     }
   else
