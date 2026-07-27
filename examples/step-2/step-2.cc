@@ -32,7 +32,7 @@
 #include <deal.II/distributed/fully_distributed_tria.h>
 #include <deal.II/grid/grid_tools.h>
 
-
+#include <deal.II/lac/trilinos_precondition.h>
 
 #define FORCE_USE_OF_TRILINOS
 namespace LA
@@ -250,8 +250,11 @@ void PoissonProblem<dim>::solve()
 #else
 /* Trilinos defaults are good */
 #endif
-  LA::MPI::PreconditionAMG preconditioner;
-  preconditioner.initialize(system_matrix, data);
+//  LA::MPI::PreconditionAMG preconditioner;
+ // preconditioner.initialize(system_matrix, data);
+
+  TrilinosWrappers::PreconditionIdentity preconditioner;
+  preconditioner.initialize(system_matrix);
 
   solver.solve(system_matrix,
                completely_distributed_solution,
