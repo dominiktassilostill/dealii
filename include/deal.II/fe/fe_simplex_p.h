@@ -199,6 +199,9 @@ public:
   std::vector<std::pair<unsigned int, unsigned int>>
   hp_quad_dof_identities(const FiniteElement<dim, spacedim> &fe_other,
                          const unsigned int face_no = 0) const override;
+
+private:
+  const bool use_equidistant_support_points;
 };
 
 
@@ -266,6 +269,9 @@ public:
     const unsigned int         child,
     const RefinementCase<dim> &refinement_case =
       RefinementCase<dim>::isotropic_refinement) const override;
+
+private:
+  const bool use_equidistant_support_points;
 };
 
 DEAL_II_NAMESPACE_CLOSE

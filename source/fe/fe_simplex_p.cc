@@ -188,10 +188,9 @@ namespace
 
     constexpr double tol = 1e-12;
 
-
     // optimized alpha values for tetrahedra
     // we always want to use the tetrahedra values, else we get different
-    // support points on the face of the tetrahedron and an triangle
+    // support points on the face of the tetrahedron and triangle
     const std::array<double, 15> alpha_opt = {{0.0000,
                                                0.0000,
                                                0.0000,
@@ -219,9 +218,10 @@ namespace
     std::vector<Point<dim>> nodes;
     nodes.reserve(equidistant_nodes.size());
 
-    // equidistant feq
+    // the algorithm interpolates between equdistant nodes and Gauss-Lobatto
+    // nodes on the edges
+    // create two feq objects to interpolate between them
     const FE_Q<1> feq_equi(QIterated<1>(QTrapezoid<1>(), degree));
-    // feq Gauss-Lobatto
     const FE_Q<1> feq_gl(degree);
 
     // compute the shift in support points
@@ -1052,6 +1052,7 @@ FE_SimplexP<dim, spacedim>::FE_SimplexP(const unsigned int degree,
                                          use_equidistant_points,
                                          FiniteElementData<dim>::H1),
       constraints_fe_p<dim>(degree, use_equidistant_points))
+  , use_equidistant_support_points(use_equidistant_points)
 {
   if (degree > 2)
     for (unsigned int i = 0; i < this->n_dofs_per_line(); ++i)
@@ -1082,11 +1083,22 @@ template <int dim, int spacedim>
 std::string
 FE_SimplexP<dim, spacedim>::get_name() const
 {
-  std::ostringstream namebuf;
-  namebuf << "FE_SimplexP<" << Utilities::dim_string(dim, spacedim) << ">("
-          << this->degree << ")";
+  if (use_equidistant_support_points)
+    {
+      std::ostringstream namebuf;
+      namebuf << "FE_SimplexP_equi<" << Utilities::dim_string(dim, spacedim)
+              << ">(" << this->degree << ")";
 
-  return namebuf.str();
+      return namebuf.str();
+    }
+  else
+    {
+      std::ostringstream namebuf;
+      namebuf << "FE_SimplexP_b_a_w<" << Utilities::dim_string(dim, spacedim)
+              << ">(" << this->degree << ")";
+
+      return namebuf.str();
+    }
 }
 
 
@@ -1373,6 +1385,7 @@ FE_SimplexDGP<dim, spacedim>::FE_SimplexDGP(const unsigned int degree,
                                          use_equidistant_points,
                                          FiniteElementData<dim>::L2),
       constraints_fe_p<dim>(degree, use_equidistant_points))
+  , use_equidistant_support_points(use_equidistant_points)
 {}
 
 
