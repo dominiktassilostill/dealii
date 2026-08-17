@@ -34,6 +34,8 @@
 
 #include <deal.II/lac/trilinos_precondition.h>
 
+#include <deal.II/numerics/data_out.h>
+
 #define FORCE_USE_OF_TRILINOS
 namespace LA
 {
@@ -95,16 +97,24 @@ template <int dim>
 class PoissonProblem
 {
 public:
-  PoissonProblem(const FiniteElement<dim> &fe,
-                 const bool                use_equidistant_points);
+  PoissonProblem(const unsigned int        min_degree,
+                 const unsigned int        max_degree,
+                 const ReferenceCell<dim> &ref_cell);
 
-  void run();
+  void run(const unsigned int n_cycles_max,
+           const double       error_threshold,
+           const bool         only_run_blend_and_warp);
 
 private:
-  void setup_system();
-  void assemble_system();
-  void solve();
-  void process_solution(const unsigned int cycle);
+  void   setup_system();
+  void   assemble_system();
+  void   solve();
+  bool   process_solution(const unsigned int cycle,
+                          const bool         use_equidistant_points,
+                          const bool         only_run_blend_and_warp,
+                          const double       error_threshold);
+  double compute_l2_error();
+  void   compute_difference_at_nodes();
 
   MPI_Comm                                       mpi_communicator;
   parallel::fullydistributed::Triangulation<dim> triangulation;
@@ -112,7 +122,8 @@ private:
 
   DoFHandler<dim> dof_handler;
 
-  ObserverPointer<const FiniteElement<dim>> fe;
+  const FiniteElement<dim> *fe;
+  const MappingFE<dim>     *mapping;
 
   AffineConstraints<double> constraints;
 
@@ -122,42 +133,47 @@ private:
 
   ConditionalOStream pcout;
 
-  IndexSet locally_owned_dofs;
-  IndexSet locally_relevant_dofs;
+  std::vector<ConvergenceTable> convergence_tables;
 
-  ConvergenceTable convergence_table;
-
-  bool use_equidistant_points;
+  unsigned int       min_degree;
+  unsigned int       max_degree;
+  ReferenceCell<dim> ref_cell;
 };
 
 
 template <int dim>
-PoissonProblem<dim>::PoissonProblem(const FiniteElement<dim> &fe,
-                                    const bool use_equidistant_points)
+PoissonProblem<dim>::PoissonProblem(const unsigned int        min_degree,
+                                    const unsigned int        max_degree,
+                                    const ReferenceCell<dim> &ref_cell)
   : mpi_communicator(MPI_COMM_WORLD)
   , triangulation(mpi_communicator)
   , dof_handler(triangulation)
-  , fe(&fe)
   , pcout(std::cout, (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
-  , use_equidistant_points(use_equidistant_points)
+  , min_degree(min_degree)
+  , max_degree(max_degree)
+  , ref_cell(ref_cell)
 {
-  pcout << "Running with " << fe.get_name() << " elements";
-  if (use_equidistant_points)
-    pcout << " using equidistant points" << std::endl;
-  else
-    pcout << " using blend and warp points" << std::endl;
+  pcout << "Running with " << ref_cell.to_string() << " elements" << std::endl;
+
+  convergence_tables.resize(2 * (max_degree - min_degree + 1));
 }
 
 
 template <int dim>
 void PoissonProblem<dim>::setup_system()
 {
-  // dof_handler.reinit(triangulation);
+  dof_handler.clear();
+  dof_handler.reinit(triangulation);
   dof_handler.distribute_dofs(*fe);
+
+  IndexSet locally_owned_dofs;
+  IndexSet locally_relevant_dofs;
 
   locally_owned_dofs    = dof_handler.locally_owned_dofs();
   locally_relevant_dofs = DoFTools::extract_locally_relevant_dofs(dof_handler);
 
+  solution.clear();
+  system_rhs.clear();
   solution.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
   system_rhs.reinit(locally_owned_dofs, mpi_communicator);
 
@@ -174,6 +190,7 @@ void PoissonProblem<dim>::setup_system()
                                              mpi_communicator,
                                              locally_relevant_dofs);
 
+  system_matrix.clear();
   system_matrix.reinit(locally_owned_dofs,
                        locally_owned_dofs,
                        dsp,
@@ -184,12 +201,12 @@ void PoissonProblem<dim>::setup_system()
 template <int dim>
 void PoissonProblem<dim>::assemble_system()
 {
-  FEValues<dim> fe_values(
-    fe->reference_cell().template get_default_linear_mapping<dim>(),
-    *fe,
-    fe->reference_cell().get_gauss_type_quadrature(fe->degree + 1),
-    update_values | update_gradients | update_quadrature_points |
-      update_JxW_values);
+  FEValues<dim> fe_values(*mapping,
+                          *fe,
+                          fe->reference_cell().get_gauss_type_quadrature(
+                            fe->degree + 1),
+                          update_values | update_gradients |
+                            update_quadrature_points | update_JxW_values);
 
   const unsigned int dofs_per_cell = fe->n_dofs_per_cell();
   const unsigned int n_q_points    = fe_values.n_quadrature_points;
@@ -211,18 +228,21 @@ void PoissonProblem<dim>::assemble_system()
         for (unsigned int q_point = 0; q_point < n_q_points; ++q_point)
           for (unsigned int i = 0; i < dofs_per_cell; ++i)
             {
-              const double rhs_value =
-                rhs.value(fe_values.quadrature_point(q_point), 0);
-
+              // compute cell matrix
               for (unsigned int j = 0; j < dofs_per_cell; ++j)
                 cell_matrix(i, j) += (fe_values.shape_grad(i, q_point) *
                                       fe_values.shape_grad(j, q_point) *
                                       fe_values.JxW(q_point)); // dx
 
+              // compute rhs
+              const double rhs_value =
+                rhs.value(fe_values.quadrature_point(q_point), 0);
               cell_rhs(i) += (fe_values.shape_value(i, q_point) * // phi_i(x_q)
                               rhs_value *                         // f(x_q)
                               fe_values.JxW(q_point));            // dx
             }
+
+        // distribute to DoFs
         cell->get_dof_indices(local_dof_indices);
         constraints.distribute_local_to_global(
           cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
@@ -236,9 +256,11 @@ void PoissonProblem<dim>::assemble_system()
 template <int dim>
 void PoissonProblem<dim>::solve()
 {
-  SolverControl solver_control(dof_handler.n_dofs(),
-                               1e-6 * system_rhs.l2_norm());
-  LA::SolverCG  solver(solver_control);
+  // SolverControl solver_control(dof_handler.n_dofs(),
+  //                              1e-6 * system_rhs.l2_norm());
+
+  ReductionControl solver_control(dof_handler.n_dofs(), 1e-12, 1e-12);
+  LA::SolverCG     solver(solver_control);
 
   LA::MPI::Vector completely_distributed_solution(
     dof_handler.locally_owned_dofs(), mpi_communicator);
@@ -250,8 +272,8 @@ void PoissonProblem<dim>::solve()
 #else
 /* Trilinos defaults are good */
 #endif
-//  LA::MPI::PreconditionAMG preconditioner;
- // preconditioner.initialize(system_matrix, data);
+  //  LA::MPI::PreconditionAMG preconditioner;
+  // preconditioner.initialize(system_matrix, data);
 
   TrilinosWrappers::PreconditionIdentity preconditioner;
   preconditioner.initialize(system_matrix);
@@ -261,8 +283,9 @@ void PoissonProblem<dim>::solve()
                system_rhs,
                preconditioner);
 
-  pcout << "   Solved in " << solver_control.last_step() << " iterations."
-        << std::endl;
+  pcout << "Solved in " << solver_control.last_step()
+        << " iterations with final residual " << std::setprecision(16)
+        << solver_control.last_value() << std::endl;
 
   constraints.distribute(completely_distributed_solution);
   solution = completely_distributed_solution;
@@ -270,17 +293,32 @@ void PoissonProblem<dim>::solve()
 
 
 template <int dim>
-void PoissonProblem<dim>::process_solution(const unsigned int cycle)
+bool PoissonProblem<dim>::process_solution(const unsigned int cycle,
+                                           const bool   use_equidistant_points,
+                                           const bool   only_run_blend_and_warp,
+                                           const double error_threshold)
 {
   Vector<double> difference_per_cell;
+
+  Assert(dof_handler.get_fe().get_name() == fe->get_name(), ExcInternalError());
+
+  if (fe->degree > 1)
+    Assert(dof_handler.get_fe().unit_support_point(
+             dof_handler.get_fe().get_first_line_index()) ==
+             fe->unit_support_point(fe->get_first_line_index()),
+           ExcInternalError());
+
   VectorTools::integrate_difference(
-    fe->reference_cell().template get_default_linear_mapping<dim>(),
+    *mapping,
     dof_handler,
     solution,
     Solution<dim>(),
     difference_per_cell,
-    fe->reference_cell().get_gauss_type_quadrature(fe->degree + 3),
+    fe->reference_cell().get_gauss_type_quadrature(
+      // std::max(int(1.5 * fe->degree) + 3, int(fe->degree + 5))),
+      fe->degree + 3),
     VectorTools::L2_norm);
+
   const double L2_error =
     VectorTools::compute_global_error(triangulation,
                                       difference_per_cell,
@@ -289,52 +327,200 @@ void PoissonProblem<dim>::process_solution(const unsigned int cycle)
   const unsigned int n_active_cells = triangulation.n_global_active_cells();
   const unsigned int n_dofs         = dof_handler.n_dofs();
 
-  pcout << "Cycle " << cycle << ':' << std::endl
-        << "   Number of active cells:       " << n_active_cells << std::endl
-        << "   Number of degrees of freedom: " << n_dofs << std::endl
-        << "   L2 error:                     " << L2_error << std::endl;
+  if (use_equidistant_points)
+    pcout << "Cycle " << cycle << ':' << std::endl
+          << fe->get_name() << " equidistant" << std::endl
+          << "   Number of active cells:       " << n_active_cells << std::endl
+          << "   Number of degrees of freedom: " << n_dofs << std::endl
+          << "   L2 error:                     " << L2_error << std::endl;
+  else
+    pcout << "Cycle " << cycle << ':' << std::endl
+          << fe->get_name() << " blend and warp" << std::endl
+          << "   Number of active cells:       " << n_active_cells << std::endl
+          << "   Number of degrees of freedom: " << n_dofs << std::endl
+          << "   L2 error:                     " << L2_error << std::endl;
+  // const double l2_manual = compute_l2_error();
+  // pcout << "   Difference in L2 error: " << L2_error - l2_manual <<
+  // std::endl;
+  // compute_difference_at_nodes();
 
-  convergence_table.add_value("cycle", cycle);
-  convergence_table.add_value("cells", n_active_cells);
-  convergence_table.add_value("dofs", n_dofs);
-  convergence_table.add_value("L2", L2_error);
+  if (fe->degree > 1)
+    pcout << "First line support point "
+          << fe->unit_support_point(fe->get_first_line_index()) << std::endl;
+
+
+  unsigned int offset = fe->degree - min_degree;
+  if (!use_equidistant_points)
+    if (!only_run_blend_and_warp)
+      offset += max_degree - min_degree + 1;
+
+  convergence_tables[offset].add_value("cycle", cycle);
+  convergence_tables[offset].add_value("cells", n_active_cells);
+  convergence_tables[offset].add_value("dofs", n_dofs);
+  convergence_tables[offset].add_value("L2", L2_error);
+
+  return L2_error < error_threshold;
 }
 
 
 template <int dim>
-void PoissonProblem<dim>::run()
+double PoissonProblem<dim>::compute_l2_error()
 {
+  double local_error_squared = 0.0;
+
+  FEValues<dim> fe_values(*mapping,
+                          *fe,
+                          fe->reference_cell().get_gauss_type_quadrature(
+                            std::max<unsigned int>(3 * fe->degree + 5, 20)),
+                          update_values | update_quadrature_points |
+                            update_JxW_values);
+
+  std::vector<double> numerical_values(fe_values.n_quadrature_points);
+
+  Solution<dim> exact_solution;
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    if (cell->is_locally_owned())
+      {
+        fe_values.reinit(cell);
+        fe_values.get_function_values(solution, numerical_values);
+
+        for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q)
+          {
+            const double difference =
+              numerical_values[q] -
+              exact_solution.value(fe_values.quadrature_point(q), 0);
+
+            local_error_squared += difference * difference * fe_values.JxW(q);
+          }
+      }
+
+  const double global_error_squared =
+    Utilities::MPI::sum(local_error_squared, mpi_communicator);
+
+  const double manual_L2 = std::sqrt(global_error_squared);
+
+  pcout << "   manual L2       " << std::setprecision(16) << manual_L2
+        << std::endl;
+
+  return manual_L2;
+}
+
+
+
+template <int dim>
+void PoissonProblem<dim>::compute_difference_at_nodes()
+{
+  double          local_difference_squared = 0.0;
+  Quadrature<dim> quadrature(fe->get_unit_support_points());
+
+  FEValues<dim> fe_values(*mapping,
+                          *fe,
+                          quadrature,
+                          update_values | update_quadrature_points);
+
+  std::vector<double> numerical_values(fe_values.n_quadrature_points);
+
+  Solution<dim> exact_solution;
+
+  std::vector<types::global_dof_index> local_dof_indices(fe->n_dofs_per_cell());
+
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    if (cell->is_locally_owned())
+      {
+        fe_values.reinit(cell);
+        fe_values.get_function_values(solution, numerical_values);
+
+
+        cell->get_dof_indices(local_dof_indices);
+
+        for (unsigned int i = 0; i < fe->n_dofs_per_cell(); ++i)
+          {
+            const double coeff = solution(local_dof_indices[i]);
+
+            const double nodal_value = numerical_values[i];
+
+            const double diff = coeff - nodal_value;
+            local_difference_squared += diff * diff;
+          }
+      }
+
+  const double global_difference_squared =
+    Utilities::MPI::sum(local_difference_squared, mpi_communicator);
+
+  const double global_difference = std::sqrt(global_difference_squared);
+
+  pcout << "   nodal difference       " << std::setprecision(16)
+        << global_difference << std::endl;
+}
+
+
+
+template <int dim>
+void PoissonProblem<dim>::run(const unsigned int n_cycles_max,
+                              const double       error_threshold,
+                              const bool         only_run_blend_and_warp)
+{
+  if (only_run_blend_and_warp)
+    {
+      convergence_tables.clear();
+      convergence_tables.resize(max_degree - min_degree + 1);
+    }
+
+  FE_PyramidP<dim> mapping_fe_pyramid(1, true);
+  FE_WedgeP<dim>   mapping_fe_wedge(1, true);
+  FE_SimplexP<dim> mapping_fe_simplex(1, true);
+  FE_Q<dim>        mapping_fe_hypercube(1);
+
+  MappingFE<dim> mapping_pyramid(mapping_fe_pyramid);
+  MappingFE<dim> mapping_wedge(mapping_fe_wedge);
+  MappingFE<dim> mapping_simplex(mapping_fe_simplex);
+  MappingFE<dim> mapping_hypercube(mapping_fe_hypercube);
+
+  if (ref_cell == ReferenceCells::Pyramid)
+    mapping = &mapping_pyramid;
+  else if (ref_cell == ReferenceCells::Wedge)
+    mapping = &mapping_wedge;
+  else if (ref_cell.is_simplex())
+    mapping = &mapping_simplex;
+  else if (ref_cell.is_hyper_cube())
+    mapping = &mapping_hypercube;
+  else
+    DEAL_II_NOT_IMPLEMENTED();
+
   const unsigned int n_cells_max = 200000000;
   unsigned int       n_cells     = 1;
 
-  for (unsigned int cycle = 0; n_cells < n_cells_max && cycle < 10; ++cycle)
+  const unsigned int n_dofs_max = 33000000;
+  unsigned int       n_dofs     = 1;
+
+  std::vector<bool> reached_error_threshold(max_degree - min_degree + 1, false);
+
+  for (unsigned int cycle = 0; n_cells < n_cells_max && cycle < n_cycles_max;
+       ++cycle)
     {
-      // if (cycle == 0)
       {
         triangulation.clear();
 
         const auto serial_grid_generator =
           [&](dealii::Triangulation<dim, dim> &tria_serial) {
             // set up triangulation
-            if (fe->reference_cell() == ReferenceCells::Pyramid)
+            if (ref_cell == ReferenceCells::Pyramid)
               GridGenerator::subdivided_hyper_cube_with_pyramids(
                 tria_serial, std::pow(2, cycle));
-            else if (fe->reference_cell() == ReferenceCells::Wedge)
+            else if (ref_cell == ReferenceCells::Wedge)
               GridGenerator::subdivided_hyper_cube_with_wedges(tria_serial, 2);
-            else if (fe->reference_cell().is_simplex())
+            else if (ref_cell.is_simplex())
               GridGenerator::subdivided_hyper_cube_with_simplices(tria_serial,
                                                                   2);
-            else if (fe->reference_cell().is_hyper_cube())
+            else if (ref_cell.is_hyper_cube())
               GridGenerator::subdivided_hyper_cube(tria_serial, 2);
             else
               DEAL_II_NOT_IMPLEMENTED();
 
-            if (fe->reference_cell() != ReferenceCells::Pyramid)
+            if (ref_cell != ReferenceCells::Pyramid)
               tria_serial.refine_global(cycle);
-
-            // const auto ref_cells = tria_serial.get_reference_cells();
-            // for (const auto &c: ref_cells)
-            //   std::cout << c.to_string() << std::endl;
           };
         const auto serial_grid_partitioner =
           [&](dealii::Triangulation<dim, dim> &tria_serial,
@@ -344,7 +530,7 @@ void PoissonProblem<dim>::run()
               dealii::Utilities::MPI::n_mpi_processes(comm), tria_serial);
           };
 
-        const unsigned int group_size = 20;
+        const unsigned int group_size = 32;
 
         typename dealii::TriangulationDescription::Settings
           triangulation_description_setting =
@@ -360,69 +546,176 @@ void PoissonProblem<dim>::run()
 
         triangulation.create_triangulation(description);
       }
-      // else
-      //  {
-      //    triangulation.refine_global(1);
-      //  }
 
-      //  const auto ref_cells = triangulation.get_reference_cells();
-      //                 for (const auto &c: ref_cells)
-      //                   std::cout << c.to_string() << std::endl;
+      // we got the triangulation
+      // now go over all polynomial degrees
+      // and over equidistant and gl support points if needed
+      const std::vector<bool> variants_vector =
+        only_run_blend_and_warp ? std::vector<bool>{{false}} :
+                                  std::vector<bool>{{true, false}};
 
+      unsigned int max_degree_cycle = max_degree;
+      if (ref_cell == ReferenceCells::Pyramid)
+        {
+          if (cycle == 5)
+            max_degree_cycle = std::min(6U, max_degree);
+          if (cycle == 6)
+            max_degree_cycle = std::min(3U, max_degree);
+        }
+      else if (ref_cell == ReferenceCells::Wedge)
+        {
+          if (cycle == 4)
+            max_degree_cycle = std::min(5U, max_degree);
+          if (cycle > 4)
+            max_degree_cycle = std::min(3U, max_degree);
+        }
+      else if (ref_cell.is_simplex())
+        {
+          if (cycle == 4)
+            max_degree_cycle = std::min(6U, max_degree);
+          if (cycle > 4)
+            max_degree_cycle = std::min(3U, max_degree);
+        }
+      else if (ref_cell.is_hyper_cube())
+        {
+          if (cycle > 2)
+            max_degree_cycle = std::min(6U, max_degree);
+          if (cycle > 4)
+            max_degree_cycle = std::min(5U, max_degree);
+          if (cycle > 5)
+            max_degree_cycle = std::min(3U, max_degree);
+        }
+      else
+        DEAL_II_NOT_IMPLEMENTED();
 
-      setup_system();
+      for (unsigned int degree = min_degree;
+           degree <= max_degree_cycle && n_dofs < n_dofs_max &&
+           !reached_error_threshold[degree - min_degree];
+           ++degree)
+        {
+          for (const bool use_equidistant_points : variants_vector)
+            {
+              FE_PyramidP<dim> fe_pyramidp(degree, use_equidistant_points);
+              FE_WedgeP<dim>   fe_wedgep(degree, use_equidistant_points);
+              FE_SimplexP<dim> fe_simplexp(degree, use_equidistant_points);
+              FE_Q<dim>        fe_q =
+                use_equidistant_points ?
+                         FE_Q<dim>(QIterated<1>(QTrapezoid<1>(), degree)) :
+                         FE_Q<dim>(degree);
 
-      assemble_system();
-      solve();
-      process_solution(cycle);
+              if (ref_cell == ReferenceCells::Pyramid)
+                fe = &fe_pyramidp;
+              else if (ref_cell == ReferenceCells::Wedge)
+                fe = &fe_wedgep;
+              else if (ref_cell.is_simplex())
+                fe = &fe_simplexp;
+              else if (ref_cell.is_hyper_cube())
+                fe = &fe_q;
+              else
+                DEAL_II_NOT_IMPLEMENTED();
 
+              setup_system();
+
+              assemble_system();
+              solve();
+              reached_error_threshold[degree - min_degree] =
+                process_solution(cycle,
+                                 use_equidistant_points,
+                                 only_run_blend_and_warp,
+                                 error_threshold);
+              pcout << std::endl;
+
+              if (false)
+                {
+                  DataOut<dim> data_out;
+
+                  DataOutBase::VtkFlags flags;
+                  flags.write_higher_order_cells = false;
+                  data_out.set_flags(flags);
+
+                  data_out.add_data_vector(dof_handler, solution, "solution");
+                  Vector<double> mpi_owner(triangulation.n_active_cells());
+                  mpi_owner = Utilities::MPI::this_mpi_process(MPI_COMM_WORLD);
+                  data_out.add_data_vector(mpi_owner, "owner");
+                  data_out.build_patches(*mapping,
+                                         1,
+                                         DataOut<dim>::curved_inner_cells);
+
+                  const std::string filename = "solution-" + fe->get_name();
+                  data_out.write_vtu_with_pvtu_record("",
+                                                      filename,
+                                                      cycle,
+                                                      MPI_COMM_WORLD);
+                }
+              n_dofs = dof_handler.n_dofs();
+            }
+          pcout << std::endl;
+        }
+      pcout << std::endl;
+
+      n_dofs  = 0;
       n_cells = triangulation.n_global_active_cells();
     }
 
-  /*
-   std::string vtk_filename;
-   vtk_filename = "solution";
-   vtk_filename += "-pyramidp" + std::to_string(fe->degree);
-   vtk_filename += ".vtk";
-   std::ofstream output(vtk_filename);
+  //    std::string vtk_filename;
+  //  vtk_filename = "solution_";
+  //  vtk_filename += fe->get_name() + "_cycle_" + std::to_string(cycle);
+  //  vtk_filename += ".vtk";
+  //  std::ofstream output(vtk_filename);
 
-   DataOut<dim> data_out;
-   data_out.attach_dof_handler(dof_handler);
-   data_out.add_data_vector(solution, "solution");
-   data_out.build_patches(1);
-   data_out.write_vtk(output);
-*/
+  //  DataOut<dim> data_out;
+  //  data_out.attach_dof_handler(dof_handler);
+  //  data_out.add_data_vector(solution, "solution");
+  //  data_out.build_patches(1);
+  //  data_out.write_vtk(output);
 
-  convergence_table.set_precision("L2", 3);
-  convergence_table.set_scientific("L2", true);
+  unsigned int degree_counter  = min_degree;
+  bool         use_equi_points = true;
+  if (only_run_blend_and_warp)
+    use_equi_points = false;
+  for (auto &convergence_table : convergence_tables)
+    {
+      convergence_table.set_precision("L2", 3);
+      convergence_table.set_scientific("L2", true);
 
-  convergence_table.set_tex_caption("cells", "\\# cells");
-  convergence_table.set_tex_caption("dofs", "\\# dofs");
-  convergence_table.set_tex_caption("L2", "$L^2$-error");
+      convergence_table.set_tex_caption("cells", "\\# cells");
+      convergence_table.set_tex_caption("dofs", "\\# dofs");
+      convergence_table.set_tex_caption("L2", "$L^2$-error");
 
-  convergence_table.set_tex_format("cells", "r");
-  convergence_table.set_tex_format("dofs", "r");
+      convergence_table.set_tex_format("cells", "r");
+      convergence_table.set_tex_format("dofs", "r");
 
-  convergence_table.evaluate_convergence_rates(
-    "L2", ConvergenceTable::reduction_rate);
-  convergence_table.evaluate_convergence_rates(
-    "L2", ConvergenceTable::reduction_rate_log2);
+      convergence_table.evaluate_convergence_rates(
+        "L2", ConvergenceTable::reduction_rate);
+      convergence_table.evaluate_convergence_rates(
+        "L2", ConvergenceTable::reduction_rate_log2);
 
-  pcout << std::endl;
-  convergence_table.write_text(std::cout);
+      pcout << std::endl;
 
-  std::string error_filename = "error_";
-  error_filename +=
-    fe->reference_cell().to_string() + "_p_" + std::to_string(fe->degree);
-  if (use_equidistant_points)
-    error_filename += "_equidistant";
-  else
-    error_filename += "_blend_and_warp";
+      if (Utilities::MPI::this_mpi_process(mpi_communicator) == 0)
+        {
+          convergence_table.write_text(std::cout);
 
-  error_filename += ".tex";
-  std::ofstream error_table_file(error_filename);
+          std::string error_filename = "error_CG_SpMV_";
+          error_filename +=
+            ref_cell.to_string() + "_p_" + std::to_string(degree_counter);
+          if (use_equi_points)
+            error_filename += "_equidistant";
+          else
+            error_filename += "_blend_and_warp";
 
-  convergence_table.write_tex(error_table_file);
+          error_filename += ".tex";
+          std::ofstream error_table_file(error_filename);
+
+          convergence_table.write_tex(error_table_file);
+        }
+      ++degree_counter;
+      if (degree_counter > max_degree)
+        {
+          degree_counter  = min_degree;
+          use_equi_points = false;
+        }
+    }
 }
 
 
@@ -431,45 +724,105 @@ int main(int argc, char **argv)
   const unsigned int                       dim = 3;
   dealii::Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
 
-  try
-    {
-      for (unsigned int i = 1; i < 5; ++i)
-        for (const bool use_equidistant_points :
-             std::vector<bool>{{true, false}})
-          for (unsigned int degree = 1; degree <= 7; ++degree)
-            {
-              if (i == 1)
-                {
-                  const FE_PyramidP<dim> fe(degree, use_equidistant_points);
-                  PoissonProblem<dim>    poisson(fe, use_equidistant_points);
-                  poisson.run();
-                }
-              else if (i == 2)
-                {
-                  const FE_WedgeP<dim> fe(degree, use_equidistant_points);
-                  PoissonProblem<dim>  poisson(fe, use_equidistant_points);
-                  poisson.run();
-                }
-              else if (i == 3)
-                {
-                  const FE_SimplexP<dim> fe(degree, use_equidistant_points);
-                  PoissonProblem<dim>    poisson(fe, use_equidistant_points);
-                  poisson.run();
-                }
-              else if (i == 4)
-                {
-                  const FE_Q<dim> fe =
-                    use_equidistant_points ?
-                      FE_Q<dim>(QIterated<1>(QTrapezoid<1>(), degree)) :
-                      FE_Q<dim>(degree);
-                  PoissonProblem<dim> poisson(fe, use_equidistant_points);
-                  poisson.run();
-                }
-              else
-                DEAL_II_NOT_IMPLEMENTED();
 
+  if (false)
+    {
+      for (unsigned int i = 1; i < 7; ++i)
+        {
+          FE_SimplexP<dim> fe_equi(i, true);
+          FE_SimplexP<dim> fe_blend_and_warp(i, false);
+
+          const auto points_equi  = fe_equi.get_unit_support_points();
+          const auto points_b_a_w = fe_blend_and_warp.get_unit_support_points();
+
+          if (false)
+            {
+              std::cout << "Unit support points p=" << i << " (equidistant)"
+                        << std::endl;
+              for (const auto &p : points_equi)
+                std::cout << p << std::endl;
               std::cout << std::endl;
             }
+
+          if (false)
+            {
+              std::cout << "Unit support points p=" << i << " (blend and warp)"
+                        << std::endl;
+              for (const auto &p : points_b_a_w)
+                std::cout << p << std::endl;
+              std::cout << std::endl;
+            }
+
+          if (true)
+            {
+              const auto ref_cell = fe_blend_and_warp.reference_cell();
+              for (const auto &p : points_b_a_w)
+                {
+                  if (!ref_cell.contains_point(p, 1e-16))
+                    {
+                      std::cout
+                        << "!!!!!!!!!!!!!!!!!!!!!!!!!!!1 invalid point: ";
+                      std::cout << p << std::endl;
+                    }
+                }
+            }
+
+          if (false)
+            {
+              std::cout << "Difference between support points at p=" << i
+                        << std::endl;
+              for (unsigned int i = 0; i < points_b_a_w.size(); ++i)
+                std::cout << points_equi[i] - points_b_a_w[i] << std::endl;
+            }
+          std::cout << std::endl;
+          std::cout << std::endl;
+        }
+      return 0;
+    }
+
+
+  try
+    {
+      const unsigned int min_degree      = 1;
+      const unsigned int max_degree      = 7;
+      const unsigned int n_cycles_max    = 7;
+      const double       error_threshold = 1e-9;
+
+      if (false)
+        {
+          PoissonProblem<dim> poisson(min_degree,
+                                      max_degree,
+                                      ReferenceCells::Pyramid);
+          poisson.run(n_cycles_max, error_threshold, false);
+          std::cout << std::endl;
+        }
+
+      if (false)
+        {
+          PoissonProblem<dim> poisson(min_degree,
+                                      max_degree,
+                                      ReferenceCells::Wedge);
+          poisson.run(n_cycles_max, error_threshold, false);
+          std::cout << std::endl;
+        }
+
+      // if (false)
+      {
+        PoissonProblem<dim> poisson(min_degree,
+                                    max_degree,
+                                    ReferenceCells::Tetrahedron);
+        poisson.run(n_cycles_max, error_threshold, false);
+        std::cout << std::endl;
+      }
+
+      if (false)
+        {
+          PoissonProblem<dim> poisson(min_degree,
+                                      max_degree,
+                                      ReferenceCells::Hexahedron);
+          poisson.run(n_cycles_max, error_threshold, false);
+          std::cout << std::endl;
+        }
     }
   catch (std::exception &exc)
     {

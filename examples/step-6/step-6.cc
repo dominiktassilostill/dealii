@@ -1,632 +1,744 @@
-/* ------------------------------------------------------------------------
- *
- * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2000 - 2024 by the deal.II authors
- *
- * This file is part of the deal.II library.
- *
- * Part of the source code is dual licensed under Apache-2.0 WITH
- * LLVM-exception OR LGPL-2.1-or-later. Detailed license information
- * governing the source code and code contributions can be found in
- * LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
- *
- * ------------------------------------------------------------------------
- */
 
-
-// @sect3{Include files}
-
-// The first few files have already been covered in previous examples and will
-// thus not be further commented on.
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/base/logstream.h>
+#include <deal.II/base/mpi.h>
 #include <deal.II/base/quadrature_lib.h>
+#include <deal.II/base/timer.h>
+
+#include <deal.II/distributed/fully_distributed_tria.h>
+
+#include "./../../../tests/simplex/simplex_grids.h"
 
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 
-#include <deal.II/fe/fe_values.h>
-
-#include <deal.II/grid/tria.h>
-#include <deal.II/grid/grid_generator.h>
-
-#include <deal.II/lac/dynamic_sparsity_pattern.h>
-#include <deal.II/lac/full_matrix.h>
-#include <deal.II/lac/precondition.h>
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/vector.h>
-
-#include <deal.II/numerics/data_out.h>
-#include <deal.II/numerics/vector_tools.h>
-
-#include <fstream>
-
-// From the following include file we will import the declaration of
-// $H^1$-conforming finite element shape functions. This family of finite
-// elements is called <code>FE_Q</code>, and was used in all examples before
-// already to define the usual bi- or tri-linear elements, but we will now use
-// it for bi-quadratic elements:
 #include <deal.II/fe/fe_q.h>
-// We will not read the grid from a file as in the previous example, but
-// generate it using a function of the library. However, we will want to write
-// out the locally refined grids (just the grid, not the solution) in each
-// step, so we need the following include file instead of
-// <code>grid_in.h</code>:
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/fe_wedge_p.h>
+#include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/mapping_fe.h>
+
+#include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_out.h>
+#include <deal.II/grid/grid_tools.h>
 
-
-// When using locally refined grids, we will get so-called <code>hanging
-// nodes</code>. However, the standard finite element methods assumes that the
-// discrete solution spaces be continuous, so we need to make sure that the
-// degrees of freedom on hanging nodes conform to some constraints such that
-// the global solution is continuous. We are also going to store the boundary
-// conditions in this object. The following file contains a class which is
-// used to handle these constraints:
 #include <deal.II/lac/affine_constraints.h>
 
-// In order to refine our grids locally, we need a function from the library
-// that decides which cells to flag for refinement or coarsening based on the
-// error indicators we have computed. This function is defined here:
-#include <deal.II/grid/grid_refinement.h>
+#include <deal.II/matrix_free/fe_evaluation.h>
+#include <deal.II/matrix_free/matrix_free.h>
 
-// Finally, we need a simple way to actually compute the refinement indicators
-// based on some error estimate. While in general, adaptivity is very
-// problem-specific, the error indicator in the following file often yields
-// quite nicely adapted grids for a wide class of problems.
-#include <deal.II/numerics/error_estimator.h>
+#include <deal.II/numerics/vector_tools.h>
 
-// Finally, this is as in previous programs:
 using namespace dealii;
 
-
-// @sect3{The <code>Step6</code> class template}
-
-// The main class is again almost unchanged. Two additions, however, are made:
-// we have added the <code>refine_grid</code> function, which is used to
-// adaptively refine the grid (instead of the global refinement in the
-// previous examples), and a variable which will hold the constraints.
-template <int dim>
-class Step6
+template <int dim_, int n_components = dim_, typename Number = double>
+class Operator : public Subscriptor
 {
 public:
-  Step6();
+  using value_type = Number;
+  using number     = Number;
+  using VectorType = LinearAlgebra::distributed::Vector<Number>;
 
-  void run();
+  static const int dim = dim_;
+
+  using FECellIntegrator = FEEvaluation<dim, -1, 0, n_components, Number>;
+  using FEFaceIntegrator = FEFaceEvaluation<dim, -1, 0, n_components, Number>;
+
+  void reinit(const Mapping<dim>              &mapping,
+              const DoFHandler<dim>           &dof_handler,
+              const Quadrature<dim>           &quad,
+              const AffineConstraints<number> &constraints,
+              const unsigned int mg_level = numbers::invalid_unsigned_int)
+  {
+    this->constraints.copy_from(constraints);
+
+    typename MatrixFree<dim, number>::AdditionalData data;
+    data.mapping_update_flags =
+      (update_gradients | update_JxW_values | update_quadrature_points);
+    data.mapping_update_flags_inner_faces =
+      (update_gradients | update_JxW_values | update_normal_vectors);
+    data.mapping_update_flags_boundary_faces =
+      (update_gradients | update_JxW_values | update_normal_vectors |
+       update_quadrature_points);
+    data.mg_level = mg_level;
+
+    matrix_free.reinit(mapping, dof_handler, constraints, quad, data);
+  }
+
+  virtual void initialize_dof_vector(VectorType &vec) const
+  {
+    matrix_free.initialize_dof_vector(vec);
+  }
+
+  virtual void vmult(VectorType &dst, const VectorType &src) const
+  {
+    this->matrix_free.loop(
+      &Operator::do_cell_integral_range,
+      &Operator::do_face_integral_range,
+      &Operator::do_boundary,
+      this,
+      dst,
+      src,
+      true,
+      MatrixFree<dim, number>::DataAccessOnFaces::gradients,
+      MatrixFree<dim, number>::DataAccessOnFaces::gradients);
+  }
 
 private:
-  void setup_system();
-  void assemble_system();
-  void solve();
-  void refine_grid();
-  void output_results(const unsigned int cycle) const;
+  void
+  do_cell_integral_range(const MatrixFree<dim, number> &,
+                         VectorType &,
+                         const VectorType &,
+                         const std::pair<unsigned int, unsigned int> &) const
+  {}
 
-  Triangulation<dim> triangulation;
+  void do_face_integral_range(
+    const MatrixFree<dim, number> &matrix_free,
+    VectorType &,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FEFaceIntegrator integrator_inner(matrix_free, true);
+    FEFaceIntegrator integrator_outer(matrix_free, false);
 
-  const FE_Q<dim> fe;
-  DoFHandler<dim> dof_handler;
+    for (unsigned int face = range.first; face < range.second; ++face)
+      {
+        integrator_inner.reinit(face);
+        integrator_inner.gather_evaluate(src, EvaluationFlags::gradients);
+        integrator_outer.reinit(face);
+        integrator_outer.gather_evaluate(src, EvaluationFlags::gradients);
 
+        for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
+          {
+            const auto normal = integrator_inner.normal_vector(q);
 
-  // This is the new variable in the main class. We need an object which holds
-  // a list of constraints to hold the hanging nodes and the boundary
-  // conditions.
-  AffineConstraints<double> constraints;
+            const auto grad_inner = integrator_inner.get_gradient(q);
+            const auto grad_outer = integrator_outer.get_gradient(q);
 
-  SparseMatrix<double> system_matrix;
-  SparsityPattern      sparsity_pattern;
+            const auto grad_inner_normal = grad_inner * normal;
+            const auto grad_outer_normal = grad_outer * normal;
 
-  Vector<double> solution;
-  Vector<double> system_rhs;
+            const auto normal_derivative_inner =
+              integrator_inner.get_normal_derivative(q);
+            const auto normal_derivative_outer =
+              integrator_outer.get_normal_derivative(q);
+
+            bool different = false;
+            for (unsigned int v = 0; v < grad_inner_normal.size(); ++v)
+              if (std::abs(grad_inner_normal[v] - normal_derivative_inner[v]) >
+                    1e-14 ||
+                  std::abs(grad_outer_normal[v] - normal_derivative_outer[v]) >
+                    1e-14)
+                different = true;
+
+            if (different)
+              std::cout << "face " << face << " quadrature point " << q
+                        << " inner: "
+                        << grad_inner_normal - normal_derivative_inner
+                        << ", outer: "
+                        << grad_outer_normal - normal_derivative_outer
+                        << std::endl;
+            else
+              std::cout << "face " << face << " quadrature point " << q
+                        << " normal: " << normal << std::endl;
+          }
+      }
+  }
+
+  void do_boundary(const MatrixFree<dim, number> &matrix_free,
+                   VectorType &,
+                   const VectorType                            &src,
+                   const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FEFaceIntegrator integrator_inner(matrix_free, true);
+
+    for (unsigned int face = range.first; face < range.second; ++face)
+      {
+        integrator_inner.reinit(face);
+        integrator_inner.gather_evaluate(src, EvaluationFlags::gradients);
+
+        for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
+          {
+            const auto normal = integrator_inner.normal_vector(q);
+
+            const auto grad_inner = integrator_inner.get_gradient(q);
+
+            const auto grad_inner_normal = grad_inner * normal;
+
+            const auto normal_derivative_inner =
+              integrator_inner.get_normal_derivative(q);
+
+            bool different = false;
+            for (unsigned int v = 0; v < grad_inner_normal.size(); ++v)
+              if (std::abs(grad_inner_normal[v] - normal_derivative_inner[v]) >
+                  1e-14)
+                different = true;
+
+            if (different)
+              DEAL_II_ASSERT_UNREACHABLE();
+            if (different)
+              std::cout << "boundary face " << face << " quadrature point " << q
+                        << ": " << grad_inner_normal - normal_derivative_inner
+                        << " and jacobian x normal: "
+                        << integrator_inner.inverse_jacobian(q) * normal
+                        << std::endl;
+            else
+              std::cout << "boundary face " << face << " quadrature point " << q
+                        << "jacobian x normal: "
+                        << integrator_inner.inverse_jacobian(q) * normal
+                        << std::endl;
+          }
+      }
+  }
+
+  MatrixFree<dim, number> matrix_free;
+
+  AffineConstraints<number> constraints;
 };
 
 
-// @sect3{Nonconstant coefficients}
 
-// The implementation of nonconstant coefficients is copied verbatim from
-// step-5:
-template <int dim>
-double coefficient(const Point<dim> &p)
+template <int dim, typename Number>
+void do_test(const unsigned int fe_degree, const ReferenceCell<dim> &ref_cell)
 {
-  if (p.square() < 0.5 * 0.5)
-    return 20;
+  ConditionalOStream pcout(std::cout,
+                           Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) ==
+                             0);
+  pcout << "Running in " << dim << "D with degree " << fe_degree << " on "
+        << ref_cell.to_string() << " elements" << std::endl;
+
+  const FiniteElement<dim> *fe;
+  const Quadrature<dim>    *quad;
+  const MappingFE<dim>     *mapping;
+
+  FE_PyramidP<dim> mapping_fe_pyramid(1, true);
+  FE_WedgeP<dim>   mapping_fe_wedge(1, true);
+  FE_SimplexP<dim> mapping_fe_simplex(1, true);
+  FE_Q<dim>        mapping_fe_hypercube(1);
+
+  MappingFE<dim> mapping_pyramid(mapping_fe_pyramid);
+  MappingFE<dim> mapping_wedge(mapping_fe_wedge);
+  MappingFE<dim> mapping_simplex(mapping_fe_simplex);
+  MappingFE<dim> mapping_hypercube(mapping_fe_hypercube);
+
+  if (ref_cell == ReferenceCells::Pyramid)
+    mapping = &mapping_pyramid;
+  else if (ref_cell == ReferenceCells::Wedge)
+    mapping = &mapping_wedge;
+  else if (ref_cell.is_simplex())
+    mapping = &mapping_simplex;
+  else if (ref_cell.is_hyper_cube())
+    mapping = &mapping_hypercube;
   else
-    return 1;
-}
+    DEAL_II_NOT_IMPLEMENTED();
 
+  AffineConstraints<double> constraint;
 
-
-// @sect3{The <code>Step6</code> class implementation}
-
-// @sect4{Step6::Step6}
-
-// The constructor of this class is mostly the same as before, but this time
-// we want to use the quadratic element. To do so, we only have to replace the
-// constructor argument (which was <code>1</code> in all previous examples) by
-// the desired polynomial degree (here <code>2</code>):
-template <int dim>
-Step6<dim>::Step6()
-  : fe(/* polynomial degree = */ 2)
-  , dof_handler(triangulation)
-{}
-
-
-
-// @sect4{Step6::setup_system}
-
-// The next function sets up all the variables that describe the linear
-// finite element problem, such as the DoFHandler, matrices, and
-// vectors. The difference to what we did in step-5 is only that we now also
-// have to take care of hanging node constraints. These constraints are
-// handled almost exclusively by the library, i.e. you only need to know
-// that they exist and how to get them, but you do not have to know how they
-// are formed or what exactly is done with them.
-//
-// At the beginning of the function, you find all the things that are the same
-// as in step-5: setting up the degrees of freedom (this time we have
-// quadratic elements, but there is no difference from a user code perspective
-// to the linear -- or any other degree, for that matter -- case), generating
-// the sparsity pattern, and initializing the solution and right hand side
-// vectors. Note that the sparsity pattern will have significantly more
-// entries per row now, since there are now 9 degrees of freedom per cell
-// (rather than only four), that can couple with each other.
-template <int dim>
-void Step6<dim>::setup_system()
-{
-  dof_handler.distribute_dofs(fe);
-
-  solution.reinit(dof_handler.n_dofs());
-  system_rhs.reinit(dof_handler.n_dofs());
-
-  // We may now populate the AffineConstraints object with the hanging node
-  // constraints. Since we will call this function in a loop we first clear
-  // the current set of constraints from the last system and then compute new
-  // ones:
-  constraints.clear();
-  DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-
-
-  // Now we are ready to interpolate the boundary values with indicator 0 (the
-  // whole boundary) and store the resulting constraints in our
-  // <code>constraints</code> object. Note that we do not to apply the
-  // boundary conditions after assembly, like we did in earlier steps: instead
-  // we put all constraints on our function space in the AffineConstraints
-  // object. We can add constraints to the AffineConstraints object in either
-  // order: if two constraints conflict then the constraint matrix either abort
-  // or throw an exception via the Assert macro.
-  VectorTools::interpolate_boundary_values(dof_handler,
-                                           types::boundary_id(0),
-                                           Functions::ZeroFunction<dim>(),
-                                           constraints);
-
-  // After all constraints have been added, they need to be sorted and
-  // rearranged to perform some actions more efficiently. This postprocessing
-  // is done using the <code>close()</code> function, after which no further
-  // constraints may be added any more:
-  constraints.close();
-
-  // Now we first build our compressed sparsity pattern like we did in the
-  // previous examples. Nevertheless, we do not copy it to the final sparsity
-  // pattern immediately.  Note that we call a variant of
-  // make_sparsity_pattern that takes the AffineConstraints object as the third
-  // argument. We are letting the routine know that we will never write into
-  // the locations given by <code>constraints</code> by setting the argument
-  // <code>keep_constrained_dofs</code> to false (in other words, that we will
-  // never write into entries of the matrix that correspond to constrained
-  // degrees of freedom). If we were to condense the
-  // constraints after assembling, we would have to pass <code>true</code>
-  // instead because then we would first write into these locations only to
-  // later set them to zero again during condensation.
-  DynamicSparsityPattern dsp(dof_handler.n_dofs());
-  DoFTools::make_sparsity_pattern(dof_handler,
-                                  dsp,
-                                  constraints,
-                                  /*keep_constrained_dofs = */ false);
-
-  // Now all non-zero entries of the matrix are known (i.e. those from
-  // regularly assembling the matrix and those that were introduced by
-  // eliminating constraints). We may copy our intermediate object to the
-  // sparsity pattern:
-  sparsity_pattern.copy_from(dsp);
-
-  // We may now, finally, initialize the sparse matrix:
-  system_matrix.reinit(sparsity_pattern);
-}
-
-
-// @sect4{Step6::assemble_system}
-
-// Next, we have to assemble the matrix. However, to copy the local matrix and
-// vector on each cell into the global system, we are no longer using a
-// hand-written loop. Instead, we use
-// AffineConstraints::distribute_local_to_global() that internally executes
-// this loop while performing Gaussian elimination on rows and columns
-// corresponding to constrained degrees on freedom.
-//
-// The rest of the code that forms the local contributions remains
-// unchanged. It is worth noting, however, that under the hood several things
-// are different than before. First, the variable <code>dofs_per_cell</code>
-// and return value of <code>quadrature_formula.size()</code> now are 9 each,
-// where they were 4 before. Introducing such variables as abbreviations is a
-// good strategy to make code work with different elements without having to
-// change too much code. Secondly, the <code>fe_values</code> object of course
-// needs to do other things as well, since the shape functions are now
-// quadratic, rather than linear, in each coordinate variable. Again, however,
-// this is something that is completely handled by the library.
-template <int dim>
-void Step6<dim>::assemble_system()
-{
-  const QGauss<dim> quadrature_formula(fe.degree + 1);
-
-  FEValues<dim> fe_values(fe,
-                          quadrature_formula,
-                          update_values | update_gradients |
-                            update_quadrature_points | update_JxW_values);
-
-  const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-
-  FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
-  Vector<double>     cell_rhs(dofs_per_cell);
-
-  std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-  for (const auto &cell : dof_handler.active_cell_iterators())
+  for (unsigned int cycle = 0; cycle < 1; ++cycle)
     {
-      fe_values.reinit(cell);
-
-      cell_matrix = 0;
-      cell_rhs    = 0;
-
-      for (const unsigned int q_index : fe_values.quadrature_point_indices())
-        {
-          const double current_coefficient =
-            coefficient(fe_values.quadrature_point(q_index));
-          for (const unsigned int i : fe_values.dof_indices())
+      const auto serial_grid_generator = [&cycle, &ref_cell](
+                                           dealii::Triangulation<dim, dim>
+                                             &tria_serial) {
+        // set up triangulation
+        if (ref_cell == ReferenceCells::Pyramid)
+          GridGenerator::subdivided_hyper_cube_with_pyramids(tria_serial,
+                                                             std::pow(2,
+                                                                      cycle));
+        else if (ref_cell == ReferenceCells::Wedge)
+          {
+            dealii::Triangulation<dim, dim> temp;
+            // GridGenerator::subdivided_hyper_cube_with_wedges(tria_serial, 2);
+            //  GridGenerator::subdivided_hyper_cube_with_wedges(tria_serial,
+            //                                                 std::pow(2,
+            //                                                 cycle));
             {
-              for (const unsigned int j : fe_values.dof_indices())
-                cell_matrix(i, j) +=
-                  (current_coefficient *              // a(x_q)
-                   fe_values.shape_grad(i, q_index) * // grad phi_i(x_q)
-                   fe_values.shape_grad(j, q_index) * // grad phi_j(x_q)
-                   fe_values.JxW(q_index));           // dx
+              std::vector<Point<dim>>    vertices;
+              std::vector<CellData<dim>> cells;
+              vertices.emplace_back(0.0, 0.0, 0.0);
+              vertices.emplace_back(1.0, 0.0, 0.0);
+              vertices.emplace_back(0.0, 1.0, 0.0);
+              vertices.emplace_back(0.0, 0.0, 1.0);
+              vertices.emplace_back(1.0, 0.0, 1.0);
+              vertices.emplace_back(0.0, 1.0, 1.0);
 
-              cell_rhs(i) += (fe_values.shape_value(i, q_index) * // phi_i(x_q)
-                              1.0 *                               // f(x)
-                              fe_values.JxW(q_index));            // dx
+              vertices.emplace_back(1.0, 1.0, 0.0);
+              vertices.emplace_back(1.0, 1.0, 1.0);
+
+              {
+                CellData<dim> wedge;
+                wedge.vertices = {0, 1, 2, 3, 4, 5};
+                cells.push_back(wedge);
+              }
+              if (false)
+                {
+                  CellData<dim> wedge;
+                  wedge.vertices = {1, 6, 2, 4, 7, 5};
+                  cells.push_back(wedge);
+                }
+
+              temp.create_triangulation(vertices, cells, SubCellData());
+
+              if (cycle > 0)
+                temp.refine_global(cycle);
+
+              const auto                &new_vertices = temp.get_vertices();
+              std::vector<CellData<dim>> new_cells;
+              for (auto &cell : temp.active_cell_iterators())
+                {
+                  const auto         reference_cell = cell->reference_cell();
+                  const unsigned int n_vertices = reference_cell.n_vertices();
+
+                  CellData<dim> wedge;
+                  wedge.vertices.resize(n_vertices);
+
+                  for (unsigned int i = 0; i < n_vertices; ++i)
+                    {
+                      wedge.vertices[i] = cell->vertex_index(i);
+                    }
+                  new_cells.push_back(wedge);
+                }
+              tria_serial.create_triangulation(new_vertices,
+                                               new_cells,
+                                               SubCellData());
+            }
+          }
+        else if (ref_cell.is_simplex())
+          GridGenerator::subdivided_hyper_cube_with_simplices(tria_serial, 2);
+        else if (ref_cell.is_hyper_cube())
+          GridGenerator::subdivided_hyper_cube(tria_serial, 2);
+        else
+          DEAL_II_NOT_IMPLEMENTED();
+
+        if (ref_cell != ReferenceCells::Pyramid &&
+            ref_cell != ReferenceCells::Wedge)
+          tria_serial.refine_global(cycle);
+
+
+        {
+          for (const auto &cell : tria_serial.active_cell_iterators())
+            {
+              for (const auto f : cell->face_indices())
+                {
+                  if (cell->face(f)->at_boundary())
+                    {
+                      const auto face_orientation =
+                        cell->combined_face_orientation(f);
+
+                      if (face_orientation !=
+                          numbers::default_geometric_orientation)
+                        std::cout
+                          << "boundary face in non default orientation in cycle "
+                          << cycle << " with orientation "
+                          << int(face_orientation) << std::endl;
+                      // else
+                      //   std::cout << "boundary face in standard orientation "
+                      //            << int(face_orientation) << std::endl;
+                    }
+                  else
+                    {
+                      const auto face_orientation =
+                        cell->combined_face_orientation(f);
+
+                      const auto neighbor = cell->neighbor(f);
+                      const auto neighbor_face_number =
+                        cell->neighbor_face_no(f);
+
+                      const auto face_orientation_neighbor =
+                        neighbor->combined_face_orientation(
+                          neighbor_face_number);
+
+                      if (face_orientation ==
+                            numbers::default_geometric_orientation ||
+                          face_orientation_neighbor ==
+                            numbers::default_geometric_orientation)
+                        {
+                          // std::cout << "Face with orientations: "
+                          //           << int(face_orientation) << " "
+                          //           << int(face_orientation_neighbor)
+                          //           << std::endl;
+                        }
+                      else
+                        {
+                          std::cout
+                            << "face with 2 non standard sides in cycle "
+                            << cycle << " with orientations "
+                            << int(face_orientation) << " and "
+                            << int(face_orientation_neighbor) << std::endl;
+                        }
+                    }
+                }
+            }
+        }
+      };
+      const auto serial_grid_partitioner =
+        [&](dealii::Triangulation<dim, dim> &tria_serial,
+            const MPI_Comm                   comm,
+            const unsigned int) {
+          dealii::GridTools::partition_triangulation_zorder(
+            dealii::Utilities::MPI::n_mpi_processes(comm), tria_serial);
+        };
+
+      const unsigned int group_size = 32;
+
+      parallel::fullydistributed::Triangulation<dim> tria(MPI_COMM_WORLD);
+      typename dealii::TriangulationDescription::Settings
+        triangulation_description_setting =
+          dealii::TriangulationDescription::default_setting;
+      const auto description = dealii::TriangulationDescription::Utilities::
+        create_description_from_triangulation_in_groups<dim, dim>(
+          serial_grid_generator,
+          serial_grid_partitioner,
+          tria.get_mpi_communicator(),
+          group_size,
+          dealii::Triangulation<dim>::none,
+          triangulation_description_setting);
+
+      tria.create_triangulation(description);
+      pcout << "Cycle " << cycle << " set up triangulation" << std::endl;
+
+      {
+        // for (const bool use_equidistant_points :
+        // std::vector<bool>{{true, false}})
+        const bool use_equidistant_points = false;
+        {
+          DoFHandler<dim> dof_handler(tria);
+
+          FE_PyramidDGP<dim> fe_pyramidp(fe_degree, use_equidistant_points);
+          FE_WedgeDGP<dim>   fe_wedgep(fe_degree, use_equidistant_points);
+          FE_SimplexDGP<dim> fe_simplexp(fe_degree, use_equidistant_points);
+          FE_DGQ<dim>        fe_q = use_equidistant_points ?
+                                      FE_DGQArbitraryNodes<dim>(
+                                 QIterated<1>(QTrapezoid<1>(), fe_degree)) :
+                                      FE_DGQ<dim>(fe_degree);
+
+          if (ref_cell == ReferenceCells::Pyramid)
+            fe = &fe_pyramidp;
+          else if (ref_cell == ReferenceCells::Wedge)
+            fe = &fe_wedgep;
+          else if (ref_cell.is_simplex())
+            fe = &fe_simplexp;
+          else if (ref_cell.is_hyper_cube())
+            fe = &fe_q;
+          else
+            DEAL_II_NOT_IMPLEMENTED();
+
+          dof_handler.distribute_dofs(*fe);
+
+          // set up constraints
+          const IndexSet locally_relevant_dofs =
+            DoFTools::extract_locally_relevant_dofs(dof_handler);
+          constraint.reinit(dof_handler.locally_owned_dofs(),
+                            locally_relevant_dofs);
+          constraint.close();
+
+          QGaussPyramid<dim> quad_pyramid(fe_degree + 1);
+          QGaussWedge<dim>   quad_wedge(fe_degree + 1);
+          QGaussSimplex<dim> quad_simplex(fe_degree + 1);
+          QGauss<dim>        quad_hypercube(fe_degree + 1);
+
+          if (ref_cell == ReferenceCells::Pyramid)
+            quad = &quad_pyramid;
+          else if (ref_cell == ReferenceCells::Wedge)
+            quad = &quad_wedge;
+          else if (ref_cell.is_simplex())
+            quad = &quad_simplex;
+          else if (ref_cell.is_hyper_cube())
+            quad = &quad_hypercube;
+          else
+            DEAL_II_NOT_IMPLEMENTED();
+
+          pcout << "Set up operator of degree " << fe_degree << std::endl;
+          Operator<dim, 1, Number> op;
+          // set up operator
+          op.reinit(*mapping,
+                    dof_handler,
+                    *quad,
+                    constraint,
+                    numbers::invalid_unsigned_int);
+
+          LinearAlgebra::distributed::Vector<Number> x, b;
+          op.initialize_dof_vector(x);
+          op.initialize_dof_vector(b);
+          for (Number &a : b)
+            a = static_cast<double>(rand()) / RAND_MAX;
+
+          op.vmult(x, b);
+        }
+      }
+    }
+}
+
+
+int main(int argc, char **argv)
+{
+  constexpr int                    dim = 3;
+  Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
+
+  int degree         = 1;
+  int reference_cell = 1;
+  if (argc > 1)
+    degree = std::atoi(argv[1]);
+  if (argc > 2)
+    reference_cell = std::atoi(argv[2]);
+
+  if (false)
+    {
+      dealii::Triangulation<2> tria;
+      GridGenerator::reference_cell(tria, ReferenceCells::Triangle);
+      tria.refine_global();
+      for (const auto &cell : tria.active_cell_iterators())
+        std::cout << "cell " << cell->active_cell_index()
+                  << " vertices: " << cell->vertex(0) << ", " << cell->vertex(1)
+                  << ", " << cell->vertex(2) << std::endl;
+    }
+  {
+    for (unsigned int cycle = 1; cycle < 5; ++cycle)
+      {
+        dealii::Triangulation<dim, dim> tria1, tria2;
+        if (reference_cell == 1)
+          {
+            std::cout << "Wedge" << std::endl;
+            std::vector<Point<dim>>    vertices;
+            std::vector<CellData<dim>> cells;
+            vertices.emplace_back(0.0, 0.0, 0.0);
+            vertices.emplace_back(1.0, 0.0, 0.0);
+            vertices.emplace_back(0.0, 1.0, 0.0);
+            vertices.emplace_back(0.0, 0.0, 1.0);
+            vertices.emplace_back(1.0, 0.0, 1.0);
+            vertices.emplace_back(0.0, 1.0, 1.0);
+            {
+              CellData<dim> wedge;
+              wedge.vertices = {0, 1, 2, 3, 4, 5};
+              cells.push_back(wedge);
+            }
+            // if (false)
+            {
+              vertices.emplace_back(1.0, 1.0, 0.0);
+              vertices.emplace_back(1.0, 1.0, 1.0);
+
+              CellData<dim> wedge;
+              wedge.vertices = {1, 6, 2, 4, 7, 5};
+              cells.push_back(wedge);
+            }
+
+            tria1.create_triangulation(vertices, cells, SubCellData());
+
+            // tria1.clear();
+            // GridGenerator::subdivided_hyper_cube_with_wedges(tria1, 5);
+
+            if (cycle > 0)
+              tria1.refine_global(cycle);
+
+            // const auto                 new_vertices = tria1.get_vertices();
+            // std::vector<CellData<dim>> new_cells;
+            // for (const auto &cell : tria1.active_cell_iterators())
+            //   {
+            //     const auto         reference_cell = cell->reference_cell();
+            //     const unsigned int n_vertices     =
+            //     reference_cell.n_vertices();
+
+            //     CellData<dim> wedge;
+            //     wedge.vertices.resize(n_vertices);
+
+            //     for (unsigned int i = 0; i < n_vertices; ++i)
+            //       {
+            //         wedge.vertices[i] = cell->vertex_index(i);
+            //       }
+            //     new_cells.push_back(wedge);
+            //   }
+            // tria2.create_triangulation(new_vertices, new_cells,
+            // SubCellData());
+          }
+        else if (reference_cell == 2)
+          {
+            std::cout << "Tet" << std::endl;
+            GridGenerator::subdivided_hyper_cube_with_simplices(tria1, 2);
+            tria1.refine_global(cycle);
+          }
+        else if (reference_cell == 3)
+          {
+            std::cout << "Pyramid" << std::endl;
+            GridGenerator::subdivided_hyper_cube_with_pyramids(tria1, 2);
+            tria1.refine_global(cycle);
+          }
+        else
+          {
+            DEAL_II_NOT_IMPLEMENTED();
+          }
+        {
+          dealii::Triangulation<dim, dim> *tria;
+          tria = &tria1;
+
+          for (const auto &cell : tria->active_cell_iterators())
+            {
+              // std::cout << "cell " << cell->active_cell_index() << std::endl;
+              for (const auto f : cell->face_indices())
+                {
+                  if (cell->face(f)->at_boundary())
+                    {
+                      const auto face_orientation =
+                        cell->combined_face_orientation(f);
+
+                      if (face_orientation !=
+                          numbers::default_geometric_orientation)
+                        std::cout << "boundary face " << f << " of cell "
+                                  << cell->active_cell_index()
+                                  << " in non default orientation in cycle "
+                                  << cycle << " with orientation "
+                                  << int(face_orientation) << std::endl;
+                      // else
+                      //   std::cout << "boundary face in standard orientation
+                      //   "
+                      //            << int(face_orientation) << std::endl;
+                    }
+                  else
+                    {
+                      const auto face_orientation =
+                        cell->combined_face_orientation(f);
+
+                      const auto neighbor = cell->neighbor(f);
+                      const auto neighbor_face_number =
+                        cell->neighbor_face_no(f);
+
+                      const auto face_orientation_neighbor =
+                        neighbor->combined_face_orientation(
+                          neighbor_face_number);
+
+                      if (face_orientation ==
+                            numbers::default_geometric_orientation ||
+                          face_orientation_neighbor ==
+                            numbers::default_geometric_orientation)
+                        {
+                          // std::cout << "Face with orientations: "
+                          //           << int(face_orientation) << " "
+                          //           << int(face_orientation_neighbor)
+                          //           << std::endl;
+                        }
+                      else
+                        {
+                          std::cout << "face " << f << " of cell "
+                                    << cell->active_cell_index()
+                                    << " with 2 non standard sides in cycle "
+                                    << cycle << " with orientations "
+                                    << int(face_orientation) << " and "
+                                    << int(face_orientation_neighbor)
+                                    << std::endl;
+                        }
+                    }
+                }
             }
         }
 
-      // Finally, transfer the contributions from @p cell_matrix and
-      // @p cell_rhs into the global objects.
-      cell->get_dof_indices(local_dof_indices);
-      constraints.distribute_local_to_global(
-        cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
-    }
-  // Now we are done assembling the linear system. The constraint matrix took
-  // care of applying the boundary conditions and also eliminated hanging node
-  // constraints. The constrained nodes are still in the linear system (there
-  // is a nonzero entry, chosen in a way that the matrix is well conditioned,
-  // on the diagonal of the matrix and all other entries for this line are set
-  // to zero) but the computed values are invalid (i.e., the corresponding
-  // entries in <code>system_rhs</code> are currently meaningless). We compute
-  // the correct values for these nodes at the end of the <code>solve</code>
-  // function.
-}
+        const std::vector<unsigned int> vertex_to_reference{
+          {0, 1, 2, 3, 4, 5, 6, 12, 7, 13, 8, 14, 9, 10, 11, 15, 16, 17}};
 
+        const auto new_isotropic_child_cell_vertices =
+          ReferenceCells::Wedge.new_isotropic_child_cell_vertices(0);
+        if (false)
+          {
+            for (const auto &cell : tria2.active_cell_iterators())
+              {
+                std::cout << "child " << cell->active_cell_index() << std::endl;
+                std::cout << "Vertices ";
+                for (const auto v : cell->vertex_indices())
+                  {
+                    if (new_isotropic_child_cell_vertices
+                          [cell->active_cell_index()][v] ==
+                        vertex_to_reference[cell->vertex_index(v)])
+                      std::cout << vertex_to_reference[cell->vertex_index(v)]
+                                << " ";
+                    else
+                      std::cout << vertex_to_reference[cell->vertex_index(v)]
+                                << " vs "
+                                << new_isotropic_child_cell_vertices
+                                     [cell->active_cell_index()][v]
+                                << " ";
+                  }
+                std::cout << std::endl;
+              }
+          }
+        if (false)
+          for (auto *tria :
+               std::vector<Triangulation<dim, dim> *>{{&tria1, &tria2}})
+            {
+              for (const auto &cell : tria->active_cell_iterators())
+                if (cell->active_cell_index() == 3)
+                  {
+                    if (cell->level() != 0)
+                      {
+                        const auto parent      = cell->parent();
+                        const auto parent_face = parent->face(0);
+                        std::cout
+                          << "Orientation parent face: "
+                          << int(parent->combined_face_orientation(0))
+                          << " with vertices: " << parent_face->vertex_index(0)
+                          << " " << parent_face->vertex_index(1) << " "
+                          << parent_face->vertex_index(2) << ": "
+                          << parent_face->vertex(0) << ", "
+                          << parent_face->vertex(1) << ", "
+                          << parent_face->vertex(2) << std::endl;
 
-// @sect4{Step6::solve}
+                        const auto parent_face_child = parent_face->child(3);
+                        std::cout << "parent face child: "
+                                  << parent_face_child->vertex(0) << ", "
+                                  << parent_face_child->vertex(1) << ", "
+                                  << parent_face_child->vertex(2) << std::endl;
+                      }
+                    std::cout << "child " << cell->active_cell_index()
+                              << std::endl;
+                    std::cout
+                      << "Vertices: " << cell->vertex_index(0) << " "
+                      << cell->vertex_index(1) << " " << cell->vertex_index(2)
+                      << " " << cell->vertex_index(3) << " "
+                      << cell->vertex_index(4) << " " << cell->vertex_index(5)
+                      << std::endl;
+                    const auto face = cell->face(0);
+                    {
+                      std::cout << "combined face orientation of face 0: "
+                                << int(cell->combined_face_orientation(0))
+                                << std::endl;
+                      std::cout << "Face 0 with vertices" << std::endl;
+                      std::cout << face->vertex_index(0) << " ";
+                      std::cout << face->vertex_index(1) << " ";
+                      std::cout << face->vertex_index(2) << ": "
+                                << face->vertex(0) << ", " << face->vertex(1)
+                                << ", " << face->vertex(2) << std::endl;
 
-// We continue with gradual improvements. The function that solves the linear
-// system again uses the SSOR preconditioner, and is again unchanged except
-// that we have to incorporate hanging node constraints. As mentioned above,
-// the degrees of freedom from the AffineConstraints object corresponding to
-// hanging node constraints and boundary values have been removed from the
-// linear system by giving the rows and columns of the matrix a special
-// treatment. This way, the values for these degrees of freedom have wrong,
-// but well-defined values after solving the linear system. What we then have
-// to do is to use the constraints to assign to them the values that they
-// should have. This process, called <code>distributing</code> constraints,
-// computes the values of constrained nodes from the values of the
-// unconstrained ones, and requires only a single additional function call
-// that you find at the end of this function:
-
-template <int dim>
-void Step6<dim>::solve()
-{
-  SolverControl            solver_control(1000, 1e-6 * system_rhs.l2_norm());
-  SolverCG<Vector<double>> solver(solver_control);
-
-  PreconditionSSOR<SparseMatrix<double>> preconditioner;
-  preconditioner.initialize(system_matrix, 1.2);
-
-  solver.solve(system_matrix, solution, system_rhs, preconditioner);
-
-  constraints.distribute(solution);
-}
-
-
-// @sect4{Step6::refine_grid}
-
-// We use a sophisticated error estimation scheme to refine the mesh instead
-// of global refinement. We will use the KellyErrorEstimator class which
-// implements an error estimator for the Laplace equation; it can in principle
-// handle variable coefficients, but we will not use these advanced features,
-// but rather use its most simple form since we are not interested in
-// quantitative results but only in a quick way to generate locally refined
-// grids.
-//
-// Although the error estimator derived by Kelly et al. was originally
-// developed for the Laplace equation, we have found that it is also well
-// suited to quickly generate locally refined grids for a wide class of
-// problems. This error estimator uses the solution gradient's jump at
-// cell faces (which is a measure for the second derivatives) and
-// scales it by the size of the cell. It is therefore a measure for the local
-// smoothness of the solution at the place of each cell and it is thus
-// understandable that it yields reasonable grids also for hyperbolic
-// transport problems or the wave equation as well, although these grids are
-// certainly suboptimal compared to approaches specially tailored to the
-// problem. This error estimator may therefore be understood as a quick way to
-// test an adaptive program.
-//
-// The way the estimator works is to take a <code>DoFHandler</code> object
-// describing the degrees of freedom and a vector of values for each degree of
-// freedom as input and compute a single indicator value for each active cell
-// of the triangulation (i.e. one value for each of the active cells). To do
-// so, it needs two additional pieces of information: a face quadrature formula,
-// i.e., a quadrature formula on <code>dim-1</code> dimensional objects. We use
-// a 3-point Gauss rule again, a choice that is consistent and appropriate with
-// the bi-quadratic finite element shape functions in this program.
-// (What constitutes a suitable quadrature rule here of course depends on
-// knowledge of the way the error estimator evaluates the solution field. As
-// said above, the jump of the gradient is integrated over each face, which
-// would be a quadratic function on each face for the quadratic elements in
-// use in this example. In fact, however, it is the square of the jump of the
-// gradient, as explained in the documentation of that class, and that is a
-// quartic function, for which a 3 point Gauss formula is sufficient since it
-// integrates polynomials up to order 5 exactly.)
-//
-// Secondly, the function wants a list of boundary indicators for those
-// boundaries where we have imposed Neumann values of the kind
-// $\partial_n u(\mathbf x) = h(\mathbf x)$, along with a function $h(\mathbf
-// x)$ for each such boundary. This information is represented by a map from
-// boundary indicators to function objects describing the Neumann boundary
-// values. In the present example program, we do not use Neumann boundary
-// values, so this map is empty, and in fact constructed using the default
-// constructor of the map in the place where the function call expects the
-// respective function argument.
-//
-// The output is a vector of values for all active cells. While it may
-// make sense to compute the <b>value</b> of a solution degree of freedom
-// very accurately, it is usually not necessary to compute the <b>error
-// indicator</b> corresponding to the solution on a cell particularly
-// accurately. We therefore typically use a vector of floats instead of a vector
-// of doubles to represent error indicators.
-template <int dim>
-void Step6<dim>::refine_grid()
-{
-  Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-
-  KellyErrorEstimator<dim>::estimate(dof_handler,
-                                     QGauss<dim - 1>(fe.degree + 1),
-                                     {},
-                                     solution,
-                                     estimated_error_per_cell);
-
-  // The above function returned one error indicator value for each cell in
-  // the <code>estimated_error_per_cell</code> array. Refinement is now done
-  // as follows: refine those 30 per cent of the cells with the highest error
-  // values, and coarsen the 3 per cent of cells with the lowest values.
-  //
-  // One can easily verify that if the second number were zero, this would
-  // approximately result in a doubling of cells in each step in two space
-  // dimensions, since for each of the 30 per cent of cells, four new would be
-  // replaced, while the remaining 70 per cent of cells remain untouched. In
-  // practice, some more cells are usually produced since it is disallowed
-  // that a cell is refined twice while the neighbor cell is not refined; in
-  // that case, the neighbor cell would be refined as well.
-  //
-  // In many applications, the number of cells to be coarsened would be set to
-  // something larger than only three per cent. A non-zero value is useful
-  // especially if for some reason the initial (coarse) grid is already rather
-  // refined. In that case, it might be necessary to refine it in some
-  // regions, while coarsening in some other regions is useful. In our case
-  // here, the initial grid is very coarse, so coarsening is only necessary in
-  // a few regions where over-refinement may have taken place. Thus a small,
-  // non-zero value is appropriate here.
-  //
-  // The following function now takes these refinement indicators and flags
-  // some cells of the triangulation for refinement or coarsening using the
-  // method described above. It is from a class that implements several
-  // different algorithms to refine a triangulation based on cell-wise error
-  // indicators.
-  GridRefinement::refine_and_coarsen_fixed_number(triangulation,
-                                                  estimated_error_per_cell,
-                                                  0.3,
-                                                  0.03);
-
-  // After the previous function has exited, some cells are flagged for
-  // refinement, and some other for coarsening. The refinement or coarsening
-  // itself is not performed by now, however, since there are cases where
-  // further modifications of these flags is useful. Here, we don't want to do
-  // any such thing, so we can tell the triangulation to perform the actions
-  // for which the cells are flagged:
-  triangulation.execute_coarsening_and_refinement();
-}
-
-
-// @sect4{Step6::output_results}
-
-// At the end of computations on each grid, and just before we continue the
-// next cycle with mesh refinement, we want to output the results from this
-// cycle.
-//
-// We have already seen in step-1 how this can be achieved for the
-// mesh itself. Here, we change a few things:
-// <ol>
-//   <li>We use two different formats: gnuplot and VTU.</li>
-//   <li>We embed the cycle number in the output file name.</li>
-//   <li>For gnuplot output, we set up a GridOutFlags::Gnuplot object to
-//   provide a few extra visualization arguments so that edges appear
-//   curved. This is explained in further detail in step-10.</li>
-// </ol>
-template <int dim>
-void Step6<dim>::output_results(const unsigned int cycle) const
-{
-  {
-    GridOut               grid_out;
-    std::ofstream         output("grid-" + std::to_string(cycle) + ".gnuplot");
-    GridOutFlags::Gnuplot gnuplot_flags(false, 5);
-    grid_out.set_flags(gnuplot_flags);
-    const MappingQ<dim> mapping(3);
-    grid_out.write_gnuplot(triangulation, output, &mapping);
+                      std::cout << "Line indices: " << face->line_index(0)
+                                << " " << face->line_index(1) << " "
+                                << face->line_index(2) << std::endl;
+                    }
+                    std::cout << std::endl;
+                  }
+            }
+        std::cout << "Done with cycle " << cycle << std::endl;
+      }
+    return 1;
   }
 
+
   {
-    DataOut<dim> data_out;
-    data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(solution, "solution");
-    data_out.build_patches();
+    if (reference_cell == 0)
+      {
+        do_test<dim, double>(degree, ReferenceCells::Pyramid);
+      }
 
-    std::ofstream output("solution-" + std::to_string(cycle) + ".vtu");
-    data_out.write_vtu(output);
+    if (reference_cell == 1)
+
+      {
+        do_test<dim, double>(degree, ReferenceCells::Wedge);
+      }
+
+    if (reference_cell == 2)
+
+      {
+        do_test<dim, double>(degree, ReferenceCells::Tetrahedron);
+      }
+
+    if (reference_cell == 3)
+
+      {
+        do_test<dim, double>(degree, ReferenceCells::Hexahedron);
+      }
   }
-}
-
-
-// @sect4{Step6::run}
-
-// The final function before <code>main()</code> is again the main driver of
-// the class, <code>run()</code>. It is similar to the one of step-5, except
-// that we generate a file in the program again instead of reading it from
-// disk, in that we adaptively instead of globally refine the mesh, and that
-// we output the solution on the final mesh in the present function.
-//
-// The first block in the main loop of the function deals with mesh generation.
-// If this is the first cycle of the program, instead of reading the grid from
-// a file on disk as in the previous example, we now again create it using a
-// library function. The domain is again a circle with center at the origin and
-// a radius of one (these are the two hidden arguments to the function, which
-// have default values).
-//
-// You will notice by looking at the coarse grid that it is of inferior
-// quality than the one which we read from the file in the previous example:
-// the cells are less equally formed. However, using the library function this
-// program works in any space dimension, which was not the case before.
-//
-// In case we find that this is not the first cycle, we want to refine the
-// grid. Unlike the global refinement employed in the last example program, we
-// now use the adaptive procedure described above.
-//
-// The rest of the loop looks as before:
-template <int dim>
-void Step6<dim>::run()
-{
-  for (unsigned int cycle = 0; cycle < 8; ++cycle)
-    {
-      std::cout << "Cycle " << cycle << ':' << std::endl;
-
-      if (cycle == 0)
-        {
-          GridGenerator::hyper_ball(triangulation);
-          triangulation.refine_global(1);
-        }
-      else
-        refine_grid();
-
-
-      std::cout << "   Number of active cells:       "
-                << triangulation.n_active_cells() << std::endl;
-
-      setup_system();
-
-      std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-                << std::endl;
-
-      assemble_system();
-      solve();
-      output_results(cycle);
-    }
-}
-
-
-// @sect3{The <code>main</code> function}
-
-// The main function is unaltered in its functionality from the previous
-// example, but we have taken a step of additional caution. Sometimes,
-// something goes wrong (such as insufficient disk space upon writing an
-// output file, not enough memory when trying to allocate a vector or a
-// matrix, or if we can't read from or write to a file for whatever reason),
-// and in these cases the library will throw exceptions. Since these are
-// run-time problems, not programming errors that can be fixed once and for
-// all, this kind of exceptions is not switched off in optimized mode, in
-// contrast to the <code>Assert</code> macro which we have used to test
-// against programming errors. If uncaught, these exceptions propagate the
-// call tree up to the <code>main</code> function, and if they are not caught
-// there either, the program is aborted. In many cases, like if there is not
-// enough memory or disk space, we can't do anything but we can at least print
-// some text trying to explain the reason why the program failed. A way to do
-// so is shown in the following. It is certainly useful to write any larger
-// program in this way, and you can do so by more or less copying this
-// function except for the <code>try</code> block that actually encodes the
-// functionality particular to the present application.
-int main()
-{
-  // The general idea behind the layout of this function is as follows: let's
-  // try to run the program as we did before...
-  try
-    {
-      Step6<2> laplace_problem_2d;
-      laplace_problem_2d.run();
-    }
-  // ...and if this should fail, try to gather as much information as
-  // possible. Specifically, if the exception that was thrown is an object of
-  // a class that is derived from the C++ standard class
-  // <code>exception</code>, then we can use the <code>what</code> member
-  // function to get a string which describes the reason why the exception was
-  // thrown.
-  //
-  // The deal.II exception classes are all derived from the standard class,
-  // and in particular, the <code>exc.what()</code> function will return
-  // approximately the same string as would be generated if the exception was
-  // thrown using the <code>Assert</code> macro. You have seen the output of
-  // such an exception in the previous example, and you then know that it
-  // contains the file and line number of where the exception occurred, and
-  // some other information. This is also what the following statements would
-  // print.
-  //
-  // Apart from this, there isn't much that we can do except exiting the
-  // program with an error code (this is what the <code>return 1;</code>
-  // does):
-  catch (std::exception &exc)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Exception on processing: " << std::endl
-                << exc.what() << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-
-      return 1;
-    }
-  // If the exception that was thrown somewhere was not an object of a class
-  // derived from the standard <code>exception</code> class, then we can't do
-  // anything at all. We then simply print an error message and exit.
-  catch (...)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Unknown exception!" << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      return 1;
-    }
-
-  // If we got to this point, there was no exception which propagated up to
-  // the main function (there may have been exceptions, but they were caught
-  // somewhere in the program or the library). Therefore, the program
-  // performed as was expected and we can return without error.
-  return 0;
 }

@@ -355,11 +355,13 @@ private:
 
         for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
           {
+            const auto normal = integrator_inner.normal_vector(q);
+
             const VectorizedArray<number> solution_jump =
               (integrator_inner.get_value(q) - integrator_outer.get_value(q));
             const VectorizedArray<number> averaged_normal_derivative =
-              (integrator_inner.get_normal_derivative(q) +
-               integrator_outer.get_normal_derivative(q)) *
+              (integrator_inner.get_gradient(q) * normal +
+               integrator_outer.get_gradient(q) * normal) *
               number(0.5);
             const VectorizedArray<number> test_by_value =
               solution_jump * sigma - averaged_normal_derivative;
@@ -367,12 +369,12 @@ private:
             integrator_inner.submit_value(test_by_value, q);
             integrator_outer.submit_value(-test_by_value, q);
 
-            integrator_inner.submit_normal_derivative(-solution_jump *
-                                                        number(0.5),
-                                                      q);
-            integrator_outer.submit_normal_derivative(-solution_jump *
-                                                        number(0.5),
-                                                      q);
+            integrator_inner.submit_gradient(-solution_jump * normal *
+                                               number(0.5),
+                                             q);
+            integrator_outer.submit_gradient(-solution_jump * normal *
+                                               number(0.5),
+                                             q);
           }
 
         integrator_inner.integrate_scatter(EvaluationFlags::values |
@@ -389,18 +391,6 @@ private:
                    const VectorType                            &src,
                    const std::pair<unsigned int, unsigned int> &range) const
   {
-    {
-      for (unsigned int face = range.first; face < range.second; ++face)
-        {
-          const auto          face_info       = matrix_free.get_face_info(face);
-          const unsigned char face_number_int = face_info.interior_face_no;
-          const unsigned char face_orientation_int = face_info.face_orientation;
-          if (face_orientation_int != 0)
-            std::cout << "boundary face number and orientation: "
-                      << int(face_number_int) << ", "
-                      << int(face_orientation_int) << std::endl;
-        }
-    }
     FEFaceIntegrator integrator_inner(matrix_free, range);
 
     for (unsigned int face = range.first; face < range.second; ++face)
@@ -415,11 +405,13 @@ private:
 
         for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
           {
+            const auto normal = integrator_inner.normal_vector(q);
+
             const VectorizedArray<number> u_inner =
               integrator_inner.get_value(q);
             const VectorizedArray<number> u_outer = -u_inner;
             const VectorizedArray<number> normal_derivative_inner =
-              integrator_inner.get_normal_derivative(q);
+              integrator_inner.get_gradient(q) * normal;
             const VectorizedArray<number> normal_derivative_outer =
               normal_derivative_inner;
             const VectorizedArray<number> solution_jump = (u_inner - u_outer);
@@ -428,9 +420,9 @@ private:
             const VectorizedArray<number> test_by_value =
               solution_jump * sigma - average_normal_derivative;
 
-            integrator_inner.submit_normal_derivative(-solution_jump *
-                                                        number(0.5),
-                                                      q);
+            integrator_inner.submit_gradient(-solution_jump * normal *
+                                               number(0.5),
+                                             q);
             integrator_inner.submit_value(test_by_value, q);
           }
 
@@ -485,10 +477,11 @@ private:
 
         for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
           {
+            const auto normal = integrator_inner.normal_vector(q);
             const auto g =
               solution.value_array(integrator_inner.quadrature_point(q));
 
-            integrator_inner.submit_normal_derivative(-g, q);
+            integrator_inner.submit_gradient(-g * normal, q);
             integrator_inner.submit_value(2.0 * sigma * g, q);
           }
 
@@ -571,35 +564,35 @@ void do_test(const unsigned int        min_degree,
                                                                         cycle));
           else if (ref_cell == ReferenceCells::Wedge)
             {
-              // dealii::Triangulation<dim, dim> temp;
-              // GridGenerator::subdivided_hyper_cube_with_wedges(temp, 2);
-              GridGenerator::subdivided_hyper_cube_with_wedges(tria_serial, 2);
+              dealii::Triangulation<dim, dim> temp;
+              GridGenerator::subdivided_hyper_cube_with_wedges(temp, 2);
+              // GridGenerator::subdivided_hyper_cube_with_wedges(tria_serial,
+              // 2);
               // GridGenerator::subdivided_hyper_cube_with_wedges(tria_serial,
               //                                               std::pow(2,
               //                                                      cycle));
-              // if (cycle > 0)
-              //  temp.refine_global(cycle);
+              if (cycle > 0)
+                temp.refine_global(cycle);
 
-              // const auto                &new_vertices = temp.get_vertices();
-              //  std::vector<CellData<dim>> new_cells;
-              //  for (auto &cell : temp.active_cell_iterators())
-              //    {
-              //  const auto         reference_cell = cell->reference_cell();
-              //  const unsigned int n_vertices     =
-              //  reference_cell.n_vertices();
+              const auto                &new_vertices = temp.get_vertices();
+              std::vector<CellData<dim>> new_cells;
+              for (auto &cell : temp.active_cell_iterators())
+                {
+                  const auto         reference_cell = cell->reference_cell();
+                  const unsigned int n_vertices = reference_cell.n_vertices();
 
-              // CellData<dim> wedge;
-              // wedge.vertices.resize(n_vertices);
+                  CellData<dim> wedge;
+                  wedge.vertices.resize(n_vertices);
 
-              // for (unsigned int i = 0; i < n_vertices; ++i)
-              //   {
-              //     wedge.vertices[i] = cell->vertex_index(i);
-              //   }
-              // new_cells.push_back(wedge);
-              //   }
-              // tria_serial.create_triangulation(new_vertices,
-              //                                  new_cells,
-              //                                  SubCellData());
+                  for (unsigned int i = 0; i < n_vertices; ++i)
+                    {
+                      wedge.vertices[i] = cell->vertex_index(i);
+                    }
+                  new_cells.push_back(wedge);
+                }
+              tria_serial.create_triangulation(new_vertices,
+                                               new_cells,
+                                               SubCellData());
             }
           else if (ref_cell.is_simplex())
             GridGenerator::subdivided_hyper_cube_with_simplices(tria_serial, 2);
@@ -608,9 +601,9 @@ void do_test(const unsigned int        min_degree,
           else
             DEAL_II_NOT_IMPLEMENTED();
 
-          if (ref_cell != ReferenceCells::Pyramid)
-            // if (ref_cell != ReferenceCells::Pyramid &&
-            //   ref_cell != ReferenceCells::Wedge)
+          // if (ref_cell != ReferenceCells::Pyramid)
+          if (ref_cell != ReferenceCells::Pyramid &&
+              ref_cell != ReferenceCells::Wedge)
             tria_serial.refine_global(cycle);
         };
       const auto serial_grid_partitioner =
