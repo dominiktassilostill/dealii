@@ -6868,7 +6868,8 @@ namespace internal
                 {{{0, 8, 5, X}},
                  {{1, 2, 6, X}},
                  {{7, 3, 4, X}},
-                 {{6, 7, 8, X}}}};
+                 {{7, 8, 6, X}}}};
+              //{{6, 7, 8, X}}}};
 
               // The defined lines in `line_vertices_tri` do not satisfy the
               // expected orientations of all the children's reference cells.
@@ -6879,7 +6880,8 @@ namespace internal
                   {{{{{0, 3}}, {{3, 5}}, {{5, 0}}, {{X, X}}}},
                    {{{{3, 1}}, {{1, 4}}, {{4, 3}}, {{X, X}}}},
                    {{{{5, 4}}, {{4, 2}}, {{2, 5}}, {{X, X}}}},
-                   {{{{3, 4}}, {{4, 5}}, {{5, 3}}, {{X, X}}}}}};
+                   {{{{4, 5}}, {{5, 3}}, {{3, 4}}, {{X, X}}}}}};
+              //   {{{{3, 4}}, {{4, 5}}, {{5, 3}}, {{X, X}}}}}};
 
               // Select lookup table according to reference cell of parent.
               const auto &line_vertices =
@@ -7522,12 +7524,18 @@ namespace internal
                               // the table below relating the lines of the
                               // oriented face to their counterparts on the
                               // reference cell face.
-                              tri_line_perm = {{{{0, 1, 2}}, // 0
-                                                {{1, 0, 2}},
-                                                {{2, 0, 1}}, // 2
+                              // tri_line_perm = {{{{0, 1, 2}}, // 0
+                              //                   {{1, 0, 2}},
+                              //                   {{2, 0, 1}}, // 2
+                              //                   {{0, 2, 1}},
+                              //                   {{1, 2, 0}}, // 4
+                              //                   {{2, 1, 0}}}};
+                              tri_line_perm = {{{{2, 0, 1}},
                                                 {{0, 2, 1}},
-                                                {{1, 2, 0}}, // 4
-                                                {{2, 1, 0}}}};
+                                                {{1, 2, 0}},
+                                                {{2, 1, 0}},
+                                                {{0, 1, 2}},
+                                                {{1, 0, 2}}}};
 
                             const auto combined_orientation =
                               cell->combined_face_orientation(f);
@@ -9583,29 +9591,30 @@ namespace internal
                           // set up a list of line iterators first. from
                           // this, construct lists of line_indices and
                           // line orientations later on
-                          const typename Triangulation<dim, spacedim>::
-                            raw_line_iterator lines[4] = {
-                              hex->face(2)->child(0)->line(
-                                (hex->face(2)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 0
-                              hex->face(3)->child(0)->line(
-                                (hex->face(3)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 1
-                              hex->face(4)->child(0)->line(
-                                (hex->face(4)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 2
-                              hex->face(5)->child(0)->line(
-                                (hex->face(5)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3) // 3
-                            };
+                          const typename Triangulation<
+                            dim,
+                            spacedim>::raw_line_iterator lines[4] = {
+                            hex->face(2)->child(0)->line(
+                              (hex->face(2)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 0
+                            hex->face(3)->child(0)->line(
+                              (hex->face(3)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 1
+                            hex->face(4)->child(0)->line(
+                              (hex->face(4)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 2
+                            hex->face(5)->child(0)->line(
+                              (hex->face(5)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3) // 3
+                          };
 
                           unsigned int line_indices[4];
                           for (unsigned int i = 0; i < 4; ++i)
@@ -9811,29 +9820,30 @@ namespace internal
                           // set up a list of line iterators first. from
                           // this, construct lists of line_indices and
                           // line orientations later on
-                          const typename Triangulation<dim, spacedim>::
-                            raw_line_iterator lines[4] = {
-                              hex->face(0)->child(0)->line(
-                                (hex->face(0)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 0
-                              hex->face(1)->child(0)->line(
-                                (hex->face(1)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 1
-                              hex->face(4)->child(0)->line(
-                                (hex->face(4)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 2
-                              hex->face(5)->child(0)->line(
-                                (hex->face(5)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3) // 3
-                            };
+                          const typename Triangulation<
+                            dim,
+                            spacedim>::raw_line_iterator lines[4] = {
+                            hex->face(0)->child(0)->line(
+                              (hex->face(0)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 0
+                            hex->face(1)->child(0)->line(
+                              (hex->face(1)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 1
+                            hex->face(4)->child(0)->line(
+                              (hex->face(4)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 2
+                            hex->face(5)->child(0)->line(
+                              (hex->face(5)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3) // 3
+                          };
 
                           unsigned int line_indices[4];
                           for (unsigned int i = 0; i < 4; ++i)
@@ -10041,29 +10051,30 @@ namespace internal
                           // set up a list of line iterators first. from
                           // this, construct lists of line_indices and
                           // line orientations later on
-                          const typename Triangulation<dim, spacedim>::
-                            raw_line_iterator lines[4] = {
-                              hex->face(0)->child(0)->line(
-                                (hex->face(0)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 0
-                              hex->face(1)->child(0)->line(
-                                (hex->face(1)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 1
-                              hex->face(2)->child(0)->line(
-                                (hex->face(2)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3), // 2
-                              hex->face(3)->child(0)->line(
-                                (hex->face(3)->refinement_case() ==
-                                 RefinementCase<2>::cut_x) ?
-                                  1 :
-                                  3) // 3
-                            };
+                          const typename Triangulation<
+                            dim,
+                            spacedim>::raw_line_iterator lines[4] = {
+                            hex->face(0)->child(0)->line(
+                              (hex->face(0)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 0
+                            hex->face(1)->child(0)->line(
+                              (hex->face(1)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 1
+                            hex->face(2)->child(0)->line(
+                              (hex->face(2)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3), // 2
+                            hex->face(3)->child(0)->line(
+                              (hex->face(3)->refinement_case() ==
+                               RefinementCase<2>::cut_x) ?
+                                1 :
+                                3) // 3
+                          };
 
                           unsigned int line_indices[4];
                           for (unsigned int i = 0; i < 4; ++i)
