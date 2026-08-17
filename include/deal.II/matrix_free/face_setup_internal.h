@@ -803,6 +803,7 @@ namespace internal
                         info.subface_index =
                           GeometryInfo<dim>::max_children_per_cell;
                         info.face_orientation = 0;
+                        // TODO: 8 + dcell->combined_face_orientation(f);
                         boundary_faces.push_back(info);
 
                         face_visited[dcell->face(f)->index()]++;

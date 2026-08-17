@@ -1048,6 +1048,11 @@ namespace internal
 
             // check whether cell is Cartesian/affine/general
             GeometryType type = cartesian;
+
+            // only cartesian if it is a hypercube cell
+            // if (!cell_it->reference_cell().is_hyper_cube())
+            //   type = affine;
+
             for (unsigned int d = 0; d < dim; ++d)
               for (unsigned int e = 0; e < dim; ++e)
                 if (d != e)
@@ -1830,6 +1835,10 @@ namespace internal
                                 cells[faces[face].cells_interior[v]].first,
                                 cells[faces[face].cells_interior[v]].second);
 
+                      // only let hypercube elements have cartesian properties
+                      if (!cell_it->reference_cell().is_hyper_cube())
+                        cell_is_cartesian = false;
+
                       fe_face_values.reinit(cell_it,
                                             faces[face].interior_face_no);
 
@@ -1947,6 +1956,10 @@ namespace internal
                         cell_it(&tria,
                                 cells[faces[face].cells_exterior[v]].first,
                                 cells[faces[face].cells_exterior[v]].second);
+
+                      // only let hypercube elements have cartesian properties
+                      if (!cell_it->reference_cell().is_hyper_cube())
+                        cell_is_cartesian = false;
 
                       const FEValuesBase<dim> *actual_fe_face_values = nullptr;
                       if (faces[face].subface_index >=
@@ -2098,6 +2111,8 @@ namespace internal
                   if (face_type == affine && cell_is_cartesian)
                     face_type = cartesian;
                   mapping_info.face_type[face] = face_type;
+                  // std::cout << "Face type is: " << int(face_type) <<
+                  // std::endl;
                 }
 
               // Fill in quadrature points
@@ -2219,6 +2234,8 @@ namespace internal
                 0 :
                 faces[face].interior_face_no;
 
+            // std::cout << "face " << face << " with face number "
+            //           << hp_quad_face_no;
             if (!is_boundary_face)
               {
                 const unsigned int ext_fe_index =
@@ -2256,6 +2273,15 @@ namespace internal
                 data_faces.normals_times_jacobians[0][offset + q] =
                   data_faces.normal_vectors[offset + q] *
                   data_faces.jacobians[0][offset + q];
+
+                // std::cout
+                //   << " has jacobian x normal vector at quadrature point q "
+                //   << q
+                //   << ": "
+                //   << data_faces.jacobians[0][offset + q] *
+                //        data_faces.normal_vectors[offset + q]
+                //   << " at offset " << offset << std::endl;
+
                 if (is_boundary_face == false)
                   data_faces.normals_times_jacobians[1][offset + q] =
                     data_faces.normal_vectors[offset + q] *

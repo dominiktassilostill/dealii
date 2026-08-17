@@ -43,62 +43,112 @@ namespace internal
     get_face_quadrature_collection(const Quadrature<dim> &quad,
                                    const bool             do_assert = true)
     {
-      if (dim == 2 || dim == 3)
+      ReferenceCell<dim> ref_cell;
+
+      if constexpr (dim == 0)
         {
-          for (unsigned int i = 1; i <= quad.size(); ++i)
-            if (quad == QGaussSimplex<dim>(i))
-              return {ReferenceCells::get_simplex<dim>(),
-                      dealii::hp::QCollection<dim - 1>(
-                        QGaussSimplex<dim - 1>(i))};
-
-          for (unsigned int i = 1; i <= quad.size(); ++i)
-            if (quad == QWitherdenVincentSimplex<dim>(i))
-              return {ReferenceCells::get_simplex<dim>(),
-                      dealii::hp::QCollection<dim - 1>(
-                        QWitherdenVincentSimplex<dim - 1>(i))};
-
-          for (unsigned int i = 1; i <= quad.size(); ++i)
+          ref_cell = ReferenceCells::Vertex;
+        }
+      else if constexpr (dim == 1)
+        {
+          ref_cell = ReferenceCells::Line;
+        }
+      else
+        {
+          const auto quadrature_weights = quad.get_weights();
+          const auto volume =
+            std::reduce(quadrature_weights.begin(), quadrature_weights.end());
+          if constexpr (dim == 2)
             {
-              const FE_SimplexP<dim> fe(i, false);
-              if (quad == Quadrature<dim>(fe.get_unit_support_points()))
-                return {ReferenceCells::get_simplex<dim>(),
-                        dealii::hp::QCollection<dim - 1>(Quadrature<dim - 1>(
-                          fe.get_unit_face_support_points()))};
+              if (std::abs(volume - ReferenceCells::Triangle.volume()) < 1e-12)
+                {
+                  ref_cell = ReferenceCells::Triangle;
+                }
+              else if (std::abs(volume -
+                                ReferenceCells::Quadrilateral.volume()) < 1e-12)
+                {
+                  ref_cell = ReferenceCells::Quadrilateral;
+                }
+              else
+                DEAL_II_ASSERT_UNREACHABLE();
             }
-
-          for (unsigned int i = 1; i <= quad.size(); ++i)
+          else if constexpr (dim == 3)
             {
-              const FE_SimplexP<dim> fe(i, true);
-              if (quad == Quadrature<dim>(fe.get_unit_support_points()))
-                return {ReferenceCells::get_simplex<dim>(),
-                        dealii::hp::QCollection<dim - 1>(Quadrature<dim - 1>(
-                          fe.get_unit_face_support_points()))};
+              if (std::abs(volume - ReferenceCells::Tetrahedron.volume()) <
+                  1e-12)
+                {
+                  ref_cell = ReferenceCells::Tetrahedron;
+                }
+              else if (std::abs(volume - ReferenceCells::Pyramid.volume()) <
+                       1e-12)
+                {
+                  ref_cell = ReferenceCells::Pyramid;
+                }
+              else if (std::abs(volume - ReferenceCells::Wedge.volume()) <
+                       1e-12)
+                {
+                  ref_cell = ReferenceCells::Wedge;
+                }
+              else if (std::abs(volume - ReferenceCells::Hexahedron.volume()) <
+                       1e-12)
+                {
+                  ref_cell = ReferenceCells::Hexahedron;
+                }
+              else
+                DEAL_II_ASSERT_UNREACHABLE();
             }
         }
 
-      if constexpr (dim == 3)
-        for (unsigned int i = 1; i <= quad.size(); ++i)
-          if (quad == QGaussWedge<dim>(i))
-            {
-              QGauss<dim - 1>        quad(i);
-              QGaussSimplex<dim - 1> tri(i);
+      if (ref_cell.is_simplex())
+        if constexpr (dim == 2 || dim == 3)
+          {
+            for (unsigned int i = 1; i <= quad.size(); ++i)
+              if (quad == QGaussSimplex<dim>(i))
+                return {ReferenceCells::get_simplex<dim>(),
+                        dealii::hp::QCollection<dim - 1>(
+                          QGaussSimplex<dim - 1>(i))};
 
-              return {
-                ReferenceCells::Wedge,
-                dealii::hp::QCollection<dim - 1>(tri, tri, quad, quad, quad)};
-            }
+            for (unsigned int i = 1; i <= 5; ++i)
+              if (quad == QWitherdenVincentSimplex<dim>(i))
+                return {ReferenceCells::get_simplex<dim>(),
+                        dealii::hp::QCollection<dim - 1>(
+                          QWitherdenVincentSimplex<dim - 1>(i))};
 
-      if constexpr (dim == 3)
-        for (unsigned int i = 1; i <= quad.size(); ++i)
-          if (quad == QGaussPyramid<dim>(i))
-            {
-              QGauss<dim - 1>        quad(i);
-              QGaussSimplex<dim - 1> tri(i);
+            for (unsigned int i = 1; i <= 3; ++i)
+              {
+                const FE_SimplexP<dim> fe(i, false);
+                if (quad == Quadrature<dim>(fe.get_unit_support_points()))
+                  return {ReferenceCells::get_simplex<dim>(),
+                          dealii::hp::QCollection<dim - 1>(Quadrature<dim - 1>(
+                            fe.get_unit_face_support_points()))};
+              }
+          }
 
-              return {
-                ReferenceCells::Pyramid,
-                dealii::hp::QCollection<dim - 1>(quad, tri, tri, tri, tri)};
-            }
+      if (ref_cell == ReferenceCells::Wedge)
+        if constexpr (dim == 3)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
+            if (quad == QGaussWedge<dim>(i))
+              {
+                QGauss<dim - 1>        quad(i);
+                QGaussSimplex<dim - 1> tri(i);
+
+                return {
+                  ReferenceCells::Wedge,
+                  dealii::hp::QCollection<dim - 1>(tri, tri, quad, quad, quad)};
+              }
+
+      if (ref_cell == ReferenceCells::Pyramid)
+        if constexpr (dim == 3)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
+            if (quad == QGaussPyramid<dim>(i))
+              {
+                QGauss<dim - 1>        quad(i);
+                QGaussSimplex<dim - 1> tri(i);
+
+                return {
+                  ReferenceCells::Pyramid,
+                  dealii::hp::QCollection<dim - 1>(quad, tri, tri, tri, tri)};
+              }
 
       // note: handle hypercubes last since normally this function is not
       // called for hypercubes
@@ -134,71 +184,114 @@ namespace internal
           "object when using a quadrature formula with zero "
           "quadrature points!"));
 
-      if (dim == 2 || dim == 3)
+      ReferenceCell<dim> ref_cell;
+
+      if constexpr (dim == 0)
         {
-          for (unsigned int i = 1; i <= quad.size(); ++i)
-            if (quad == QGaussSimplex<dim>(i))
-              {
-                if (dim == 2)
-                  return {QGaussSimplex<dim - 1>(i), // line!
-                          Quadrature<dim - 1>()};
-                else
-                  return {Quadrature<dim - 1>(), QGaussSimplex<dim - 1>(i)};
-              }
-
-          for (unsigned int i = 1; i <= quad.size(); ++i)
-            if (quad == QWitherdenVincentSimplex<dim>(i))
-              {
-                if (dim == 2)
-                  return {QWitherdenVincentSimplex<dim - 1>(i), // line!
-                          Quadrature<dim - 1>()};
-                else
-                  return {Quadrature<dim - 1>(),
-                          QWitherdenVincentSimplex<dim - 1>(i)};
-              }
-
-          for (unsigned int i = 1; i <= quad.size(); ++i)
+          ref_cell = ReferenceCells::Vertex;
+        }
+      else if constexpr (dim == 1)
+        {
+          ref_cell = ReferenceCells::Line;
+        }
+      else
+        {
+          const auto quadrature_weights = quad.get_weights();
+          const auto volume =
+            std::reduce(quadrature_weights.begin(), quadrature_weights.end());
+          if constexpr (dim == 2)
             {
-              const FE_SimplexP<dim> fe(i, false);
-              if (quad == Quadrature<dim>(fe.get_unit_support_points()))
+              if (std::abs(volume - ReferenceCells::Triangle.volume()) < 1e-12)
                 {
-                  if (dim == 2)
-                    return {Quadrature<dim - 1>(
-                              fe.get_unit_face_support_points()), // line!
-                            Quadrature<dim - 1>()};
-                  else
-                    return {Quadrature<dim - 1>(),
-                            Quadrature<dim - 1>(
-                              fe.get_unit_face_support_points())};
+                  ref_cell = ReferenceCells::Triangle;
                 }
+              else if (std::abs(volume -
+                                ReferenceCells::Quadrilateral.volume()) < 1e-12)
+                {
+                  ref_cell = ReferenceCells::Quadrilateral;
+                }
+              else
+                DEAL_II_ASSERT_UNREACHABLE();
             }
-
-          for (unsigned int i = 1; i <= quad.size(); ++i)
+          else if constexpr (dim == 3)
             {
-              const FE_SimplexP<dim> fe(i, true);
-              if (quad == Quadrature<dim>(fe.get_unit_support_points()))
+              if (std::abs(volume - ReferenceCells::Tetrahedron.volume()) <
+                  1e-12)
                 {
-                  if (dim == 2)
-                    return {Quadrature<dim - 1>(
-                              fe.get_unit_face_support_points()), // line!
-                            Quadrature<dim - 1>()};
-                  else
-                    return {Quadrature<dim - 1>(),
-                            Quadrature<dim - 1>(
-                              fe.get_unit_face_support_points())};
+                  ref_cell = ReferenceCells::Tetrahedron;
                 }
+              else if (std::abs(volume - ReferenceCells::Pyramid.volume()) <
+                       1e-12)
+                {
+                  ref_cell = ReferenceCells::Pyramid;
+                }
+              else if (std::abs(volume - ReferenceCells::Wedge.volume()) <
+                       1e-12)
+                {
+                  ref_cell = ReferenceCells::Wedge;
+                }
+              else if (std::abs(volume - ReferenceCells::Hexahedron.volume()) <
+                       1e-12)
+                {
+                  ref_cell = ReferenceCells::Hexahedron;
+                }
+              else
+                DEAL_II_ASSERT_UNREACHABLE();
             }
         }
 
-      if (dim == 3)
-        for (unsigned int i = 1; i <= quad.size(); ++i)
-          if (quad == QGaussWedge<dim>(i))
-            return {QGauss<dim - 1>(i), QGaussSimplex<dim - 1>(i)};
+      if (ref_cell.is_simplex())
+        if constexpr (dim == 2 || dim == 3)
+          {
+            for (unsigned int i = 1; i <= quad.size(); ++i)
+              if (quad == QGaussSimplex<dim>(i))
+                {
+                  if (dim == 2)
+                    return {QGaussSimplex<dim - 1>(i), // line!
+                            Quadrature<dim - 1>()};
+                  else
+                    return {Quadrature<dim - 1>(), QGaussSimplex<dim - 1>(i)};
+                }
 
-      if (dim == 3)
-        for (unsigned int i = 1; i <= quad.size(); ++i)
-          if (quad == QGaussPyramid<dim>(i))
-            return {QGauss<dim - 1>(i), QGaussSimplex<dim - 1>(i)};
+            for (unsigned int i = 1; i <= 5; ++i)
+              if (quad == QWitherdenVincentSimplex<dim>(i))
+                {
+                  if (dim == 2)
+                    return {QWitherdenVincentSimplex<dim - 1>(i), // line!
+                            Quadrature<dim - 1>()};
+                  else
+                    return {Quadrature<dim - 1>(),
+                            QWitherdenVincentSimplex<dim - 1>(i)};
+                }
+
+            for (unsigned int i = 1; i <= quad.size(); ++i)
+              {
+                const FE_SimplexP<dim> fe(i, false);
+                if (quad == Quadrature<dim>(fe.get_unit_support_points()))
+                  {
+                    if (dim == 2)
+                      return {Quadrature<dim - 1>(
+                                fe.get_unit_face_support_points()), // line!
+                              Quadrature<dim - 1>()};
+                    else
+                      return {Quadrature<dim - 1>(),
+                              Quadrature<dim - 1>(
+                                fe.get_unit_face_support_points())};
+                  }
+              }
+          }
+
+      if constexpr (dim == 3)
+        if (ref_cell == ReferenceCells::Wedge)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
+            if (quad == QGaussWedge<dim>(i))
+              return {QGauss<dim - 1>(i), QGaussSimplex<dim - 1>(i)};
+
+      if constexpr (dim == 3)
+        if (ref_cell == ReferenceCells::Pyramid)
+          for (unsigned int i = 1; i <= quad.size(); ++i)
+            if (quad == QGaussPyramid<dim>(i))
+              return {QGauss<dim - 1>(i), QGaussSimplex<dim - 1>(i)};
 
       // note: handle hypercubes last since normally this function is not
       // called for hypercubes

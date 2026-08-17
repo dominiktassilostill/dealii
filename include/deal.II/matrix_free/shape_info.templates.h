@@ -504,21 +504,49 @@ namespace internal
           univariate_shape_data.nodal_at_cell_boundaries = true;
 
           const ReferenceCell reference_cell = fe.reference_cell();
-          if (reference_cell.is_simplex())
+          if (fe.n_dofs_per_vertex() > 0)
             {
               if (dim == 2)
                 dofs_per_component_on_face = fe.degree + 1;
               else
-                dofs_per_component_on_face =
-                  (fe.degree + 1) * (fe.degree + 2) / 2;
+                dofs_per_component_on_face = fe.max_dofs_per_face();
 
               face_to_cell_index_nodal.reinit(reference_cell.n_faces(),
                                               dofs_per_component_on_face);
 
+              // first check if the orientations of the lines of the cell
+              // matches with the orientation in the faces
+              std::vector<bool> face_and_cell_line_orientations_match;
+              for (unsigned int line = 0; line < reference_cell.n_lines();
+                   ++line)
+                {
+                  if constexpr (dim == 2)
+                    face_and_cell_line_orientations_match.emplace_back(true);
+                  else
+                    {
+                      const auto face_and_face_line =
+                        reference_cell.standard_line_to_face_and_line_index(
+                          line);
+                      if (reference_cell.face_to_cell_line_orientation(
+                            face_and_face_line[1],
+                            face_and_face_line[0],
+                            numbers::default_geometric_orientation,
+                            numbers::default_geometric_orientation) ==
+                          numbers::default_geometric_orientation)
+                        face_and_cell_line_orientations_match.emplace_back(
+                          true);
+                      else
+                        face_and_cell_line_orientations_match.emplace_back(
+                          false);
+                    }
+                }
 
               for (unsigned int face = 0; face < reference_cell.n_faces();
                    ++face)
                 {
+                  const auto face_reference_cell =
+                    reference_cell.face_reference_cell(face);
+
                   // first get info from reference cell, i.e. the linear case
                   unsigned int d = 0;
                   for (; d < dim; ++d)
@@ -526,67 +554,45 @@ namespace internal
                       reference_cell.face_to_cell_vertices(
                         face, d, numbers::default_geometric_orientation);
 
-                  // now fill the rest of the indices, start with the lines
-                  if (fe.degree == 2)
-                    for (; d < dofs_per_component_on_face; ++d)
-                      face_to_cell_index_nodal[face][d] =
-                        reference_cell.n_vertices() +
+                  // now fill the lines
+                  const unsigned int n_dofs_per_line = fe.degree - 1;
+                  for (unsigned int face_line = 0;
+                       face_line < face_reference_cell.n_lines();
+                       ++face_line)
+                    {
+                      const unsigned int cell_line =
                         reference_cell.face_to_cell_lines(
                           face,
-                          d - dim,
+                          face_line,
                           numbers::default_geometric_orientation);
+                      const unsigned int offset = reference_cell.n_vertices() +
+                                                  cell_line * n_dofs_per_line;
 
-                  // in the cubic case it is more complicated as more DoFs are
-                  // on the lines
-                  else if (fe.degree == 3)
-                    {
-                      for (unsigned int line = 0;
-                           d < dofs_per_component_on_face - 1;
-                           ++line, d += 2)
+                      for (unsigned int i = 0; i < n_dofs_per_line; ++i, ++d)
                         {
-                          const unsigned int face_to_cell_lines =
-                            reference_cell.face_to_cell_lines(
-                              face,
-                              line,
-                              numbers::default_geometric_orientation);
-                          // check the direction of the line
-                          // is it 0 -> 1 or 1 -> 0
-                          // as DoFs on the line are ordered differently
-                          if (reference_cell.line_to_cell_vertices(
-                                face_to_cell_lines, 0) ==
-                              reference_cell.face_to_cell_vertices(
-                                face,
-                                line,
-                                numbers::default_geometric_orientation))
-                            {
-                              face_to_cell_index_nodal[face][d] =
-                                reference_cell.n_vertices() +
-                                2 * face_to_cell_lines;
-                              face_to_cell_index_nodal[face][d + 1] =
-                                reference_cell.n_vertices() +
-                                2 * face_to_cell_lines + 1;
-                            }
+                          if (face_and_cell_line_orientations_match[cell_line])
+                            face_to_cell_index_nodal[face][d] = offset + i;
                           else
-                            {
-                              face_to_cell_index_nodal[face][d + 1] =
-                                reference_cell.n_vertices() +
-                                2 * face_to_cell_lines;
-                              face_to_cell_index_nodal[face][d] =
-                                reference_cell.n_vertices() +
-                                2 * face_to_cell_lines + 1;
-                            }
-                        }
-                      //  in 3D we also need the DoFs on the quads
-                      if (dim == 3)
-                        {
-                          face_to_cell_index_nodal
-                            [face][dofs_per_component_on_face - 1] =
-                              reference_cell.n_vertices() +
-                              2 * reference_cell.n_lines() + face;
+                            face_to_cell_index_nodal[face][d] =
+                              offset + n_dofs_per_line - 1 - i;
                         }
                     }
-                  else if (fe.degree > 3)
-                    DEAL_II_NOT_IMPLEMENTED();
+
+                  // now do the DoFs within the face
+                  if constexpr (dim > 3)
+                    {
+                      unsigned int offset_for_face =
+                        reference_cell.n_vertices() +
+                        reference_cell.n_lines() * n_dofs_per_line;
+
+                      // add all DoF on the previous faces up
+                      for (unsigned int j = 0; j < face; ++j)
+                        offset_for_face += fe.n_dofs_per_quad(j);
+
+                      for (unsigned int i = 0; i < fe.n_dofs_per_quad(face);
+                           ++i, ++d)
+                        face_to_cell_index_nodal[face][d] = offset_for_face + i;
+                    }
                 }
             }
           // TODO: set up face_to_cell_index_nodal, face_to_cell_index_hermite,
