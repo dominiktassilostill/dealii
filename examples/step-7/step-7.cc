@@ -36,7 +36,7 @@
 #include <deal.II/hp/fe_values.h>
 
 #include <deal.II/lac/trilinos_precondition.h>
-
+#include <deal.II/grid/grid_out.h>
 #include <deal.II/numerics/data_out.h>
 
 #define FORCE_USE_OF_TRILINOS
@@ -161,10 +161,10 @@ void PoissonProblem<dim>::setup_system(
 {
   dof_handler.clear();
   dof_handler.reinit(triangulation);
-  std::cout << "reinit triangulation done, there are "
-            << triangulation.get_reference_cells().size()
-            << " different types of cells and and fe collection of size "
-            << fe_collection.size() << std::endl;
+  pcout << "reinit triangulation done, there are "
+        << triangulation.get_reference_cells().size()
+        << " different types of cells and and fe collection of size "
+        << fe_collection.size() << std::endl;
 
   for (const auto &cell : dof_handler.active_cell_iterators())
     if (cell->is_locally_owned())
@@ -430,7 +430,170 @@ void PoissonProblem<dim>::run(const unsigned int n_cycles_max,
         const auto serial_grid_generator =
           [&](dealii::Triangulation<dim, dim> &tria_serial) {
             // set up triangulation
-            GridGenerator::subdivided_hyper_cube_with_pyramids(tria_serial, 2);
+            if (true)
+              {
+                std::vector<Point<dim>>    vertices;
+                std::vector<CellData<dim>> cells;
+                vertices.emplace_back(0.0, 0.0, 0.0);  // 0
+                vertices.emplace_back(1.0, 0.0, 0.0);  // 1
+                vertices.emplace_back(0.0, 1.0, 0.0);  // 2
+                vertices.emplace_back(1.0, 1.0, 0.0);  // 3
+                vertices.emplace_back(0.0, 0.0, 1.0);  // 4
+                vertices.emplace_back(1.0, 0.0, 1.0);  // 5
+                vertices.emplace_back(0.0, 1.0, 1.0);  // 6
+                vertices.emplace_back(1.0, 1.0, 1.0);  // 7
+                vertices.emplace_back(2, 0.5, 0.25);   // 8
+                vertices.emplace_back(2, 0.5, 0.75);   // 9
+                vertices.emplace_back(-1.0, 0.5, 0.5); // 10
+                vertices.emplace_back(-1.0, 0.5, 1);   // 11
+                vertices.emplace_back(-1.0, 0.5, 0);   // 12
+                vertices.emplace_back(-1.0, 0.0, 1.0); // 13
+                vertices.emplace_back(-1.0, 1.0, 1.0); // 14
+                vertices.emplace_back(-1.0, 0.0, 0.0); // 15
+                vertices.emplace_back(-1.0, 1.0, 0.0); // 16
+                vertices.emplace_back(-1.0, 1.0, 0.5); // 17
+                vertices.emplace_back(-1.0, 0.0, 0.5); // 18
+                vertices.emplace_back(2, 0.5, 0.0);    // 19
+                vertices.emplace_back(2, 0.5, 1.0);    // 20
+                vertices.emplace_back(2, 0.0, 0.0);    // 21
+                vertices.emplace_back(2, 0.0, 1.0);    // 22
+                vertices.emplace_back(2, 1.0, 0.0);    // 23
+                vertices.emplace_back(2, 1.0, 1.0);    // 24
+                for (auto &p : vertices)
+                  {
+                    const double x = p[0];
+                    p[0]           = (x + 1.0) / 3.0;
+                  }
+                {
+                  CellData<dim> hex;
+                  hex.vertices = {0, 1, 2, 3, 4, 5, 6, 7};
+                  cells.push_back(hex);
+                }
+                {
+                  CellData<dim> wedge;
+                  wedge.vertices = {1, 8, 3, 5, 9, 7};
+                  cells.push_back(wedge);
+                }
+                {
+                  CellData<dim> pyramid;
+                  pyramid.vertices = {0, 4, 2, 6, 10};
+                  cells.push_back(pyramid);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {4, 6, 10, 11};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {0, 2, 12, 10};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 11, 13, 4};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 11, 6, 14};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 12, 0, 15};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 12, 16, 2};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {17, 10, 6, 14};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 17, 6, 2};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 17, 2, 16};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 18, 15, 0};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 18, 0, 4};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {10, 18, 4, 13};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {5, 9, 7, 20};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {1, 3, 8, 19};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> wedge;
+                  wedge.vertices = {8, 1, 21, 9, 5, 22};
+                  cells.push_back(wedge);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {5, 20, 22, 9};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {1, 21, 19, 8};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> wedge;
+                  wedge.vertices = {3, 8, 23, 7, 9, 24};
+                  cells.push_back(wedge);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {20, 9, 7, 24};
+                  cells.push_back(tet);
+                }
+                {
+                  CellData<dim> tet;
+                  tet.vertices = {19, 3, 8, 23};
+                  cells.push_back(tet);
+                }
+
+                tria_serial.create_triangulation(vertices,
+                                                 cells,
+                                                 SubCellData());
+                tria_serial.refine_global(1);
+
+                // std::ofstream out("grid-mixed.vtk");
+                // GridOut       grid_out;
+                // grid_out.write_vtk(tria_serial, out);
+                // std::cout << "Grid written to grid-mixed.vtk" << std::endl;
+              }
+            else
+              GridGenerator::subdivided_hyper_cube_with_pyramids(tria_serial,
+                                                                 2);
+
             if (cycle > 0)
               tria_serial.refine_global(cycle);
           };
@@ -545,7 +708,7 @@ void PoissonProblem<dim>::run(const unsigned int n_cycles_max,
           convergence_table.write_text(std::cout);
 
           std::string error_filename = "error_CG_SpMV_";
-          error_filename += "mixed_mesh_p_" + std::to_string(degree_counter);
+          error_filename += "Mixed_p_" + std::to_string(degree_counter);
           if (use_equi_points)
             error_filename += "_equidistant";
           else

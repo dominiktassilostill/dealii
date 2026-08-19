@@ -1,414 +1,986 @@
-/* ------------------------------------------------------------------------
- *
- * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2001 - 2023 by the deal.II authors
- *
- * This file is part of the deal.II library.
- *
- * Part of the source code is dual licensed under Apache-2.0 WITH
- * LLVM-exception OR LGPL-2.1-or-later. Detailed license information
- * governing the source code and code contributions can be found in
- * LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
- *
- * ------------------------------------------------------------------------
- *
- * Authors: Wolfgang Bangerth, Ralf Hartmann, University of Heidelberg, 2001
- */
 
-
-// The first of the following include files are probably well-known by now and
-// need no further explanation.
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/base/logstream.h>
+#include <deal.II/base/mpi.h>
 #include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/convergence_table.h>
-#include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/manifold_lib.h>
-#include <deal.II/grid/tria.h>
-#include <deal.II/grid/grid_out.h>
+#include <deal.II/base/timer.h>
+
+#include <deal.II/distributed/fully_distributed_tria.h>
+
+#include "./../../../tests/simplex/simplex_grids.h"
+
 #include <deal.II/dofs/dof_handler.h>
-#include <deal.II/fe/fe_values.h>
+#include <deal.II/dofs/dof_tools.h>
 
-// This include file is new. Even if we are not solving a PDE in this tutorial,
-// we want to use a dummy finite element with zero degrees of freedoms provided
-// by the FE_Nothing class.
-#include <deal.II/fe/fe_nothing.h>
+#include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/fe_wedge_p.h>
+#include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/mapping_fe.h>
 
-// The following header file is also new: in it, we declare the MappingQ class
-// which we will use for polynomial mappings of arbitrary order:
-#include <deal.II/fe/mapping_q.h>
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_out.h>
+#include <deal.II/grid/grid_tools.h>
 
-// And this again is C++:
-#include <iostream>
-#include <fstream>
-#include <cmath>
+#include <deal.II/lac/affine_constraints.h>
 
-// The last step is as in previous programs:
-namespace Step10
+#include <deal.II/matrix_free/fe_evaluation.h>
+#include <deal.II/matrix_free/matrix_free.h>
+
+#include <deal.II/numerics/vector_tools.h>
+
+#include <deal.II/base/convergence_table.h>
+
+#include <deal.II/lac/precondition.h>
+#include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/solver_control.h>
+
+
+#include <deal.II/hp/fe_collection.h>
+#include <deal.II/hp/fe_values.h>
+
+
+#ifdef LIKWID_PERFMON
+#  include <likwid.h>
+#endif
+
+
+using namespace dealii;
+
+
+const double FREQUENCY = 3.0 * dealii::numbers::PI;
+template <int dim>
+class Solution : public dealii::Function<dim>
 {
-  using namespace dealii;
+public:
+  Solution(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
+  {}
 
-  // Then, the first task will be to generate some output. Since this program
-  // is so small, we do not employ object oriented techniques in it and do not
-  // declare classes (although, of course, we use the object oriented features
-  // of the library). Rather, we just pack the functionality into separate
-  // functions. We make these functions templates on the number of space
-  // dimensions to conform to usual practice when using deal.II, although we
-  // will only use them for two space dimensions and throw an exception when
-  // attempted to use for any other spatial dimension.
-  //
-  // The first of these functions just generates a triangulation of a circle
-  // (hyperball) and outputs the $Q_p$ mapping of its cells for different values
-  // of <code>p</code>. Then, we refine the grid once and do so again.
-  template <int dim>
-  void gnuplot_output()
+  double value(const dealii::Point<dim> &p,
+               const unsigned int /*component*/) const final
   {
-    std::cout << "Output of grids into gnuplot files:" << std::endl
-              << "===================================" << std::endl;
+    double result = 1.0;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
 
-    // So first generate a coarse triangulation of the circle and associate a
-    // suitable boundary description to it. By default,
-    // GridGenerator::hyper_ball attaches a SphericalManifold to the boundary
-    // (and uses FlatManifold for the interior) so we simply call that
-    // function and move on:
-    Triangulation<dim> triangulation;
-    GridGenerator::hyper_ball(triangulation);
+    return result;
+  }
 
-    // Then alternate between generating output on the current mesh
-    // for $Q_1$, $Q_2$, and $Q_3$ mappings, and (at the end of the
-    // loop body) refining the mesh once globally.
-    for (unsigned int refinement = 0; refinement < 2; ++refinement)
+  VectorizedArray<double>
+  value_array(const Point<dim, VectorizedArray<double>> &p)
+  {
+    Point<dim>              point;
+    VectorizedArray<double> results;
+
+    for (unsigned int v = 0; v < results.size(); ++v)
       {
-        std::cout << "Refinement level: " << refinement << std::endl;
-
-        std::string filename_base = "ball_" + std::to_string(refinement);
-
-        for (unsigned int degree = 1; degree < 4; ++degree)
+        for (unsigned int d = 0; d < dim; ++d)
           {
-            std::cout << "Degree = " << degree << std::endl;
-
-            // For this, first set up an object describing the mapping. This
-            // is done using the MappingQ class, which takes as
-            // argument to the constructor the polynomial degree which it
-            // shall use.
-            const MappingQ<dim> mapping(degree);
-            // As a side note, for a piecewise linear mapping, you
-            // could give a value of <code>1</code> to the constructor
-            // of MappingQ, but there is also a class MappingQ1 that
-            // achieves the same effect. Historically, it did a lot of
-            // things in a simpler way than MappingQ but is today just
-            // a wrapper around the latter. It is, however, still the
-            // class that is used implicitly in many places of the
-            // library if you do not specify another mapping
-            // explicitly.
-
-
-            // In order to actually write out the present grid with this
-            // mapping, we set up an object which we will use for output. We
-            // will generate Gnuplot output, which consists of a set of lines
-            // describing the mapped triangulation. By default, only one line
-            // is drawn for each face of the triangulation, but since we want
-            // to explicitly see the effect of the mapping, we want to have
-            // the faces in more detail. This can be done by passing the
-            // output object a structure which contains some flags. In the
-            // present case, since Gnuplot can only draw straight lines, we
-            // output a number of additional points on the faces so that each
-            // face is drawn by 30 small lines instead of only one. This is
-            // sufficient to give us the impression of seeing a curved line,
-            // rather than a set of straight lines.
-            GridOut               grid_out;
-            GridOutFlags::Gnuplot gnuplot_flags(false, 60);
-            grid_out.set_flags(gnuplot_flags);
-
-            // Finally, generate a filename and a file for output:
-            std::string filename =
-              filename_base + "_mapping_q_" + std::to_string(degree) + ".dat";
-            std::ofstream gnuplot_file(filename);
-
-            // Then write out the triangulation to this file. The last
-            // argument of the function is a pointer to a mapping object. This
-            // argument has a default value, and if no value is given a simple
-            // MappingQ1 object is taken, which we briefly
-            // described above. This would then result in a piecewise linear
-            // approximation of the true boundary in the output.
-            grid_out.write_gnuplot(triangulation, gnuplot_file, &mapping);
+            point[d] = p[d][v];
           }
-        std::cout << std::endl;
 
-        // At the end of the loop, refine the mesh globally.
-        triangulation.refine_global();
+        results[v] = value(point, 0);
+      }
+
+    return results;
+  }
+};
+
+template <int dim>
+class RightHandSide : public dealii::Function<dim>
+{
+public:
+  RightHandSide(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
+  {}
+
+  double value(const dealii::Point<dim> &p,
+               const unsigned int /* component */) const final
+  {
+    double result = FREQUENCY * FREQUENCY * dim;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
+
+    return result;
+  }
+
+  VectorizedArray<double>
+  value_array(const Point<dim, VectorizedArray<double>> &p)
+  {
+    Point<dim>              point;
+    VectorizedArray<double> results;
+
+    for (unsigned int v = 0; v < results.size(); ++v)
+      {
+        for (unsigned int d = 0; d < dim; ++d)
+          {
+            point[d] = p[d][v];
+          }
+
+        results[v] = value(point, 0);
+      }
+
+    return results;
+  }
+};
+
+template <int dim_, int n_components = dim_, typename Number = double>
+class Operator : public Subscriptor
+{
+public:
+  using value_type = Number;
+  using number     = Number;
+  using VectorType = LinearAlgebra::distributed::Vector<Number>;
+
+  static const int dim = dim_;
+
+  using FECellIntegrator = FEEvaluation<dim, -1, 0, n_components, Number>;
+  using FEFaceIntegrator = FEFaceEvaluation<dim, -1, 0, n_components, Number>;
+
+  void reinit(const hp::MappingCollection<dim> &mapping,
+              const DoFHandler<dim>            &dof_handler,
+              const hp::QCollection<dim>       &quad,
+              const AffineConstraints<number>  &constraints,
+              const unsigned int                mg_level,
+              const unsigned int                fe_degree,
+              const hp::FECollection<dim>       fe_collection)
+  {
+    this->constraints.copy_from(constraints);
+
+    typename MatrixFree<dim, number>::AdditionalData data;
+    data.mapping_update_flags =
+      (update_gradients | update_JxW_values | update_quadrature_points);
+    data.mapping_update_flags_inner_faces =
+      (update_gradients | update_JxW_values | update_normal_vectors);
+    data.mapping_update_flags_boundary_faces =
+      (update_gradients | update_JxW_values | update_normal_vectors |
+       update_quadrature_points);
+    data.mg_level = mg_level;
+
+    matrix_free.reinit(mapping, dof_handler, constraints, quad, data);
+    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+      std::cout << "Sizes shape info: "
+                << matrix_free.get_shape_info()
+                     .data[0]
+                     .shape_values.memory_consumption()
+                << " "
+                << matrix_free.get_shape_info()
+                     .data[0]
+                     .shape_gradients.memory_consumption()
+                << " " << dof_handler.get_fe().dofs_per_cell << " "
+                << matrix_free.get_shape_info().n_q_points << " "
+                << matrix_free.get_shape_info().dofs_per_component_on_cell
+                << " " << matrix_free.get_dof_info(0).dof_indices.size() << " "
+                << dof_handler.get_triangulation().n_active_cells() << " "
+                << dof_handler.n_dofs() << std::endl;
+
+    constrained_indices.clear();
+
+    const double penalty_factor =
+      1.0 * (fe_degree + dim) / double(dim) * (fe_degree + 1);
+    {
+      unsigned int n_cells =
+        matrix_free.n_cell_batches() + matrix_free.n_ghost_cell_batches();
+      array_penalty_parameter.resize(n_cells);
+
+      hp::FEValues<dim> hp_fe_values(mapping,
+                                     fe_collection,
+                                     quad,
+                                     update_JxW_values);
+
+      const QGauss<dim - 1>        quadrature_quad(fe_degree + 1);
+      const QGaussSimplex<dim - 1> quadrature_tri(fe_degree + 1);
+      const Quadrature<dim - 1>    quadrature_dummy(
+        std::vector<Point<dim - 1>>{Point<dim - 1>()});
+
+      hp::QCollection<dim - 1> face_quadratures_quad(quadrature_quad,
+                                                     quadrature_quad,
+                                                     quadrature_dummy,
+                                                     quadrature_quad);
+
+      hp::QCollection<dim - 1> face_quadratures_tri(quadrature_tri,
+                                                    quadrature_tri,
+                                                    quadrature_tri,
+                                                    quadrature_dummy);
+
+      hp::FEFaceValues<dim> hp_fe_face_values_quad(mapping,
+                                                   fe_collection,
+                                                   face_quadratures_quad,
+                                                   update_JxW_values);
+
+      hp::FEFaceValues<dim> hp_fe_face_values_tri(mapping,
+                                                  fe_collection,
+                                                  face_quadratures_tri,
+                                                  update_JxW_values);
+
+      for (unsigned int i = 0; i < n_cells; ++i)
+        {
+          for (unsigned int v = 0;
+               v < matrix_free.n_active_entries_per_cell_batch(i);
+               ++v)
+            {
+              typename dealii::DoFHandler<dim>::cell_iterator cell =
+                matrix_free.get_cell_iterator(i, v);
+              hp_fe_values.reinit(cell);
+              const FEValues<dim> &fe_values =
+                hp_fe_values.get_present_fe_values();
+
+              // calculate cell volume
+              number volume = 0;
+              for (unsigned int q = 0; q < fe_values.n_quadrature_points; ++q)
+                {
+                  volume += fe_values.JxW(q);
+                }
+
+              // calculate surface area
+              number surface_area = 0;
+              for (const unsigned int f : cell->face_indices())
+                {
+                  hp::FEFaceValues<dim> *hp_fe_face_values =
+                    cell->face(f)->reference_cell().is_hyper_cube() ?
+                      &hp_fe_face_values_quad :
+                      &hp_fe_face_values_tri;
+
+                  hp_fe_face_values->reinit(cell, f);
+                  const FEFaceValues<dim> &fe_face_values =
+                    hp_fe_face_values->get_present_fe_values();
+
+                  const number factor = (cell->at_boundary(f) and
+                                         not(cell->has_periodic_neighbor(f))) ?
+                                          1. :
+                                          0.5;
+                  for (unsigned int q = 0;
+                       q < fe_face_values.n_quadrature_points;
+                       ++q)
+                    {
+                      surface_area += fe_face_values.JxW(q) * factor;
+                    }
+                }
+
+              array_penalty_parameter[i][v] =
+                surface_area / volume * penalty_factor;
+            }
+        }
+    }
+  }
+
+  virtual types::global_dof_index m() const
+  {
+    if (this->matrix_free.get_mg_level() != numbers::invalid_unsigned_int)
+      return this->matrix_free.get_dof_handler().n_dofs(
+        this->matrix_free.get_mg_level());
+    else
+      return this->matrix_free.get_dof_handler().n_dofs();
+  }
+
+  Number el(unsigned int, unsigned int) const
+  {
+    DEAL_II_NOT_IMPLEMENTED();
+    return 0;
+  }
+
+  virtual void initialize_dof_vector(VectorType &vec) const
+  {
+    matrix_free.initialize_dof_vector(vec);
+  }
+
+  virtual void vmult(VectorType &dst, const VectorType &src) const
+  {
+    this->matrix_free.loop(
+      &Operator::do_cell_integral_range,
+      &Operator::do_face_integral_range,
+      &Operator::do_boundary,
+      this,
+      dst,
+      src,
+      true,
+      MatrixFree<dim, number>::DataAccessOnFaces::gradients,
+      MatrixFree<dim, number>::DataAccessOnFaces::gradients);
+  }
+
+  void Tvmult(VectorType &dst, const VectorType &src) const
+  {
+    vmult(dst, src);
+  }
+
+  void rhs(VectorType &rhs) const
+  {
+    const VectorType dummy;
+    this->matrix_free.loop(
+      &Operator::do_rhs_cell_range,
+      &Operator::do_rhs_face_range,
+      &Operator::do_rhs_boundary_range,
+      this,
+      rhs,
+      dummy,
+      true,
+      MatrixFree<dim, number>::DataAccessOnFaces::gradients,
+      MatrixFree<dim, number>::DataAccessOnFaces::gradients);
+  }
+
+private:
+  void do_cell_integral_range(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FECellIntegrator integrator(matrix_free, range);
+
+    for (unsigned int cell = range.first; cell < range.second; ++cell)
+      {
+        integrator.reinit(cell);
+        integrator.gather_evaluate(src, EvaluationFlags::gradients);
+
+        for (unsigned int q = 0; q < integrator.n_q_points; ++q)
+          integrator.submit_gradient(integrator.get_gradient(q), q);
+
+        integrator.integrate_scatter(EvaluationFlags::gradients, dst);
       }
   }
 
-  // Now we proceed with the main part of the code, the approximation of
-  // $\pi$. The area of a circle is of course given by $\pi r^2$, so having a
-  // circle of radius 1, the area represents just the number that is searched
-  // for. The numerical computation of the area is performed by integrating
-  // the constant function of value 1 over the whole computational domain,
-  // i.e. by computing the areas $\int_K 1 dx=\int_{\hat K} 1
-  // \ \textrm{det}\ J(\hat x) d\hat x \approx \sum_i \textrm{det}
-  // \ J(\hat x_i)w(\hat x_i)$,
-  // where the sum extends over all quadrature points on all active cells in
-  // the triangulation, with $w(x_i)$ being the weight of quadrature point
-  // $x_i$. The integrals on each cell are approximated by numerical
-  // quadrature, hence the only additional ingredient we need is to set up a
-  // FEValues object that provides the corresponding `JxW` values of each
-  // cell. (Note that `JxW` is meant to abbreviate <i>Jacobian determinant
-  // times weight</i>; since in numerical quadrature the two factors always
-  // occur at the same places, we only offer the combined quantity, rather
-  // than two separate ones.) We note that here we won't use the FEValues
-  // object in its original purpose, i.e. for the computation of values of
-  // basis functions of a specific finite element at certain quadrature
-  // points. Rather, we use it only to gain the `JxW` at the quadrature
-  // points, irrespective of the (dummy) finite element we will give to the
-  // constructor of the FEValues object. The actual finite element given to
-  // the FEValues object is not used at all, so we could give any.
-  template <int dim>
-  void compute_pi_by_area()
+  void do_face_integral_range(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
   {
-    std::cout << "Computation of Pi by the area:" << std::endl
-              << "==============================" << std::endl;
+    FEFaceIntegrator integrator_inner(matrix_free, range, true);
+    FEFaceIntegrator integrator_outer(matrix_free, range, false);
 
-    // For the numerical quadrature on all cells we employ a quadrature rule
-    // of sufficiently high degree. We choose QGauss that is of order 8 (4
-    // points), to be sure that the errors due to numerical quadrature are of
-    // higher order than the order (maximal 6) that will occur due to the
-    // order of the approximation of the boundary, i.e. the order of the
-    // mappings employed. Note that the integrand, the Jacobian determinant,
-    // is not a polynomial function (rather, it is a rational one), so we do
-    // not use Gauss quadrature in order to get the exact value of the
-    // integral as done often in finite element computations, but could as
-    // well have used any quadrature formula of like order instead.
-    const QGauss<dim> quadrature(4);
 
-    // Now start by looping over polynomial mapping degrees=1..4:
-    for (unsigned int degree = 1; degree < 5; ++degree)
+    for (unsigned int face = range.first; face < range.second; ++face)
       {
-        std::cout << "Degree = " << degree << std::endl;
+        integrator_inner.reinit(face);
+        integrator_inner.gather_evaluate(src,
+                                         EvaluationFlags::values |
+                                           EvaluationFlags::gradients);
+        integrator_outer.reinit(face);
+        integrator_outer.gather_evaluate(src,
+                                         EvaluationFlags::values |
+                                           EvaluationFlags::gradients);
 
-        // First generate the triangulation, the boundary and the mapping
-        // object as already seen.
-        Triangulation<dim> triangulation;
-        GridGenerator::hyper_ball(triangulation);
+        const VectorizedArray<number> sigma =
+          std::max(integrator_inner.read_cell_data(array_penalty_parameter),
+                   integrator_outer.read_cell_data(array_penalty_parameter));
 
-        const MappingQ<dim> mapping(degree);
-
-        // We now create a finite element. Unlike the rest of the example
-        // programs, we do not actually need to do any computations with shape
-        // functions; we only need the `JxW` values from an FEValues
-        // object. Hence we use the special finite element class FE_Nothing
-        // which has exactly zero degrees of freedom per cell (as the name
-        // implies, the local basis on each cell is the empty set). A more
-        // typical usage of FE_Nothing is shown in step-46.
-        const FE_Nothing<dim> fe;
-
-        // Likewise, we need to create a DoFHandler object. We do not actually
-        // use it, but it will provide us with `active_cell_iterators` that
-        // are needed to reinitialize the FEValues object on each cell of the
-        // triangulation.
-        DoFHandler<dim> dof_handler(triangulation);
-
-        // Now we set up the FEValues object, giving the Mapping, the dummy
-        // finite element and the quadrature object to the constructor,
-        // together with the update flags asking for the `JxW` values at the
-        // quadrature points only. This tells the FEValues object that it
-        // needs not compute other quantities upon calling the
-        // <code>reinit</code> function, thus saving computation time.
-        //
-        // The most important difference in the construction of the FEValues
-        // object compared to previous example programs is that we pass a
-        // mapping object as first argument, which is to be used in the
-        // computation of the mapping from unit to real cell. In previous
-        // examples, this argument was omitted, resulting in the implicit use
-        // of an object of type MappingQ1.
-        FEValues<dim> fe_values(mapping, fe, quadrature, update_JxW_values);
-
-        // We employ an object of the ConvergenceTable class to store all
-        // important data like the approximated values for $\pi$ and the error
-        // with respect to the true value of $\pi$. We will also use functions
-        // provided by the ConvergenceTable class to compute convergence rates
-        // of the approximations to $\pi$.
-        ConvergenceTable table;
-
-        // Now we loop over several refinement steps of the triangulation.
-        for (unsigned int refinement = 0; refinement < 6;
-             ++refinement, triangulation.refine_global(1))
+        for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
           {
-            // In this loop we first add the number of active cells of the
-            // current triangulation to the table. This function automatically
-            // creates a table column with superscription `cells`, in case
-            // this column was not created before.
-            table.add_value("cells", triangulation.n_active_cells());
+            const VectorizedArray<number> solution_jump =
+              (integrator_inner.get_value(q) - integrator_outer.get_value(q));
+            const VectorizedArray<number> averaged_normal_derivative =
+              (integrator_inner.get_normal_derivative(q) +
+               integrator_outer.get_normal_derivative(q)) *
+              number(0.5);
+            const VectorizedArray<number> test_by_value =
+              solution_jump * sigma - averaged_normal_derivative;
 
-            // Then we distribute the degrees of freedom for the dummy finite
-            // element. Strictly speaking we do not need this function call in
-            // our special case but we call it to make the DoFHandler happy --
-            // otherwise it would throw an assertion in the FEValues::reinit
-            // function below.
-            dof_handler.distribute_dofs(fe);
+            integrator_inner.submit_value(test_by_value, q);
+            integrator_outer.submit_value(-test_by_value, q);
 
-            // Now we loop over all cells, reinitialize the FEValues object
-            // for each cell, and add up all the `JxW` values for this cell to
-            // `area`...
-            double area = 0;
-            for (const auto &cell : dof_handler.active_cell_iterators())
+            integrator_inner.submit_normal_derivative(-solution_jump *
+                                                        number(0.5),
+                                                      q);
+            integrator_outer.submit_normal_derivative(-solution_jump *
+                                                        number(0.5),
+                                                      q);
+          }
+
+        integrator_inner.integrate_scatter(EvaluationFlags::values |
+                                             EvaluationFlags::gradients,
+                                           dst);
+        integrator_outer.integrate_scatter(EvaluationFlags::values |
+                                             EvaluationFlags::gradients,
+                                           dst);
+      }
+  }
+
+  void do_boundary(const MatrixFree<dim, number>               &matrix_free,
+                   VectorType                                  &dst,
+                   const VectorType                            &src,
+                   const std::pair<unsigned int, unsigned int> &range) const
+  {
+    {
+      for (unsigned int face = range.first; face < range.second; ++face)
+        {
+          const auto          face_info       = matrix_free.get_face_info(face);
+          const unsigned char face_number_int = face_info.interior_face_no;
+          const unsigned char face_orientation_int = face_info.face_orientation;
+          if (face_orientation_int != 0)
+            std::cout << "boundary face number and orientation: "
+                      << int(face_number_int) << ", "
+                      << int(face_orientation_int) << std::endl;
+        }
+    }
+    FEFaceIntegrator integrator_inner(matrix_free, range, true);
+
+    for (unsigned int face = range.first; face < range.second; ++face)
+      {
+        integrator_inner.reinit(face);
+        integrator_inner.gather_evaluate(src,
+                                         EvaluationFlags::values |
+                                           EvaluationFlags::gradients);
+
+        const VectorizedArray<number> sigma =
+          integrator_inner.read_cell_data(array_penalty_parameter);
+
+        for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
+          {
+            const VectorizedArray<number> u_inner =
+              integrator_inner.get_value(q);
+            const VectorizedArray<number> u_outer = -u_inner;
+            const VectorizedArray<number> normal_derivative_inner =
+              integrator_inner.get_normal_derivative(q);
+            const VectorizedArray<number> normal_derivative_outer =
+              normal_derivative_inner;
+            const VectorizedArray<number> solution_jump = (u_inner - u_outer);
+            const VectorizedArray<number> average_normal_derivative =
+              (normal_derivative_inner + normal_derivative_outer) * number(0.5);
+            const VectorizedArray<number> test_by_value =
+              solution_jump * sigma - average_normal_derivative;
+
+            integrator_inner.submit_normal_derivative(-solution_jump *
+                                                        number(0.5),
+                                                      q);
+            integrator_inner.submit_value(test_by_value, q);
+          }
+
+        integrator_inner.integrate_scatter(EvaluationFlags::values |
+                                             EvaluationFlags::gradients,
+                                           dst);
+      }
+  }
+
+
+  void
+  do_rhs_cell_range(const MatrixFree<dim, number> &matrix_free,
+                    VectorType                    &dst,
+                    const VectorType &,
+                    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FECellIntegrator   integrator(matrix_free, range);
+    RightHandSide<dim> rhs_function;
+
+    for (unsigned int cell = range.first; cell < range.second; ++cell)
+      {
+        integrator.reinit(cell);
+        for (unsigned int q = 0; q < integrator.n_q_points; ++q)
+          integrator.submit_value(
+            rhs_function.value_array(integrator.quadrature_point(q)), q);
+
+        integrator.integrate_scatter(EvaluationFlags::values, dst);
+      }
+  }
+
+  void do_rhs_face_range(const MatrixFree<dim, number> &,
+                         VectorType &,
+                         const VectorType &,
+                         const std::pair<unsigned int, unsigned int> &) const
+  {}
+
+  void do_rhs_boundary_range(
+    const MatrixFree<dim, number> &matrix_free,
+    VectorType                    &dst,
+    const VectorType &,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FEFaceIntegrator integrator_inner(matrix_free, range);
+    Solution<dim>    solution;
+
+    for (unsigned int face = range.first; face < range.second; ++face)
+      {
+        integrator_inner.reinit(face);
+
+        const VectorizedArray<number> sigma =
+          integrator_inner.read_cell_data(array_penalty_parameter);
+
+        for (unsigned int q = 0; q < integrator_inner.n_q_points; ++q)
+          {
+            const auto g =
+              solution.value_array(integrator_inner.quadrature_point(q));
+
+            integrator_inner.submit_normal_derivative(-g, q);
+            integrator_inner.submit_value(2.0 * sigma * g, q);
+          }
+
+        integrator_inner.integrate_scatter(EvaluationFlags::values |
+                                             EvaluationFlags::gradients,
+                                           dst);
+      }
+  }
+
+  MatrixFree<dim, number> matrix_free;
+
+  AffineConstraints<number> constraints;
+
+  std::vector<unsigned int> constrained_indices;
+
+  dealii::AlignedVector<dealii::VectorizedArray<number>>
+    array_penalty_parameter;
+};
+
+
+
+template <int dim, typename Number>
+void do_test(const unsigned int min_degree,
+             const unsigned int max_degree,
+             const unsigned int n_cycles_max)
+{
+  ConditionalOStream pcout(std::cout,
+                           Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) ==
+                             0);
+  pcout << "Running in " << dim << "D with degrees between " << min_degree
+        << " and " << max_degree << " on mixed mesh" << std::endl;
+
+  std::vector<ConvergenceTable> convergence_tables;
+  convergence_tables.resize(2 * (max_degree - min_degree + 1));
+
+  FE_PyramidP<dim> mapping_fe_pyramid(1, true);
+  FE_WedgeP<dim>   mapping_fe_wedge(1, true);
+  FE_SimplexP<dim> mapping_fe_simplex(1, true);
+  FE_Q<dim>        mapping_fe_hypercube(1);
+
+  MappingFE<dim> mapping_pyramid(mapping_fe_pyramid);
+  MappingFE<dim> mapping_wedge(mapping_fe_wedge);
+  MappingFE<dim> mapping_simplex(mapping_fe_simplex);
+  MappingFE<dim> mapping_hypercube(mapping_fe_hypercube);
+
+  const hp::MappingCollection<dim> mapping_collection(mapping_pyramid,
+                                                      mapping_wedge,
+                                                      mapping_simplex,
+                                                      mapping_hypercube);
+  // mapping_collection.push_back(mapping_pyramid);
+  // mapping_collection.push_back(mapping_wedge);
+  // mapping_collection.push_back(mapping_simplex);
+  // mapping_collection.push_back(mapping_hypercube);
+
+  AffineConstraints<double> constraint;
+  const unsigned int        n_cells_max = 200000000;
+  unsigned int              n_cells     = 1;
+
+  const unsigned int n_dofs_max = 33000000;
+  unsigned int       n_dofs     = 1;
+
+  for (unsigned int cycle = 0; cycle < n_cycles_max && n_cells < n_cells_max;
+       ++cycle)
+    {
+      const auto serial_grid_generator =
+        [&cycle](dealii::Triangulation<dim, dim> &tria_serial) {
+          // set up triangulation
+          {
+            std::vector<Point<dim>>    vertices;
+            std::vector<CellData<dim>> cells;
+            vertices.emplace_back(0.0, 0.0, 0.0);  // 0
+            vertices.emplace_back(1.0, 0.0, 0.0);  // 1
+            vertices.emplace_back(0.0, 1.0, 0.0);  // 2
+            vertices.emplace_back(1.0, 1.0, 0.0);  // 3
+            vertices.emplace_back(0.0, 0.0, 1.0);  // 4
+            vertices.emplace_back(1.0, 0.0, 1.0);  // 5
+            vertices.emplace_back(0.0, 1.0, 1.0);  // 6
+            vertices.emplace_back(1.0, 1.0, 1.0);  // 7
+            vertices.emplace_back(2, 0.5, 0.25);   // 8
+            vertices.emplace_back(2, 0.5, 0.75);   // 9
+            vertices.emplace_back(-1.0, 0.5, 0.5); // 10
+            vertices.emplace_back(-1.0, 0.5, 1);   // 11
+            vertices.emplace_back(-1.0, 0.5, 0);   // 12
+            vertices.emplace_back(-1.0, 0.0, 1.0); // 13
+            vertices.emplace_back(-1.0, 1.0, 1.0); // 14
+            vertices.emplace_back(-1.0, 0.0, 0.0); // 15
+            vertices.emplace_back(-1.0, 1.0, 0.0); // 16
+            vertices.emplace_back(-1.0, 1.0, 0.5); // 17
+            vertices.emplace_back(-1.0, 0.0, 0.5); // 18
+            vertices.emplace_back(2, 0.5, 0.0);    // 19
+            vertices.emplace_back(2, 0.5, 1.0);    // 20
+            vertices.emplace_back(2, 0.0, 0.0);    // 21
+            vertices.emplace_back(2, 0.0, 1.0);    // 22
+            vertices.emplace_back(2, 1.0, 0.0);    // 23
+            vertices.emplace_back(2, 1.0, 1.0);    // 24
+            for (auto &p : vertices)
               {
-                fe_values.reinit(cell);
-                for (unsigned int i = 0; i < fe_values.n_quadrature_points; ++i)
-                  area += fe_values.JxW(i);
+                const double x = p[0];
+                p[0]           = (x + 1.0) / 3.0;
               }
+            {
+              CellData<dim> hex;
+              hex.vertices = {0, 1, 2, 3, 4, 5, 6, 7};
+              cells.push_back(hex);
+            }
+            {
+              CellData<dim> wedge;
+              wedge.vertices = {1, 8, 3, 5, 9, 7};
+              cells.push_back(wedge);
+            }
+            {
+              CellData<dim> pyramid;
+              pyramid.vertices = {0, 4, 2, 6, 10};
+              cells.push_back(pyramid);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {4, 6, 10, 11};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {0, 2, 12, 10};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 11, 13, 4};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 11, 6, 14};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 12, 0, 15};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 12, 16, 2};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {17, 10, 6, 14};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 17, 6, 2};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 17, 2, 16};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 18, 15, 0};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 18, 0, 4};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {10, 18, 4, 13};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {5, 9, 7, 20};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {1, 3, 8, 19};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> wedge;
+              wedge.vertices = {8, 1, 21, 9, 5, 22};
+              cells.push_back(wedge);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {5, 20, 22, 9};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {1, 21, 19, 8};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> wedge;
+              wedge.vertices = {3, 8, 23, 7, 9, 24};
+              cells.push_back(wedge);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {20, 9, 7, 24};
+              cells.push_back(tet);
+            }
+            {
+              CellData<dim> tet;
+              tet.vertices = {19, 3, 8, 23};
+              cells.push_back(tet);
+            }
 
-            // ...and store the resulting area values and the errors in the
-            // table:
-            table.add_value("eval.pi", area);
-            table.add_value("error", std::fabs(area - numbers::PI));
+            tria_serial.create_triangulation(vertices, cells, SubCellData());
+            tria_serial.refine_global(1);
+
+            // std::ofstream out("grid-mixed.vtk");
+            // GridOut       grid_out;
+            // grid_out.write_vtk(tria_serial, out);
+            // std::cout << "Grid written to grid-mixed.vtk" << std::endl;
           }
 
-        // We want to compute the convergence rates of the `error`
-        // column. Therefore we need to omit the other columns from the
-        // convergence rate evaluation before calling
-        // `evaluate_all_convergence_rates`
-        table.omit_column_from_convergence_rate_evaluation("cells");
-        table.omit_column_from_convergence_rate_evaluation("eval.pi");
-        table.evaluate_all_convergence_rates(
-          ConvergenceTable::reduction_rate_log2);
+          if (cycle > 0)
+            tria_serial.refine_global(cycle);
+        };
+      const auto serial_grid_partitioner =
+        [&](dealii::Triangulation<dim, dim> &tria_serial,
+            const MPI_Comm                   comm,
+            const unsigned int) {
+          dealii::GridTools::partition_triangulation_zorder(
+            dealii::Utilities::MPI::n_mpi_processes(comm), tria_serial);
+        };
 
-        // Finally we set the precision and scientific mode for output of some
-        // of the quantities...
-        table.set_precision("eval.pi", 16);
-        table.set_scientific("error", true);
+      const unsigned int group_size = 32;
 
-        // ...and write the whole table to std::cout.
-        table.write_text(std::cout);
+      parallel::fullydistributed::Triangulation<dim> tria(MPI_COMM_WORLD);
+      typename dealii::TriangulationDescription::Settings
+        triangulation_description_setting =
+          dealii::TriangulationDescription::default_setting;
+      const auto description = dealii::TriangulationDescription::Utilities::
+        create_description_from_triangulation_in_groups<dim, dim>(
+          serial_grid_generator,
+          serial_grid_partitioner,
+          tria.get_mpi_communicator(),
+          group_size,
+          dealii::Triangulation<dim>::none,
+          triangulation_description_setting);
 
-        std::cout << std::endl;
-      }
-  }
+      tria.create_triangulation(description);
+      pcout << "Cycle " << cycle << " set up triangulation" << std::endl;
 
+      bool continue_iterating = true;
+      for (unsigned int fe_degree = min_degree;
+           fe_degree <= max_degree && n_dofs < n_dofs_max && continue_iterating;
+           ++fe_degree)
+        {
+          for (const bool use_equidistant_points :
+               std::vector<bool>{{true, false}})
+            {
+              DoFHandler<dim> dof_handler(tria);
 
-  // The following, second function also computes an approximation of $\pi$
-  // but this time via the perimeter $2\pi r$ of the domain instead of the
-  // area. This function is only a variation of the previous function. So we
-  // will mainly give documentation for the differences.
-  template <int dim>
-  void compute_pi_by_perimeter()
-  {
-    std::cout << "Computation of Pi by the perimeter:" << std::endl
-              << "===================================" << std::endl;
-
-    // We take the same order of quadrature but this time a `dim-1`
-    // dimensional quadrature as we will integrate over (boundary) lines
-    // rather than over cells.
-    const QGauss<dim - 1> quadrature(4);
-
-    // We loop over all degrees, create the triangulation, the boundary, the
-    // mapping, the dummy finite element and the DoFHandler object as seen
-    // before.
-    for (unsigned int degree = 1; degree < 5; ++degree)
-      {
-        std::cout << "Degree = " << degree << std::endl;
-        Triangulation<dim> triangulation;
-        GridGenerator::hyper_ball(triangulation);
-
-        const MappingQ<dim>   mapping(degree);
-        const FE_Nothing<dim> fe;
-
-        DoFHandler<dim> dof_handler(triangulation);
-
-        // Then we create a FEFaceValues object instead of a FEValues object
-        // as in the previous function. Again, we pass a mapping as first
-        // argument.
-        FEFaceValues<dim> fe_face_values(mapping,
-                                         fe,
-                                         quadrature,
-                                         update_JxW_values);
-        ConvergenceTable  table;
-
-        for (unsigned int refinement = 0; refinement < 6;
-             ++refinement, triangulation.refine_global(1))
-          {
-            table.add_value("cells", triangulation.n_active_cells());
-
-            dof_handler.distribute_dofs(fe);
-
-            // Now we run over all cells and over all faces of each cell. Only
-            // the contributions of the `JxW` values on boundary faces are
-            // added to the variable `perimeter`.
-            double perimeter = 0;
-            for (const auto &cell : dof_handler.active_cell_iterators())
-              for (const auto &face : cell->face_iterators())
-                if (face->at_boundary())
+              for (const auto &cell : dof_handler.active_cell_iterators())
+                if (cell->is_locally_owned())
                   {
-                    // We reinit the FEFaceValues object with the cell
-                    // iterator and the number of the face.
-                    fe_face_values.reinit(cell, face);
-                    for (unsigned int i = 0;
-                         i < fe_face_values.n_quadrature_points;
-                         ++i)
-                      perimeter += fe_face_values.JxW(i);
+                    if (cell->reference_cell() == ReferenceCells::Pyramid)
+                      cell->set_active_fe_index(0);
+                    else if (cell->reference_cell() == ReferenceCells::Wedge)
+                      cell->set_active_fe_index(1);
+                    else if (cell->reference_cell().is_simplex())
+                      cell->set_active_fe_index(2);
+                    else if (cell->reference_cell().is_hyper_cube())
+                      cell->set_active_fe_index(3);
+                    else
+                      DEAL_II_NOT_IMPLEMENTED();
                   }
-            // Then store the evaluated values in the table...
-            table.add_value("eval.pi", static_cast<double>(perimeter / 2.0));
-            table.add_value("error", std::fabs(perimeter / 2.0 - numbers::PI));
-          }
 
-        // ...and end this function as we did in the previous one:
-        table.omit_column_from_convergence_rate_evaluation("cells");
-        table.omit_column_from_convergence_rate_evaluation("eval.pi");
-        table.evaluate_all_convergence_rates(
-          ConvergenceTable::reduction_rate_log2);
+              FE_PyramidDGP<dim> fe_pyramidp(fe_degree, use_equidistant_points);
+              FE_WedgeDGP<dim>   fe_wedgep(fe_degree, use_equidistant_points);
+              FE_SimplexDGP<dim> fe_simplexp(fe_degree, use_equidistant_points);
+              FE_DGQ<dim>        fe_q = use_equidistant_points ?
+                                          FE_DGQArbitraryNodes<dim>(
+                                     QIterated<1>(QTrapezoid<1>(), fe_degree)) :
+                                          FE_DGQ<dim>(fe_degree);
 
-        table.set_precision("eval.pi", 16);
-        table.set_scientific("error", true);
+              const hp::FECollection<dim> fe_collection(fe_pyramidp,
+                                                        fe_wedgep,
+                                                        fe_simplexp,
+                                                        fe_q);
 
-        table.write_text(std::cout);
+              dof_handler.distribute_dofs(fe_collection);
 
-        std::cout << std::endl;
-      }
-  }
-} // namespace Step10
+              // set up constraints
+              const IndexSet locally_relevant_dofs =
+                DoFTools::extract_locally_relevant_dofs(dof_handler);
+              constraint.reinit(dof_handler.locally_owned_dofs(),
+                                locally_relevant_dofs);
+              constraint.close();
+
+              QGaussPyramid<dim> quad_pyramid(fe_degree + 1);
+              QGaussWedge<dim>   quad_wedge(fe_degree + 1);
+              QGaussSimplex<dim> quad_simplex(fe_degree + 1);
+              QGauss<dim>        quad_hypercube(fe_degree + 1);
+
+              const hp::QCollection<dim> quadrature_collection(quad_pyramid,
+                                                               quad_wedge,
+                                                               quad_simplex,
+                                                               quad_hypercube);
+
+              pcout << "Set up operator of degree " << fe_degree << std::endl;
+              Operator<dim, 1, Number> op;
+              // set up operator
+              op.reinit(mapping_collection,
+                        dof_handler,
+                        quadrature_collection,
+                        constraint,
+                        numbers::invalid_unsigned_int,
+                        fe_degree,
+                        fe_collection);
+
+              LinearAlgebra::distributed::Vector<Number> x, rhs;
+              op.initialize_dof_vector(x);
+              op.initialize_dof_vector(rhs);
+              op.rhs(rhs);
+
+              ReductionControl reduction_control(dof_handler.n_dofs(),
+                                                 1e-12,
+                                                 1e-12);
+              SolverCG<LinearAlgebra::distributed::Vector<Number>> solver(
+                reduction_control);
+              PreconditionIdentity preconditioner;
+
+              solver.solve(op, x, rhs, preconditioner);
+
+              pcout << "Solved in " << reduction_control.last_step()
+                    << " iterations with final residual "
+                    << std::setprecision(16) << reduction_control.last_value()
+                    << std::endl;
 
 
-// The following main function just calls the above functions in the order of
-// their appearance. Apart from this, it looks just like the main functions of
-// previous tutorial programs.
-int main()
+              const hp::QCollection<dim> quad_error(
+                QGaussPyramid<dim>(fe_degree + 3),
+                QGaussWedge<dim>(fe_degree + 3),
+                QGaussSimplex<dim>(fe_degree + 3),
+                QGauss<dim>(fe_degree + 3));
+
+              x.update_ghost_values();
+              Vector<double> difference_per_cell;
+              VectorTools::integrate_difference(mapping_collection,
+                                                dof_handler,
+                                                x,
+                                                Solution<dim>(),
+                                                difference_per_cell,
+                                                quad_error,
+                                                VectorTools::L2_norm);
+
+              const double L2_error =
+                VectorTools::compute_global_error(tria,
+                                                  difference_per_cell,
+                                                  VectorTools::L2_norm);
+
+              if (L2_error < 1e-10)
+                continue_iterating = false;
+
+              const unsigned int n_active_cells = tria.n_global_active_cells();
+              n_dofs                            = dof_handler.n_dofs();
+
+              if (use_equidistant_points)
+                pcout << "Cycle " << cycle << ':' << std::endl
+                      << "   Mixed equidistant of degree " << fe_degree
+                      << std::endl
+                      << "   Number of active cells:       " << n_active_cells
+                      << std::endl
+                      << "   Number of degrees of freedom: " << n_dofs
+                      << std::endl
+                      << "   L2 error:                     " << L2_error
+                      << std::endl;
+              else
+                pcout << "Cycle " << cycle << ':' << std::endl
+                      << "   Mixed blend and warp of degree " << fe_degree
+                      << std::endl
+                      << "   Number of active cells:       " << n_active_cells
+                      << std::endl
+                      << "   Number of degrees of freedom: " << n_dofs
+                      << std::endl
+                      << "   L2 error:                     " << L2_error
+                      << std::endl;
+
+              unsigned int offset = fe_degree - min_degree;
+              if (!use_equidistant_points)
+                offset += max_degree - min_degree + 1;
+
+              convergence_tables[offset].add_value("cycle", cycle);
+              convergence_tables[offset].add_value("cells", n_active_cells);
+              convergence_tables[offset].add_value("dofs", n_dofs);
+              convergence_tables[offset].add_value("L2", L2_error);
+
+              pcout << std::endl;
+            }
+        }
+      pcout << std::endl;
+
+      n_dofs  = 0;
+      n_cells = tria.n_global_active_cells();
+    }
+  pcout << std::endl;
+  pcout << std::endl;
+
+  unsigned int degree_counter  = min_degree;
+  bool         use_equi_points = true;
+  for (auto &convergence_table : convergence_tables)
+    {
+      convergence_table.set_precision("L2", 3);
+      convergence_table.set_scientific("L2", true);
+
+      convergence_table.set_tex_caption("cells", "\\# cells");
+      convergence_table.set_tex_caption("dofs", "\\# dofs");
+      convergence_table.set_tex_caption("L2", "$L^2$-error");
+
+      convergence_table.set_tex_format("cells", "r");
+      convergence_table.set_tex_format("dofs", "r");
+
+      convergence_table.evaluate_convergence_rates(
+        "L2", ConvergenceTable::reduction_rate);
+      convergence_table.evaluate_convergence_rates(
+        "L2", ConvergenceTable::reduction_rate_log2);
+
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        {
+          convergence_table.write_text(std::cout);
+
+          std::string error_filename = "error_DG_MF_";
+          error_filename += "Mixed_p_" + std::to_string(degree_counter);
+          if (use_equi_points)
+            error_filename += "_equidistant";
+          else
+            error_filename += "_blend_and_warp";
+
+          error_filename += ".tex";
+          std::ofstream error_table_file(error_filename);
+
+          convergence_table.write_tex(error_table_file);
+        }
+      pcout << std::endl;
+      ++degree_counter;
+      if (degree_counter > max_degree)
+        {
+          degree_counter  = min_degree;
+          use_equi_points = false;
+        }
+    }
+}
+
+
+int main(int argc, char **argv)
 {
-  try
-    {
-      std::cout.precision(16);
+  constexpr int dim = 3;
 
-      const unsigned int dim = 2;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_INIT;
+  LIKWID_MARKER_THREADINIT;
+#endif
+  Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
 
-      Step10::gnuplot_output<dim>();
+  int min_degree   = 1;
+  int max_degree   = 7;
+  int n_cycles_max = 7;
+  if (argc > 1)
+    min_degree = std::atoi(argv[1]);
+  if (argc > 2)
+    max_degree = std::atoi(argv[2]);
+  if (argc > 3)
+    n_cycles_max = std::atoi(argv[3]);
 
-      Step10::compute_pi_by_area<dim>();
-      Step10::compute_pi_by_perimeter<dim>();
-    }
-  catch (std::exception &exc)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Exception on processing: " << std::endl
-                << exc.what() << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
+  do_test<dim, double>(min_degree, max_degree, n_cycles_max);
+  std::cout << std::endl;
 
-      return 1;
-    }
-  catch (...)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Unknown exception!" << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      return 1;
-    }
-
-  return 0;
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_CLOSE;
+#endif
 }

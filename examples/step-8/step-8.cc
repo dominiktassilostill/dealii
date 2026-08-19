@@ -1,668 +1,730 @@
-/* ------------------------------------------------------------------------
- *
- * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2000 - 2025 by the deal.II authors
- *
- * This file is part of the deal.II library.
- *
- * Part of the source code is dual licensed under Apache-2.0 WITH
- * LLVM-exception OR LGPL-2.1-or-later. Detailed license information
- * governing the source code and code contributions can be found in
- * LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
- *
- * ------------------------------------------------------------------------
- */
 
-
-// @sect3{Include files}
-
-// As usual, the first few include files are already known, so we will not
-// comment on them further.
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/base/logstream.h>
+#include <deal.II/base/mpi.h>
 #include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/function.h>
-#include <deal.II/base/tensor.h>
+#include <deal.II/base/timer.h>
 
-#include <deal.II/lac/vector.h>
-#include <deal.II/lac/full_matrix.h>
-#include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/dynamic_sparsity_pattern.h>
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/precondition.h>
-#include <deal.II/lac/affine_constraints.h>
+#include <deal.II/distributed/fully_distributed_tria.h>
 
-#include <deal.II/grid/tria.h>
-#include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/grid_refinement.h>
+#include "./../../../tests/simplex/simplex_grids.h"
 
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_tools.h>
 
-#include <deal.II/fe/fe_values.h>
+#include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/fe_wedge_p.h>
+#include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/mapping_fe.h>
+
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_out.h>
+#include <deal.II/grid/grid_tools.h>
+
+#include <deal.II/lac/affine_constraints.h>
+
+#include <deal.II/matrix_free/fe_evaluation.h>
+#include <deal.II/matrix_free/matrix_free.h>
 
 #include <deal.II/numerics/vector_tools.h>
-#include <deal.II/numerics/data_out.h>
-#include <deal.II/numerics/error_estimator.h>
 
-// In this example, we need vector-valued finite elements. The support for
-// these can be found in the following include file:
-#include <deal.II/fe/fe_system.h>
-// We will compose the vector-valued finite elements from regular Q1 elements
-// which can be found here, as usual:
-#include <deal.II/fe/fe_q.h>
+#include <deal.II/base/convergence_table.h>
 
-// This again is C++:
-#include <fstream>
-#include <iostream>
+#include <deal.II/lac/precondition.h>
+#include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/solver_control.h>
 
-// The last step is as in previous programs. In particular, just like in
-// step-7, we pack everything that's specific to this program into a namespace
-// of its own.
-namespace Step8
+#include <deal.II/hp/fe_collection.h>
+#include <deal.II/hp/fe_values.h>
+
+#ifdef LIKWID_PERFMON
+#  include <likwid.h>
+#endif
+
+
+using namespace dealii;
+
+
+const double FREQUENCY = 3.0 * dealii::numbers::PI;
+template <int dim>
+class Solution : public dealii::Function<dim>
 {
-  using namespace dealii;
-
-  // @sect3{The <code>ElasticProblem</code> class template}
-
-  // The main class is, except for its name, almost unchanged with respect to
-  // the step-6 example.
-  //
-  // The only change is the use of a different class for the <code>fe</code>
-  // variable: Instead of a concrete finite element class such as FE_Q, we now
-  // use a more generic one, FESystem. In fact, FESystem is not really a
-  // finite element itself in that it does not implement shape functions of
-  // its own. Rather, it is a class that can be used to stack several other
-  // elements together to form one vector-valued finite element. In our case,
-  // we will compose the vector-valued element of <code>FE_Q(1)</code>
-  // objects, as shown below in the constructor of this class.
-  template <int dim>
-  class ElasticProblem
-  {
-  public:
-    ElasticProblem();
-    void run();
-
-  private:
-    void setup_system();
-    void assemble_system();
-    void solve();
-    void refine_grid();
-    void output_results(const unsigned int cycle) const;
-
-    Triangulation<dim> triangulation;
-    DoFHandler<dim>    dof_handler;
-
-    const FESystem<dim> fe;
-
-    AffineConstraints<double> constraints;
-
-    SparsityPattern      sparsity_pattern;
-    SparseMatrix<double> system_matrix;
-
-    Vector<double> solution;
-    Vector<double> system_rhs;
-  };
-
-
-  // @sect3{Right hand side values}
-
-  // Before going over to the implementation of the main class, we declare and
-  // define the function which describes the right hand side. This time, the
-  // right hand side is vector-valued, as is the solution, so we will describe
-  // the changes required for this in some more detail.
-  //
-  // To prevent cases where the return vector has not previously been set to
-  // the right size we test for this case and otherwise throw an exception at
-  // the beginning of the function. This could be done by writing
-  // `Assert (values.size() == points.size(), some exception text)`, but
-  // because checking for the equality in the sizes of two objects is
-  // such a common operation, there is a short-cut: `AssertDimension`.
-  // The operation behind this command is that it compares the two given
-  // sizes and, if they are not equal, aborts the program with a suitable
-  // error message that we don't have to write from scratch in all of the
-  // places where we want to have this kind of check. (As for the other
-  // `Assert` variations, the check is removed in optimized mode.)
-  // Note that enforcing that output arguments
-  // already have the correct size is a convention in deal.II, and enforced
-  // almost everywhere. The reason is that we would otherwise have to check at
-  // the beginning of the function and possibly change the size of the output
-  // vector. This is expensive, and would almost always be unnecessary (the
-  // first call to the function would set the vector to the right size, and
-  // subsequent calls would only have to do redundant checks). In addition,
-  // checking and possibly resizing the vector is an operation that can not be
-  // removed if we can't rely on the assumption that the vector already has
-  // the correct size; this is in contrast to the call to `Assert` that is
-  // completely removed if the program is compiled in optimized mode.
-  //
-  // Likewise, if by some accident someone tried to compile and run the
-  // program in only one space dimension (in which the elastic equations do
-  // not make much sense since they reduce to the ordinary Laplace equation),
-  // we terminate the program in the second assertion. The program will work
-  // just fine in 3d, however.
-  template <int dim>
-  void right_hand_side(const std::vector<Point<dim>> &points,
-                       std::vector<Tensor<1, dim>>   &values)
-  {
-    AssertDimension(values.size(), points.size());
-    Assert(dim >= 2, ExcNotImplemented());
-
-    // The rest of the function implements computing force values. We will use
-    // a constant (unit) force in x-direction located in two little circles
-    // (or spheres, in 3d) around points (0.5,0) and (-0.5,0), and y-force in
-    // an area around the origin; in 3d, the z-component of these centers is
-    // zero as well.
-    //
-    // For this, let us first define two objects that denote the centers of
-    // these areas. Note that upon construction of the Point objects, all
-    // components are set to zero.
-    Point<dim> point_1, point_2;
-    point_1[0] = 0.5;
-    point_2[0] = -0.5;
-
-    for (unsigned int point_n = 0; point_n < points.size(); ++point_n)
-      {
-        // If <code>points[point_n]</code> is in a circle (sphere) of radius
-        // 0.2 around one of these points, then set the force in x-direction
-        // to one, otherwise to zero:
-        if (((points[point_n] - point_1).norm_square() < 0.2 * 0.2) ||
-            ((points[point_n] - point_2).norm_square() < 0.2 * 0.2))
-          values[point_n][0] = 1.0;
-        else
-          values[point_n][0] = 0.0;
-
-        // Likewise, if <code>points[point_n]</code> is in the vicinity of the
-        // origin, then set the y-force to one, otherwise to zero:
-        if (points[point_n].norm_square() < 0.2 * 0.2)
-          values[point_n][1] = 1.0;
-        else
-          values[point_n][1] = 0.0;
-      }
-  }
-
-
-
-  // @sect3{The <code>ElasticProblem</code> class implementation}
-
-  // @sect4{ElasticProblem::ElasticProblem constructor}
-
-  // Following is the constructor of the main class. As said before, we would
-  // like to construct a vector-valued finite element that is composed of
-  // several scalar finite elements (i.e., we want to build the vector-valued
-  // element so that each of its vector components consists of the shape
-  // functions of a scalar element). Of course, the number of scalar finite
-  // elements we would like to stack together equals the number of components
-  // the solution function has, which is <code>dim</code> since we consider
-  // displacement in each space direction. The FESystem class can handle this:
-  // we pass it the finite element of which we would like to compose the
-  // system of, and how often to repeat it. There are different ways to
-  // tell the FESystem constructor how to do this, but the one that is
-  // closest to mathematical notation is to write out what we want to do
-  // mathematically: We want to construct the finite element space
-  // $Q_1^d$ where the index 1 corresponds to the polynomial degree and
-  // the exponent $d$ to the space dimension -- because the *displacement*
-  // we try to simulate here is a vector with exactly $d$ components. The
-  // FESystem class then lets us create this space by initialization with
-  // `FE_Q<dim>(1)^dim`, emulating the mathematical notation.
-  //
-  // (We could also have written `fe(FE_Q<dim>(1), dim)`, which would simply
-  // have called a different constructor of the FESystem class that first
-  // takes the "base element" and then a "multiplicity", i.e., a number that
-  // indicates how many times the base element is to be repeated. The two
-  // ways of writing things are entirely equivalent; we choose the one that
-  // is closer to mathematical notation.)
-  template <int dim>
-  ElasticProblem<dim>::ElasticProblem()
-    : dof_handler(triangulation)
-    , fe(FE_Q<dim>(1) ^ dim)
+public:
+  Solution(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
   {}
-  // In fact, the FESystem class has several more constructors which can
-  // perform more complex operations than just stacking together several
-  // scalar finite elements of the same type into one; we will get to know
-  // these possibilities in later examples.
 
-
-  // @sect4{ElasticProblem::setup_system}
-
-  // Setting up the system of equations is identical to the function used in
-  // the step-6 example. The DoFHandler class and all other classes used here
-  // are fully aware that the finite element we want to use is vector-valued,
-  // and take care of the vector-valuedness of the finite element
-  // themselves. (In fact, they do not, but this does not need to bother you:
-  // since they only need to know how many degrees of freedom there are per
-  // vertex, line and cell, and they do not ask what they represent,
-  // i.e. whether the finite element under consideration is vector-valued or
-  // whether it is, for example, a scalar Hermite element with several degrees
-  // of freedom on each vertex).
-  template <int dim>
-  void ElasticProblem<dim>::setup_system()
+  double value(const dealii::Point<dim> &p,
+               const unsigned int /*component*/) const final
   {
-    dof_handler.distribute_dofs(fe);
-    solution.reinit(dof_handler.n_dofs());
-    system_rhs.reinit(dof_handler.n_dofs());
+    double result = 1.0;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
 
-    constraints.clear();
-    DoFTools::make_hanging_node_constraints(dof_handler, constraints);
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             types::boundary_id(0),
-                                             Functions::ZeroFunction<dim>(dim),
-                                             constraints);
-    constraints.close();
-
-    DynamicSparsityPattern dsp(dof_handler.n_dofs(), dof_handler.n_dofs());
-    DoFTools::make_sparsity_pattern(dof_handler,
-                                    dsp,
-                                    constraints,
-                                    /*keep_constrained_dofs = */ false);
-    sparsity_pattern.copy_from(dsp);
-
-    system_matrix.reinit(sparsity_pattern);
+    return result;
   }
+};
 
-
-  // @sect4{ElasticProblem::assemble_system}
-
-  // The big changes in this program are in the creation of matrix and right
-  // hand side, since they are problem-dependent. We will go through that
-  // process step-by-step, since it is a bit more complicated than in previous
-  // examples.
-  //
-  // The first parts of this function are the same as before, however: setting
-  // up a suitable quadrature formula, initializing an FEValues object for the
-  // (vector-valued) finite element we use as well as the quadrature object,
-  // and declaring a number of auxiliary arrays. In addition, we declare the
-  // ever same two abbreviations: <code>n_q_points</code> and
-  // <code>dofs_per_cell</code>. The number of degrees of freedom per cell we
-  // now obviously ask from the composed finite element rather than from the
-  // underlying scalar Q1 element. Here, it is <code>dim</code> times the
-  // number of degrees of freedom per cell of the Q1 element, though this is
-  // not explicit knowledge we need to care about:
-  template <int dim>
-  void ElasticProblem<dim>::assemble_system()
-  {
-    const QGauss<dim> quadrature_formula(fe.degree + 1);
-
-    FEValues<dim> fe_values(fe,
-                            quadrature_formula,
-                            update_values | update_gradients |
-                              update_quadrature_points | update_JxW_values);
-
-    const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-    const unsigned int n_q_points    = quadrature_formula.size();
-
-    FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
-    Vector<double>     cell_rhs(dofs_per_cell);
-
-    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-    // As was shown in previous examples as well, we need a place where to
-    // store the values of the coefficients at all the quadrature points on a
-    // cell. In the present situation, we have two coefficients, lambda and
-    // mu.
-    std::vector<double> lambda_values(n_q_points);
-    std::vector<double> mu_values(n_q_points);
-
-    // Well, we could as well have omitted the above two arrays since we will
-    // use constant coefficients for both lambda and mu, which can be declared
-    // like this. They both represent functions always returning the constant
-    // value 1.0. Although we could omit the respective factors in the
-    // assemblage of the matrix, we use them here for purpose of
-    // demonstration.
-    Functions::ConstantFunction<dim> lambda(1.), mu(1.);
-
-    // Like the two constant functions above, we will call the function
-    // right_hand_side just once per cell to make things simpler.
-    std::vector<Tensor<1, dim>> rhs_values(n_q_points);
-
-    // Now we can begin with the loop over all cells:
-    for (const auto &cell : dof_handler.active_cell_iterators())
-      {
-        fe_values.reinit(cell);
-
-        cell_matrix = 0;
-        cell_rhs    = 0;
-
-        // Next we get the values of the coefficients at the quadrature
-        // points. Likewise for the right hand side:
-        lambda.value_list(fe_values.get_quadrature_points(), lambda_values);
-        mu.value_list(fe_values.get_quadrature_points(), mu_values);
-        right_hand_side(fe_values.get_quadrature_points(), rhs_values);
-
-        // Then assemble the entries of the local @ref GlossStiffnessMatrix "stiffness matrix" and right
-        // hand side vector. This follows almost one-to-one the pattern
-        // described in the introduction of this example.  One of the few
-        // comments in place is that we can compute the number
-        // <code>comp(i)</code>, i.e. the index of the only nonzero vector
-        // component of shape function <code>i</code> using the
-        // <code>fe.system_to_component_index(i).first</code> function call
-        // below.
-        //
-        // (By accessing the <code>first</code> variable of the return value
-        // of the <code>system_to_component_index</code> function, you might
-        // already have guessed that there is more in it. In fact, the
-        // function returns a <code>std::pair@<unsigned int, unsigned
-        // int@></code>, of which the first element is <code>comp(i)</code>
-        // and the second is the value <code>base(i)</code> also noted in the
-        // introduction, i.e.  the index of this shape function within all the
-        // shape functions that are nonzero in this component,
-        // i.e. <code>base(i)</code> in the diction of the introduction. This
-        // is not a number that we are usually interested in, however.)
-        //
-        // With this knowledge, we can assemble the local matrix
-        // contributions:
-        for (const unsigned int i : fe_values.dof_indices())
-          {
-            const unsigned int component_i =
-              fe.system_to_component_index(i).first;
-
-            for (const unsigned int j : fe_values.dof_indices())
-              {
-                const unsigned int component_j =
-                  fe.system_to_component_index(j).first;
-
-                for (const unsigned int q_point :
-                     fe_values.quadrature_point_indices())
-                  {
-                    cell_matrix(i, j) +=
-                      // The first term is $(\lambda \partial_i u_i, \partial_j
-                      // v_j) + (\mu \partial_i u_j, \partial_j v_i)$. Note
-                      // that <code>shape_grad(i,q_point)</code> returns the
-                      // gradient of the only nonzero component of the i-th
-                      // shape function at quadrature point q_point. The
-                      // component <code>comp(i)</code> of the gradient, which
-                      // is the derivative of this only nonzero vector
-                      // component of the i-th shape function with respect to
-                      // the comp(i)th coordinate is accessed by the appended
-                      // brackets.
-                      (                                                  //
-                        (fe_values.shape_grad(i, q_point)[component_i] * //
-                         fe_values.shape_grad(j, q_point)[component_j] * //
-                         lambda_values[q_point])                         //
-                        +                                                //
-                        (fe_values.shape_grad(i, q_point)[component_j] * //
-                         fe_values.shape_grad(j, q_point)[component_i] * //
-                         mu_values[q_point])                             //
-                        +                                                //
-                        // The second term is $(\mu \nabla u_i, \nabla
-                        // v_j)$. We need not access a specific component of
-                        // the gradient, since we only have to compute the
-                        // scalar product of the two gradients, of which an
-                        // overloaded version of <tt>operator*</tt> takes
-                        // care, as in previous examples.
-                        //
-                        // Note that by using the <tt>?:</tt> operator, we only
-                        // do this if <tt>component_i</tt> equals
-                        // <tt>component_j</tt>, otherwise a zero is added
-                        // (which will be optimized away by the compiler).
-                        ((component_i == component_j) ?        //
-                           (fe_values.shape_grad(i, q_point) * //
-                            fe_values.shape_grad(j, q_point) * //
-                            mu_values[q_point]) :              //
-                           0)                                  //
-                        ) *                                    //
-                      fe_values.JxW(q_point);                  //
-                  }
-              }
-          }
-
-        // Assembling the right hand side is also just as discussed in the
-        // introduction:
-        for (const unsigned int i : fe_values.dof_indices())
-          {
-            const unsigned int component_i =
-              fe.system_to_component_index(i).first;
-
-            for (const unsigned int q_point :
-                 fe_values.quadrature_point_indices())
-              cell_rhs(i) += fe_values.shape_value(i, q_point) *
-                             rhs_values[q_point][component_i] *
-                             fe_values.JxW(q_point);
-          }
-
-        // The transfer from local degrees of freedom into the global matrix
-        // and right hand side vector does not depend on the equation under
-        // consideration, and is thus the same as in all previous
-        // examples.
-        cell->get_dof_indices(local_dof_indices);
-        constraints.distribute_local_to_global(
-          cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
-      }
-  }
-
-
-
-  // @sect4{ElasticProblem::solve}
-
-  // The solver does not care about where the system of equations comes from, as
-  // long as it is positive definite and symmetric (which are the
-  // requirements for the use of the CG solver), which the system indeed
-  // is. Therefore, we need not change anything.
-  template <int dim>
-  void ElasticProblem<dim>::solve()
-  {
-    SolverControl            solver_control(1000, 1e-6 * system_rhs.l2_norm());
-    SolverCG<Vector<double>> cg(solver_control);
-
-    PreconditionSSOR<SparseMatrix<double>> preconditioner;
-    preconditioner.initialize(system_matrix, 1.2);
-
-    cg.solve(system_matrix, solution, system_rhs, preconditioner);
-
-    constraints.distribute(solution);
-  }
-
-
-  // @sect4{ElasticProblem::refine_grid}
-
-  // The function that does the refinement of the grid is the same as in the
-  // step-6 example. The quadrature formula is adapted to the linear elements
-  // again. Note that the error estimator by default adds up the estimated
-  // obtained from all components of the finite element solution, i.e., it
-  // uses the displacement in all directions with the same weight. If we would
-  // like the grid to be adapted to the x-displacement only, we could pass the
-  // function an additional parameter which tells it to do so and do not
-  // consider the displacements in all other directions for the error
-  // indicators. However, for the current problem, it seems appropriate to
-  // consider all displacement components with equal weight.
-  template <int dim>
-  void ElasticProblem<dim>::refine_grid()
-  {
-    Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-
-    KellyErrorEstimator<dim>::estimate(dof_handler,
-                                       QGauss<dim - 1>(fe.degree + 1),
-                                       {},
-                                       solution,
-                                       estimated_error_per_cell);
-
-    GridRefinement::refine_and_coarsen_fixed_number(triangulation,
-                                                    estimated_error_per_cell,
-                                                    0.3,
-                                                    0.03);
-
-    triangulation.execute_coarsening_and_refinement();
-  }
-
-
-  // @sect4{ElasticProblem::output_results}
-
-  // The output happens mostly as has been shown in previous examples
-  // already. The only difference is that the solution function is vector
-  // valued. The DataOut class takes care of this automatically, but we have
-  // to give each component of the solution vector a different name.
-  //
-  // To do this, the DataOut::add_vector() function wants a vector of
-  // strings. Since the number of components is the same as the number
-  // of dimensions we are working in, we use the <code>switch</code>
-  // statement below.
-  //
-  // We note that some graphics programs have restriction on what
-  // characters are allowed in the names of variables. deal.II therefore
-  // supports only the minimal subset of these characters that is supported
-  // by all programs. Basically, these are letters, numbers, underscores,
-  // and some other characters, but in particular no whitespace and
-  // minus/hyphen. The library will throw an exception otherwise, at least
-  // if in debug mode.
-  //
-  // After listing the 1d, 2d, and 3d case, it is good style to let the
-  // program die if we run into a case which we did not consider. You have
-  // previously already seen the use of the `Assert` macro that generates
-  // aborts the program with an error message if a condition is not satisfied
-  // (see step-5, for example). We could use this in the `default` case
-  // below, in the form `Assert(false, ExcNotImplemented())` -- in other words,
-  // the "condition" here is always `false`, and so the assertion always fails
-  // and always aborts the program whenever it gets to the default statement.
-  // This is perhaps more difficult to read than necessary, and consequently
-  // there is a short-cut: `DEAL_II_NOT_IMPLEMENTED()`. It does the same
-  // as the form above (with the minor difference that it also aborts the
-  // program in release mode). It is written in all-caps because that makes
-  // it stand out visually (and also because it is not actually a function,
-  // but a macro).
-  template <int dim>
-  void ElasticProblem<dim>::output_results(const unsigned int cycle) const
-  {
-    DataOut<dim> data_out;
-    data_out.attach_dof_handler(dof_handler);
-
-    std::vector<std::string> solution_names;
-    switch (dim)
-      {
-        case 1:
-          solution_names.emplace_back("displacement");
-          break;
-        case 2:
-          solution_names.emplace_back("x_displacement");
-          solution_names.emplace_back("y_displacement");
-          break;
-        case 3:
-          solution_names.emplace_back("x_displacement");
-          solution_names.emplace_back("y_displacement");
-          solution_names.emplace_back("z_displacement");
-          break;
-        default:
-          DEAL_II_NOT_IMPLEMENTED();
-      }
-
-    // After setting up the names for the different components of the
-    // solution vector, we can add the solution vector to the list of
-    // data vectors scheduled for output. Note that the following
-    // function takes a vector of strings as second argument, whereas
-    // the one which we have used in all previous examples took a
-    // single string there (which was the right choice because
-    // we had only a single solution variable in all previous examples).
-    data_out.add_data_vector(solution, solution_names);
-    data_out.build_patches();
-
-    std::ofstream output("solution-" + std::to_string(cycle) + ".vtk");
-    data_out.write_vtk(output);
-  }
-
-
-
-  // @sect4{ElasticProblem::run}
-
-  // The <code>run</code> function does the same things as in step-6, for
-  // example. This time, we use the square [-1,1]^d as domain, and we refine
-  // it globally four times before starting the first iteration.
-  //
-  // The reason for refining is a bit accidental: we use the QGauss
-  // quadrature formula with two points in each direction for integration of the
-  // right hand side; that means that there are four quadrature points on each
-  // cell (in 2d). If we only refine the initial grid once globally, then there
-  // will be only four quadrature points in each direction on the
-  // domain. However, the right hand side function was chosen to be rather
-  // localized and in that case, by pure chance, it happens that all quadrature
-  // points lie at points where the right hand side function is zero (in
-  // mathematical terms, the quadrature points happen to be at points outside
-  // the <i>support</i> of the right hand side function). The right hand side
-  // vector computed with quadrature will then contain only zeroes (even though
-  // it would of course be nonzero if we had computed the right hand side vector
-  // exactly using the integral) and the solution of the system of
-  // equations is the zero vector, i.e., a finite element function that is zero
-  // everywhere. In a sense, we
-  // should not be surprised that this is happening since we have chosen
-  // an initial grid that is totally unsuitable for the problem at hand.
-  //
-  // The unfortunate thing is that if the discrete solution is constant, then
-  // the error indicators computed by the KellyErrorEstimator class are zero
-  // for each cell as well, and the call to
-  // Triangulation::refine_and_coarsen_fixed_number() will not flag any cells
-  // for refinement (why should it if the indicated error is zero for each
-  // cell?). The grid in the next iteration will therefore consist of four
-  // cells only as well, and the same problem occurs again.
-  //
-  // The conclusion needs to be: while of course we will not choose the
-  // initial grid to be well-suited for the accurate solution of the problem,
-  // we must at least choose it such that it has the chance to capture the
-  // important features of the solution. In this case, it needs to be able to
-  // see the right hand side. Thus, we refine globally four times. (Any larger
-  // number of global refinement steps would of course also work.)
-  template <int dim>
-  void ElasticProblem<dim>::run()
-  {
-    for (unsigned int cycle = 0; cycle < 8; ++cycle)
-      {
-        std::cout << "Cycle " << cycle << ':' << std::endl;
-
-        if (cycle == 0)
-          {
-            GridGenerator::hyper_cube(triangulation, -1, 1);
-            triangulation.refine_global(4);
-          }
-        else
-          refine_grid();
-
-        std::cout << "   Number of active cells:       "
-                  << triangulation.n_active_cells() << std::endl;
-
-        setup_system();
-
-        std::cout << "   Number of degrees of freedom: " << dof_handler.n_dofs()
-                  << std::endl;
-
-        assemble_system();
-        solve();
-        output_results(cycle);
-      }
-  }
-} // namespace Step8
-
-// @sect3{The <code>main</code> function}
-
-// After closing the <code>Step8</code> namespace in the last line above, the
-// following is the main function of the program and is again exactly like in
-// step-6 (apart from the changed class names, of course).
-int main()
+template <int dim>
+class RightHandSide : public dealii::Function<dim>
 {
-  try
-    {
-      Step8::ElasticProblem<2> elastic_problem_2d;
-      elastic_problem_2d.run();
-    }
-  catch (std::exception &exc)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Exception on processing: " << std::endl
-                << exc.what() << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
+public:
+  RightHandSide(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
+  {}
 
-      return 1;
-    }
-  catch (...)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Unknown exception!" << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      return 1;
-    }
+  double value(const dealii::Point<dim> &p,
+               const unsigned int /* component */) const final
+  {
+    double result = FREQUENCY * FREQUENCY * dim;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
 
-  return 0;
+    return result;
+  }
+
+  VectorizedArray<double>
+  value_array(const Point<dim, VectorizedArray<double>> &p)
+  {
+    Point<dim>              point;
+    VectorizedArray<double> results;
+
+    for (unsigned int v = 0; v < results.size(); ++v)
+      {
+        for (unsigned int d = 0; d < dim; ++d)
+          {
+            point[d] = p[d][v];
+          }
+
+        results[v] = value(point, 0);
+      }
+
+    return results;
+  }
+};
+
+template <int dim_, int n_components = dim_, typename Number = double>
+class Operator : public Subscriptor
+{
+public:
+  using value_type = Number;
+  using number     = Number;
+  using VectorType = LinearAlgebra::distributed::Vector<Number>;
+
+  static const int dim = dim_;
+
+  using FECellIntegrator = FEEvaluation<dim, -1, 0, n_components, Number>;
+
+  void reinit(const hp::MappingCollection<dim> &mapping,
+              const DoFHandler<dim>            &dof_handler,
+              const hp::QCollection<dim>       &quad,
+              const AffineConstraints<number>  &constraints,
+              const unsigned int mg_level = numbers::invalid_unsigned_int,
+              const bool         ones_on_diagonal = false)
+  {
+    this->constraints.copy_from(constraints);
+
+    typename MatrixFree<dim, number>::AdditionalData data;
+    data.mapping_update_flags = update_values | update_gradients |
+                                update_JxW_values | update_quadrature_points;
+    data.mg_level = mg_level;
+
+    matrix_free.reinit(mapping, dof_handler, constraints, quad, data);
+    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+      std::cout << "Sizes shape info: "
+                << matrix_free.get_shape_info()
+                     .data[0]
+                     .shape_values.memory_consumption()
+                << " "
+                << matrix_free.get_shape_info()
+                     .data[0]
+                     .shape_gradients.memory_consumption()
+                << " " << dof_handler.get_fe().dofs_per_cell << " "
+                << matrix_free.get_shape_info().n_q_points << " "
+                << matrix_free.get_shape_info().dofs_per_component_on_cell
+                << " " << matrix_free.get_dof_info(0).dof_indices.size() << " "
+                << dof_handler.get_triangulation().n_active_cells() << " "
+                << dof_handler.n_dofs() << std::endl;
+
+    constrained_indices.clear();
+
+    if (ones_on_diagonal)
+      for (auto i : this->matrix_free.get_constrained_dofs())
+        constrained_indices.push_back(i);
+  }
+
+  virtual types::global_dof_index m() const
+  {
+    if (this->matrix_free.get_mg_level() != numbers::invalid_unsigned_int)
+      return this->matrix_free.get_dof_handler().n_dofs(
+        this->matrix_free.get_mg_level());
+    else
+      return this->matrix_free.get_dof_handler().n_dofs();
+  }
+
+  Number el(unsigned int, unsigned int) const
+  {
+    DEAL_II_NOT_IMPLEMENTED();
+    return 0;
+  }
+
+  virtual void initialize_dof_vector(VectorType &vec) const
+  {
+    matrix_free.initialize_dof_vector(vec);
+  }
+
+  virtual void vmult(VectorType &dst, const VectorType &src) const
+  {
+    this->matrix_free.cell_loop(
+      &Operator::do_cell_integral_range, this, dst, src, true);
+
+    for (unsigned int i = 0; i < constrained_indices.size(); ++i)
+      dst.local_element(constrained_indices[i]) =
+        src.local_element(constrained_indices[i]);
+  }
+
+  void Tvmult(VectorType &dst, const VectorType &src) const
+  {
+    vmult(dst, src);
+  }
+
+  void rhs(VectorType &rhs) const
+  {
+    VectorType dummy;
+    initialize_dof_vector(dummy);
+    dummy = 0.0;
+
+    this->matrix_free.cell_loop(
+      &Operator::do_rhs_range, this, rhs, dummy, true);
+
+    // for (unsigned int i = 0; i < constrained_indices.size(); ++i)
+    //   rhs.local_element(constrained_indices[i]) = 0.0;
+  }
+
+private:
+  void do_cell_integral_global(FECellIntegrator &integrator,
+                               VectorType       &dst,
+                               const VectorType &src) const
+  {
+    integrator.gather_evaluate(src, EvaluationFlags::gradients);
+
+    for (unsigned int q = 0; q < integrator.n_q_points; ++q)
+      integrator.submit_gradient(integrator.get_gradient(q), q);
+
+    integrator.integrate_scatter(EvaluationFlags::gradients, dst);
+  }
+
+  void do_cell_integral_range(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FECellIntegrator integrator(matrix_free, range);
+
+    for (unsigned int cell = range.first; cell < range.second; ++cell)
+      {
+        integrator.reinit(cell);
+        do_cell_integral_global(integrator, dst, src);
+      }
+  }
+
+
+  void do_rhs_range(const MatrixFree<dim, number> &matrix_free,
+                    VectorType                    &dst,
+                    const VectorType &,
+                    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FECellIntegrator   integrator(matrix_free, range);
+    RightHandSide<dim> rhs_function;
+
+    for (unsigned int cell = range.first; cell < range.second; ++cell)
+      {
+        integrator.reinit(cell);
+        for (unsigned int q = 0; q < integrator.n_q_points; ++q)
+          integrator.submit_value(
+            rhs_function.value_array(integrator.quadrature_point(q)), q);
+
+        integrator.integrate_scatter(EvaluationFlags::values, dst);
+      }
+  }
+
+  MatrixFree<dim, number> matrix_free;
+
+  AffineConstraints<number> constraints;
+
+  std::vector<unsigned int> constrained_indices;
+};
+
+
+
+template <int dim, typename Number>
+void do_test(const unsigned int min_degree,
+             const unsigned int max_degree,
+             const unsigned int n_cycles_max)
+{
+  ConditionalOStream pcout(std::cout,
+                           Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) ==
+                             0);
+  pcout << "Running in " << dim << "D with degrees between " << min_degree
+        << " and " << max_degree << " on mixed elements" << std::endl;
+
+  std::vector<ConvergenceTable> convergence_tables;
+  convergence_tables.resize(2 * (max_degree - min_degree + 1));
+
+  FE_PyramidP<dim> mapping_fe_pyramid(1, true);
+  FE_WedgeP<dim>   mapping_fe_wedge(1, true);
+  FE_SimplexP<dim> mapping_fe_simplex(1, true);
+  FE_Q<dim>        mapping_fe_hypercube(1);
+
+  MappingFE<dim> mapping_pyramid(mapping_fe_pyramid);
+  MappingFE<dim> mapping_wedge(mapping_fe_wedge);
+  MappingFE<dim> mapping_simplex(mapping_fe_simplex);
+  MappingFE<dim> mapping_hypercube(mapping_fe_hypercube);
+
+  const hp::MappingCollection<dim> mapping(mapping_pyramid,
+                                           mapping_wedge,
+                                           mapping_simplex,
+                                           mapping_hypercube);
+
+  AffineConstraints<double> constraint;
+  const unsigned int        n_cells_max = 200000000;
+  unsigned int              n_cells     = 1;
+
+  const unsigned int n_dofs_max = 33000000;
+  unsigned int       n_dofs     = 1;
+
+  for (unsigned int cycle = 0; cycle < n_cycles_max && n_cells < n_cells_max;
+       ++cycle)
+    {
+      const auto serial_grid_generator =
+        [&cycle](dealii::Triangulation<dim, dim> &tria_serial) {
+          // set up triangulation
+          std::vector<Point<dim>>    vertices;
+          std::vector<CellData<dim>> cells;
+          vertices.emplace_back(0.0, 0.0, 0.0);  // 0
+          vertices.emplace_back(1.0, 0.0, 0.0);  // 1
+          vertices.emplace_back(0.0, 1.0, 0.0);  // 2
+          vertices.emplace_back(1.0, 1.0, 0.0);  // 3
+          vertices.emplace_back(0.0, 0.0, 1.0);  // 4
+          vertices.emplace_back(1.0, 0.0, 1.0);  // 5
+          vertices.emplace_back(0.0, 1.0, 1.0);  // 6
+          vertices.emplace_back(1.0, 1.0, 1.0);  // 7
+          vertices.emplace_back(2, 0.5, 0.25);   // 8
+          vertices.emplace_back(2, 0.5, 0.75);   // 9
+          vertices.emplace_back(-1.0, 0.5, 0.5); // 10
+          vertices.emplace_back(-1.0, 0.5, 1);   // 11
+          vertices.emplace_back(-1.0, 0.5, 0);   // 12
+          vertices.emplace_back(-1.0, 0.0, 1.0); // 13
+          vertices.emplace_back(-1.0, 1.0, 1.0); // 14
+          vertices.emplace_back(-1.0, 0.0, 0.0); // 15
+          vertices.emplace_back(-1.0, 1.0, 0.0); // 16
+          vertices.emplace_back(-1.0, 1.0, 0.5); // 17
+          vertices.emplace_back(-1.0, 0.0, 0.5); // 18
+          vertices.emplace_back(2, 0.5, 0.0);    // 19
+          vertices.emplace_back(2, 0.5, 1.0);    // 20
+          vertices.emplace_back(2, 0.0, 0.0);    // 21
+          vertices.emplace_back(2, 0.0, 1.0);    // 22
+          vertices.emplace_back(2, 1.0, 0.0);    // 23
+          vertices.emplace_back(2, 1.0, 1.0);    // 24
+          for (auto &p : vertices)
+            {
+              const double x = p[0];
+              p[0]           = (x + 1.0) / 3.0;
+            }
+          {
+            CellData<dim> hex;
+            hex.vertices = {0, 1, 2, 3, 4, 5, 6, 7};
+            cells.push_back(hex);
+          }
+          {
+            CellData<dim> wedge;
+            wedge.vertices = {1, 8, 3, 5, 9, 7};
+            cells.push_back(wedge);
+          }
+          {
+            CellData<dim> pyramid;
+            pyramid.vertices = {0, 4, 2, 6, 10};
+            cells.push_back(pyramid);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {4, 6, 10, 11};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {0, 2, 12, 10};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 11, 13, 4};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 11, 6, 14};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 12, 0, 15};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 12, 16, 2};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {17, 10, 6, 14};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 17, 6, 2};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 17, 2, 16};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 18, 15, 0};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 18, 0, 4};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {10, 18, 4, 13};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {5, 9, 7, 20};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {1, 3, 8, 19};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> wedge;
+            wedge.vertices = {8, 1, 21, 9, 5, 22};
+            cells.push_back(wedge);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {5, 20, 22, 9};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {1, 21, 19, 8};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> wedge;
+            wedge.vertices = {3, 8, 23, 7, 9, 24};
+            cells.push_back(wedge);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {20, 9, 7, 24};
+            cells.push_back(tet);
+          }
+          {
+            CellData<dim> tet;
+            tet.vertices = {19, 3, 8, 23};
+            cells.push_back(tet);
+          }
+
+          tria_serial.create_triangulation(vertices, cells, SubCellData());
+
+          if (cycle > 0)
+            tria_serial.refine_global(cycle);
+        };
+      const auto serial_grid_partitioner =
+        [&](dealii::Triangulation<dim, dim> &tria_serial,
+            const MPI_Comm                   comm,
+            const unsigned int) {
+          dealii::GridTools::partition_triangulation(
+            dealii::Utilities::MPI::n_mpi_processes(comm), tria_serial);
+        };
+
+      const unsigned int group_size = 32;
+
+      parallel::fullydistributed::Triangulation<dim> tria(MPI_COMM_WORLD);
+      typename dealii::TriangulationDescription::Settings
+        triangulation_description_setting =
+          dealii::TriangulationDescription::default_setting;
+      const auto description = dealii::TriangulationDescription::Utilities::
+        create_description_from_triangulation_in_groups<dim, dim>(
+          serial_grid_generator,
+          serial_grid_partitioner,
+          tria.get_mpi_communicator(),
+          group_size,
+          dealii::Triangulation<dim>::none,
+          triangulation_description_setting);
+
+      tria.create_triangulation(description);
+      pcout << "Cycle " << cycle << " set up triangulation" << std::endl;
+
+      unsigned int cycle_max_degree = max_degree;
+      if (cycle > 4)
+        cycle_max_degree = std::min(cycle_max_degree, 5U);
+      if (cycle > 5)
+        cycle_max_degree = std::min(cycle_max_degree, 4U);
+      if (cycle > 6)
+        cycle_max_degree = std::min(cycle_max_degree, 3U);
+
+      bool continue_iterating = true;
+      for (unsigned int fe_degree = min_degree;
+           fe_degree <= cycle_max_degree && n_dofs < n_dofs_max &&
+           continue_iterating;
+           ++fe_degree)
+        for (const bool use_equidistant_points :
+             std::vector<bool>{{true, false}})
+          {
+            DoFHandler<dim> dof_handler(tria);
+
+            for (const auto &cell : dof_handler.active_cell_iterators())
+              if (cell->is_locally_owned())
+                {
+                  if (cell->reference_cell() == ReferenceCells::Pyramid)
+                    cell->set_active_fe_index(0);
+                  else if (cell->reference_cell() == ReferenceCells::Wedge)
+                    cell->set_active_fe_index(1);
+                  else if (cell->reference_cell().is_simplex())
+                    cell->set_active_fe_index(2);
+                  else if (cell->reference_cell().is_hyper_cube())
+                    cell->set_active_fe_index(3);
+                  else
+                    DEAL_II_NOT_IMPLEMENTED();
+                }
+
+            FE_PyramidP<dim> fe_pyramidp(fe_degree, use_equidistant_points);
+            FE_WedgeP<dim>   fe_wedgep(fe_degree, use_equidistant_points);
+            FE_SimplexP<dim> fe_simplexp(fe_degree, use_equidistant_points);
+            FE_Q<dim>        fe_q =
+              use_equidistant_points ?
+                       FE_Q<dim>(QIterated<1>(QTrapezoid<1>(), fe_degree)) :
+                       FE_Q<dim>(fe_degree);
+
+            const hp::FECollection<dim> fe(fe_pyramidp,
+                                           fe_wedgep,
+                                           fe_simplexp,
+                                           fe_q);
+
+            pcout << "reinit triangulation done, there are "
+                  << tria.get_reference_cells().size()
+                  << " different types of cells and and fe collection of size "
+                  << fe.size() << std::endl;
+
+            dof_handler.distribute_dofs(fe);
+
+            // set up constraints
+            const IndexSet locally_relevant_dofs =
+              DoFTools::extract_locally_relevant_dofs(dof_handler);
+            constraint.clear();
+            constraint.reinit(dof_handler.locally_owned_dofs(),
+                              locally_relevant_dofs);
+            DoFTools::make_zero_boundary_constraints(dof_handler,
+                                                     0,
+                                                     constraint);
+            constraint.close();
+
+            QGaussPyramid<dim> quad_pyramid(fe_degree + 1);
+            QGaussWedge<dim>   quad_wedge(fe_degree + 1);
+            QGaussSimplex<dim> quad_simplex(fe_degree + 1);
+            QGauss<dim>        quad_hypercube(fe_degree + 1);
+
+            const hp::QCollection<dim> quad(quad_pyramid,
+                                            quad_wedge,
+                                            quad_simplex,
+                                            quad_hypercube);
+
+            pcout << "Set up operator of degree " << fe_degree << std::endl;
+            Operator<dim, 1, Number> op;
+            // set up operator
+            op.reinit(mapping,
+                      dof_handler,
+                      quad,
+                      constraint,
+                      numbers::invalid_unsigned_int,
+                      false);
+            LinearAlgebra::distributed::Vector<Number> x, rhs;
+            op.initialize_dof_vector(x);
+            op.initialize_dof_vector(rhs);
+            x   = 0.;
+            rhs = 0.;
+            op.rhs(rhs);
+
+            ReductionControl reduction_control(dof_handler.n_dofs(),
+                                               1e-12,
+                                               1e-12);
+            SolverCG<LinearAlgebra::distributed::Vector<Number>> solver(
+              reduction_control);
+            PreconditionIdentity preconditioner;
+
+            constraint.set_zero(x);
+            solver.solve(op, x, rhs, preconditioner);
+            constraint.distribute(x);
+
+            pcout << "Solved in " << reduction_control.last_step()
+                  << " iterations with final residual " << std::setprecision(16)
+                  << reduction_control.last_value() << std::endl;
+
+            x.update_ghost_values();
+
+            Vector<double> difference_per_cell;
+
+            QGaussPyramid<dim> error_quad_pyramid(fe_degree + 3);
+            QGaussWedge<dim>   error_quad_wedge(fe_degree + 3);
+            QGaussSimplex<dim> error_quad_simplex(fe_degree + 3);
+            QGauss<dim>        error_quad_hypercube(fe_degree + 3);
+
+            const hp::QCollection<dim> error_quad(error_quad_pyramid,
+                                                  error_quad_wedge,
+                                                  error_quad_simplex,
+                                                  error_quad_hypercube);
+
+            VectorTools::integrate_difference(mapping,
+                                              dof_handler,
+                                              x,
+                                              Solution<dim>(),
+                                              difference_per_cell,
+                                              error_quad,
+                                              VectorTools::L2_norm);
+
+            const double L2_error =
+              VectorTools::compute_global_error(tria,
+                                                difference_per_cell,
+                                                VectorTools::L2_norm);
+
+            if (L2_error < 1e-10)
+              continue_iterating = false;
+
+            const unsigned int n_active_cells = tria.n_global_active_cells();
+            n_dofs                            = dof_handler.n_dofs();
+
+            if (use_equidistant_points)
+              pcout << "Cycle " << cycle << ':' << std::endl
+                    << " mixed equidistant" << std::endl
+                    << "   Number of active cells:       " << n_active_cells
+                    << std::endl
+                    << "   Number of degrees of freedom: " << n_dofs
+                    << std::endl
+                    << "   L2 error:                     " << L2_error
+                    << std::endl;
+            else
+              pcout << "Cycle " << cycle << ':' << std::endl
+                    << " mixed blend and warp" << std::endl
+                    << "   Number of active cells:       " << n_active_cells
+                    << std::endl
+                    << "   Number of degrees of freedom: " << n_dofs
+                    << std::endl
+                    << "   L2 error:                     " << L2_error
+                    << std::endl;
+
+            unsigned int offset = fe_degree - min_degree;
+            if (!use_equidistant_points)
+              offset += max_degree - min_degree + 1;
+
+            convergence_tables[offset].add_value("cycle", cycle);
+            convergence_tables[offset].add_value("cells", n_active_cells);
+            convergence_tables[offset].add_value("dofs", n_dofs);
+            convergence_tables[offset].add_value("L2", L2_error);
+
+            pcout << std::endl;
+          }
+      pcout << std::endl;
+
+      n_dofs  = 0;
+      n_cells = tria.n_global_active_cells();
+    }
+  pcout << std::endl;
+  pcout << std::endl;
+
+  unsigned int degree_counter  = min_degree;
+  bool         use_equi_points = true;
+  for (auto &convergence_table : convergence_tables)
+    {
+      convergence_table.set_precision("L2", 3);
+      convergence_table.set_scientific("L2", true);
+
+      convergence_table.set_tex_caption("cells", "\\# cells");
+      convergence_table.set_tex_caption("dofs", "\\# dofs");
+      convergence_table.set_tex_caption("L2", "$L^2$-error");
+
+      convergence_table.set_tex_format("cells", "r");
+      convergence_table.set_tex_format("dofs", "r");
+
+      convergence_table.evaluate_convergence_rates(
+        "L2", ConvergenceTable::reduction_rate);
+      convergence_table.evaluate_convergence_rates(
+        "L2", ConvergenceTable::reduction_rate_log2);
+
+      if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+        {
+          convergence_table.write_text(std::cout);
+
+          std::string error_filename = "error_CG_MF_";
+          error_filename += "Mixed_p_" + std::to_string(degree_counter);
+          if (use_equi_points)
+            error_filename += "_equidistant";
+          else
+            error_filename += "_blend_and_warp";
+
+          error_filename += ".tex";
+          std::ofstream error_table_file(error_filename);
+
+          convergence_table.write_tex(error_table_file);
+        }
+      pcout << std::endl;
+      ++degree_counter;
+      if (degree_counter > max_degree)
+        {
+          degree_counter  = min_degree;
+          use_equi_points = false;
+        }
+    }
+}
+
+
+int main(int argc, char **argv)
+{
+  constexpr int dim = 3;
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_INIT;
+  LIKWID_MARKER_THREADINIT;
+#endif
+  Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
+
+  int min_degree   = 1;
+  int max_degree   = 7;
+  int n_cycles_max = 7;
+  if (argc > 1)
+    min_degree = std::atoi(argv[1]);
+  if (argc > 2)
+    max_degree = std::atoi(argv[2]);
+  if (argc > 3)
+    n_cycles_max = std::atoi(argv[3]);
+
+  do_test<dim, double>(min_degree, max_degree, n_cycles_max);
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_CLOSE;
+#endif
 }
