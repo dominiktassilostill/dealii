@@ -1449,6 +1449,26 @@ FE_SimplexDGP<dim, spacedim>::compare_for_domination(
       else
         return FiniteElementDomination::other_element_dominates;
     }
+  else if (const FE_WedgeDGP<dim, spacedim> *fe_dgq_other =
+             dynamic_cast<const FE_WedgeDGP<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgq_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgq_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
+  else if (const FE_PyramidDGP<dim, spacedim> *fe_dgq_other =
+             dynamic_cast<const FE_PyramidDGP<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgq_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgq_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
   else if (const FE_Nothing<dim, spacedim> *fe_nothing =
              dynamic_cast<const FE_Nothing<dim, spacedim> *>(&fe_other))
     {
@@ -1470,10 +1490,8 @@ FE_SimplexDGP<dim, spacedim>::compare_for_domination(
 template <int dim, int spacedim>
 std::vector<std::pair<unsigned int, unsigned int>>
 FE_SimplexDGP<dim, spacedim>::hp_vertex_dof_identities(
-  const FiniteElement<dim, spacedim> &fe_other) const
+  const FiniteElement<dim, spacedim> &) const
 {
-  (void)fe_other;
-
   return {};
 }
 
@@ -1482,13 +1500,20 @@ FE_SimplexDGP<dim, spacedim>::hp_vertex_dof_identities(
 template <int dim, int spacedim>
 std::vector<std::pair<unsigned int, unsigned int>>
 FE_SimplexDGP<dim, spacedim>::hp_line_dof_identities(
-  const FiniteElement<dim, spacedim> &fe_other) const
+  const FiniteElement<dim, spacedim> &) const
 {
-  (void)fe_other;
-
   return {};
 }
 
+
+template <int dim, int spacedim>
+std::vector<std::pair<unsigned int, unsigned int>>
+FE_SimplexDGP<dim, spacedim>::hp_quad_dof_identities(
+  const FiniteElement<dim, spacedim> &,
+  const unsigned int) const
+{
+  return {};
+}
 
 
 template <int dim, int spacedim>

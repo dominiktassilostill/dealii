@@ -1566,22 +1566,24 @@ namespace internal
           task_info.n_active_cells + task_info.n_ghost_cells,
           numbers::invalid_unsigned_int);
 
-        constexpr unsigned int max_children_per_cell =
-          GeometryInfo<dim>::max_children_per_cell;
         const unsigned int n_levels =
           mg_level == numbers::invalid_unsigned_int ? tria.n_levels() - 1 :
                                                       mg_level;
-        std::vector<std::vector<
-          std::pair<unsigned int,
-                    std::array<unsigned int, max_children_per_cell>>>>
+        std::vector<
+          std::vector<std::pair<unsigned int, std::vector<unsigned int>>>>
           cell_parents(n_levels);
+
+        std::vector<std::vector<unsigned int>> n_cell_children(n_levels);
 
         // Set up data structures, making sure that the current process has
         // cells on that level in the case of MG
         for (unsigned int level = 0; level < n_levels; ++level)
           if (tria.n_levels() > level)
-            cell_parents[level].resize(tria.n_raw_cells(level));
-
+            {
+              const unsigned int n_raw_cells = tria.n_raw_cells(level);
+              cell_parents[level].resize(n_raw_cells);
+              n_cell_children[level].resize(n_raw_cells);
+            }
         for (unsigned int c = 0; c < cell_level_index_end_local; ++c)
           if (cell_level_index[c].first > 0)
             {
@@ -1590,14 +1592,23 @@ namespace internal
               Assert(cell->level() > 0, ExcInternalError());
               const auto parent = cell->parent();
               auto      &entry = cell_parents[parent->level()][parent->index()];
+              if (entry.second.empty())
+                {
+                  const unsigned int n_isotropic_children =
+                    parent->reference_cell().n_isotropic_children();
+
+                  entry.second.resize(n_isotropic_children, 0);
+                  n_cell_children[parent->level()][parent->index()] =
+                    n_isotropic_children;
+                }
               entry.second[entry.first++] = c;
             }
         unsigned int position = 0;
-        for (const auto &cells_on_level : cell_parents)
-          for (const auto &it : cells_on_level)
-            if (it.first == GeometryInfo<dim>::max_children_per_cell)
+        for (unsigned int l = 0; l < cell_parents.size(); ++l)
+          for (unsigned int c = 0; c < cell_parents[l].size(); ++c)
+            if (cell_parents[l][c].first == n_cell_children[l][c])
               {
-                for (auto i : it.second)
+                for (auto i : cell_parents[l][c].second)
                   parent_relation[i] = position;
                 ++position;
               }

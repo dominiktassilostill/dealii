@@ -260,6 +260,13 @@ public:
     const FiniteElement<dim, spacedim> &fe_other) const override;
 
   /**
+   * @copydoc dealii::FiniteElement::hp_quad_dof_identities()
+   */
+  std::vector<std::pair<unsigned int, unsigned int>>
+  hp_quad_dof_identities(const FiniteElement<dim, spacedim> &fe_other,
+                         const unsigned int face_no) const override;
+
+  /**
    * @copydoc dealii::FiniteElement::get_restriction_matrix()
    *
    * @note Only implemented for RefinementCase::isotropic_refinement.

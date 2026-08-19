@@ -960,6 +960,112 @@ FE_PyramidDGP<dim, spacedim>::FE_PyramidDGP(
 
 
 template <int dim, int spacedim>
+FiniteElementDomination::Domination
+FE_PyramidDGP<dim, spacedim>::compare_for_domination(
+  const FiniteElement<dim, spacedim> &fe_other,
+  const unsigned int                  codim) const
+{
+  Assert(codim <= dim, ExcImpossibleInDim(dim));
+
+  // vertex/line/face domination
+  // ---------------------------
+  if (codim > 0)
+    // this is a discontinuous element, so by definition there will
+    // be no constraints wherever this element comes together with
+    // any other kind of element
+    return FiniteElementDomination::no_requirements;
+
+  // cell domination
+  // ---------------
+  if (const FE_SimplexDGP<dim, spacedim> *fe_dgp_other =
+        dynamic_cast<const FE_SimplexDGP<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgp_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgp_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
+  else if (const FE_DGQ<dim, spacedim> *fe_dgq_other =
+             dynamic_cast<const FE_DGQ<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgq_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgq_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
+  else if (const FE_WedgeDGP<dim, spacedim> *fe_dgq_other =
+             dynamic_cast<const FE_WedgeDGP<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgq_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgq_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
+  else if (const FE_PyramidDGP<dim, spacedim> *fe_dgq_other =
+             dynamic_cast<const FE_PyramidDGP<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgq_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgq_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
+  else if (const FE_Nothing<dim, spacedim> *fe_nothing =
+             dynamic_cast<const FE_Nothing<dim, spacedim> *>(&fe_other))
+    {
+      if (fe_nothing->is_dominating())
+        return FiniteElementDomination::other_element_dominates;
+      else
+        // the FE_Nothing has no degrees of freedom and it is typically used
+        // in a context where we don't require any continuity along the
+        // interface
+        return FiniteElementDomination::no_requirements;
+    }
+
+  DEAL_II_NOT_IMPLEMENTED();
+  return FiniteElementDomination::neither_element_dominates;
+}
+
+
+
+template <int dim, int spacedim>
+std::vector<std::pair<unsigned int, unsigned int>>
+FE_PyramidDGP<dim, spacedim>::hp_vertex_dof_identities(
+  const FiniteElement<dim, spacedim> &) const
+{
+  return {};
+}
+
+
+
+template <int dim, int spacedim>
+std::vector<std::pair<unsigned int, unsigned int>>
+FE_PyramidDGP<dim, spacedim>::hp_line_dof_identities(
+  const FiniteElement<dim, spacedim> &) const
+{
+  return {};
+}
+
+
+template <int dim, int spacedim>
+std::vector<std::pair<unsigned int, unsigned int>>
+FE_PyramidDGP<dim, spacedim>::hp_quad_dof_identities(
+  const FiniteElement<dim, spacedim> &,
+  const unsigned int) const
+{
+  return {};
+}
+
+
+
+template <int dim, int spacedim>
 std::unique_ptr<FiniteElement<dim, spacedim>>
 FE_PyramidDGP<dim, spacedim>::clone() const
 {

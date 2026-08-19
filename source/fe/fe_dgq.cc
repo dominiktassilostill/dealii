@@ -730,6 +730,26 @@ FE_DGQ<dim, spacedim>::compare_for_domination(
       else
         return FiniteElementDomination::other_element_dominates;
     }
+  else if (const FE_WedgeDGP<dim, spacedim> *fe_dgp_other =
+             dynamic_cast<const FE_WedgeDGP<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgp_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgp_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
+  else if (const FE_PyramidDGP<dim, spacedim> *fe_dgp_other =
+             dynamic_cast<const FE_PyramidDGP<dim, spacedim> *>(&fe_other))
+    {
+      if (this->degree < fe_dgp_other->degree)
+        return FiniteElementDomination::this_element_dominates;
+      else if (this->degree == fe_dgp_other->degree)
+        return FiniteElementDomination::either_element_can_dominate;
+      else
+        return FiniteElementDomination::other_element_dominates;
+    }
   else if (const FE_Nothing<dim> *fe_nothing =
              dynamic_cast<const FE_Nothing<dim> *>(&fe_other))
     {
