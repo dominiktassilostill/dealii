@@ -802,8 +802,12 @@ namespace internal
                             0;
                         info.subface_index =
                           GeometryInfo<dim>::max_children_per_cell;
-                        info.face_orientation = 0;
+                        info.face_orientation =
+                          numbers::default_geometric_orientation;
                         // TODO: 8 + dcell->combined_face_orientation(f);
+                        Assert(dcell->combined_face_orientation(f) ==
+                                 numbers::default_geometric_orientation,
+                               ExcInternalError());
                         boundary_faces.push_back(info);
 
                         face_visited[dcell->face(f)->index()]++;
