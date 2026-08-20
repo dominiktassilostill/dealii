@@ -1569,11 +1569,12 @@ namespace internal
         const unsigned int n_levels =
           mg_level == numbers::invalid_unsigned_int ? tria.n_levels() - 1 :
                                                       mg_level;
-        std::vector<
-          std::vector<std::pair<unsigned int, std::vector<unsigned int>>>>
+        std::vector<std::vector<std::pair<
+          unsigned int,
+          std::array<unsigned int, ReferenceCells::max_n_children<dim>()>>>>
           cell_parents(n_levels);
 
-        std::vector<std::vector<unsigned int>> n_cell_children(n_levels);
+        std::vector<std::vector<unsigned int>> n_possible_children(n_levels);
 
         // Set up data structures, making sure that the current process has
         // cells on that level in the case of MG
@@ -1582,7 +1583,8 @@ namespace internal
             {
               const unsigned int n_raw_cells = tria.n_raw_cells(level);
               cell_parents[level].resize(n_raw_cells);
-              n_cell_children[level].resize(n_raw_cells);
+              n_possible_children[level].resize(n_raw_cells,
+                                                numbers::invalid_unsigned_int);
             }
         for (unsigned int c = 0; c < cell_level_index_end_local; ++c)
           if (cell_level_index[c].first > 0)
@@ -1592,24 +1594,18 @@ namespace internal
               Assert(cell->level() > 0, ExcInternalError());
               const auto parent = cell->parent();
               auto      &entry = cell_parents[parent->level()][parent->index()];
-              if (entry.second.empty())
-                {
-                  const unsigned int n_isotropic_children =
-                    parent->reference_cell().n_isotropic_children();
-
-                  entry.second.resize(n_isotropic_children, 0);
-                  n_cell_children[parent->level()][parent->index()] =
-                    n_isotropic_children;
-                }
               entry.second[entry.first++] = c;
+
+              n_possible_children[parent->level()][parent->index()] =
+                parent->reference_cell().n_isotropic_children();
             }
         unsigned int position = 0;
         for (unsigned int l = 0; l < cell_parents.size(); ++l)
           for (unsigned int c = 0; c < cell_parents[l].size(); ++c)
-            if (cell_parents[l][c].first == n_cell_children[l][c])
+            if (cell_parents[l][c].first == n_possible_children[l][c])
               {
-                for (auto i : cell_parents[l][c].second)
-                  parent_relation[i] = position;
+                for (unsigned int i = 0; i < cell_parents[l][c].first; ++i)
+                  parent_relation[cell_parents[l][c].second[i]] = position;
                 ++position;
               }
         task_info.create_blocks_serial(
