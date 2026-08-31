@@ -108,6 +108,12 @@ namespace internal
                         dealii::hp::QCollection<dim - 1>(
                           QGaussSimplex<dim - 1>(i))};
 
+            for (unsigned int i = 1; i <= quad.size(); ++i)
+              if (quad == QStroudSimplex<dim>(i))
+                return {ReferenceCells::get_simplex<dim>(),
+                        dealii::hp::QCollection<dim - 1>(
+                          QStroudSimplex<dim - 1>(i))};
+
             for (unsigned int i = 1; i <= 5; ++i)
               if (quad == QWitherdenVincentSimplex<dim>(i))
                 return {ReferenceCells::get_simplex<dim>(),
@@ -251,6 +257,16 @@ namespace internal
                             Quadrature<dim - 1>()};
                   else
                     return {Quadrature<dim - 1>(), QGaussSimplex<dim - 1>(i)};
+                }
+
+            for (unsigned int i = 1; i <= quad.size(); ++i)
+              if (quad == QStroudSimplex<dim>(i))
+                {
+                  if (dim == 2)
+                    return {QStroudSimplex<dim - 1>(i), // line!
+                            Quadrature<dim - 1>()};
+                  else
+                    return {Quadrature<dim - 1>(), QStroudSimplex<dim - 1>(i)};
                 }
 
             for (unsigned int i = 1; i <= 5; ++i)

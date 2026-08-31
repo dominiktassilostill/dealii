@@ -1071,6 +1071,41 @@ FE_SimplexP<dim, spacedim>::FE_SimplexP(const unsigned int degree,
 
 
 template <int dim, int spacedim>
+FE_SimplexP<dim, spacedim>::FE_SimplexP(
+  const unsigned int             degree,
+  const std::vector<Point<dim>> &support_points)
+  : FE_SimplexPoly<dim, spacedim>(
+      ScalarLagrangePolynomialSimplex<dim>(degree, support_points),
+      FiniteElementData<dim>(get_dpo_vector_fe_p(dim, degree),
+                             ReferenceCells::get_simplex<dim>(),
+                             1,
+                             degree,
+                             FiniteElementData<dim>::H1),
+      false,
+      support_points,
+      unit_face_support_points_fe_p<dim>(degree,
+                                         false,
+                                         FiniteElementData<dim>::H1),
+      constraints_fe_p<dim>(degree, false))
+  , use_equidistant_support_points(false)
+{
+  if (degree > 2)
+    for (unsigned int i = 0; i < this->n_dofs_per_line(); ++i)
+      this->adjust_line_dof_index_for_line_orientation_table[i] =
+        this->n_dofs_per_line() - 1 - i - i;
+
+  // for 1d and 2d or if there are no DoFs on the quads
+  // we can skip adjust_quad_dof_index_for_face_orientation_table
+  if (dim < 3 || degree < 3)
+    return;
+
+  FETools::adjust_quad_dof_index_for_face_orientation(
+    *this, this->adjust_quad_dof_index_for_face_orientation_table);
+}
+
+
+
+template <int dim, int spacedim>
 std::unique_ptr<FiniteElement<dim, spacedim>>
 FE_SimplexP<dim, spacedim>::clone() const
 {

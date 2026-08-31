@@ -158,6 +158,9 @@ public:
    */
   FE_SimplexP(const unsigned int degree, const bool use_equidistant_points);
 
+  FE_SimplexP(const unsigned int             degree,
+              const std::vector<Point<dim>> &support_points);
+
   /**
    * @copydoc dealii::FiniteElement::clone()
    */

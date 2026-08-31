@@ -1,655 +1,2380 @@
-/* ------------------------------------------------------------------------
- *
- * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2009 - 2024 by the deal.II authors
- *
- * This file is part of the deal.II library.
- *
- * Part of the source code is dual licensed under Apache-2.0 WITH
- * LLVM-exception OR LGPL-2.1-or-later. Detailed license information
- * governing the source code and code contributions can be found in
- * LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
- *
- * ------------------------------------------------------------------------
- *
- * Authors: Guido Kanschat, Texas A&M University, 2009
- *          Timo Heister, Clemson University, 2019
- */
 
-
-// The first few files have already been covered in previous examples and will
-// thus not be further commented on:
+#include <deal.II/base/conditional_ostream.h>
+#include <deal.II/base/logstream.h>
+#include <deal.II/base/mpi.h>
 #include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/function.h>
-#include <deal.II/lac/vector.h>
-#include <deal.II/lac/dynamic_sparsity_pattern.h>
-#include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/grid/tria.h>
+#include <deal.II/base/timer.h>
+
+#include <deal.II/distributed/fully_distributed_tria.h>
+
+#include "./../../../tests/simplex/simplex_grids.h"
+
+#include <deal.II/dofs/dof_handler.h>
+#include <deal.II/dofs/dof_tools.h>
+#include <deal.II/dofs/dof_renumbering.h>
+
+
+#include <deal.II/fe/fe_q.h>
+#include <deal.II/fe/fe_simplex_p.h>
+#include <deal.II/fe/fe_wedge_p.h>
+#include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/mapping_fe.h>
+
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_out.h>
-#include <deal.II/grid/grid_refinement.h>
-#include <deal.II/fe/fe_values.h>
-#include <deal.II/fe/mapping_q1.h>
-#include <deal.II/dofs/dof_handler.h>
+#include <deal.II/grid/grid_tools.h>
+
+#include <deal.II/lac/affine_constraints.h>
+
+#include <deal.II/matrix_free/fe_evaluation.h>
+#include <deal.II/matrix_free/matrix_free.h>
+
 #include <deal.II/numerics/vector_tools.h>
-#include <deal.II/dofs/dof_tools.h>
-#include <deal.II/numerics/data_out.h>
-#include <deal.II/fe/mapping_q1.h>
-// Here the discontinuous finite elements are defined. They are used in the same
-// way as all other finite elements, though -- as you have seen in previous
-// tutorial programs -- there isn't much user interaction with finite element
-// classes at all: they are passed to <code>DoFHandler</code> and
-// <code>FEValues</code> objects, and that is about it.
-#include <deal.II/fe/fe_dgq.h>
-// This header is needed for FEInterfaceValues to compute integrals on
-// interfaces:
-#include <deal.II/fe/fe_interface_values.h>
-// We are going to use a standard solver, called Generalized minimal residual
-// method (GMRES). It is an iterative solver which is applicable to arbitrary
-// invertible matrices. This, in combination with a block SSOR preconditioner
-// (defined in precondition_block.h), that uses the special block matrix
-// structure of system matrices arising from DG discretizations.
-#include <deal.II/lac/solver_gmres.h>
-#include <deal.II/lac/precondition_block.h>
-// We are going to use gradients as refinement indicator.
-#include <deal.II/numerics/derivative_approximation.h>
 
-// Finally, the new include file for using the mesh_loop from the MeshWorker
-// framework
-#include <deal.II/meshworker/mesh_loop.h>
+#include <deal.II/base/convergence_table.h>
 
-// Like in all programs, we finish this section by including the needed C++
-// headers and declaring we want to use objects in the dealii namespace without
-// prefix.
-#include <iostream>
-#include <fstream>
+#include <deal.II/lac/precondition.h>
+#include <deal.II/lac/solver_cg.h>
+#include <deal.II/lac/solver_control.h>
+
+#include <deal.II/hp/fe_collection.h>
+#include <deal.II/hp/fe_values.h>
+
+#include <deal.II/lac/lapack_full_matrix.h>
+#include <deal.II/lac/lapack_templates.h>
+
+#ifdef LIKWID_PERFMON
+#  include <likwid.h>
+#endif
 
 
-namespace Step12
+using namespace dealii;
+
+template <bool transpose_matrix, bool add, typename Number, typename Number2>
+void apply_matrix_vector_product(const Number2 *matrix,
+                                 const Number  *in0,
+                                 Number        *out0,
+                                 const int      n_rows,
+                                 const int      n_columns)
 {
-  using namespace dealii;
+  const int mm = transpose_matrix ? n_rows : n_columns,
+            nn = transpose_matrix ? n_columns : n_rows;
+  Assert(n_rows > 0 && n_columns > 0,
+         ExcInternalError("Empty evaluation task!"));
+  Assert(n_rows > 0 && n_columns > 0,
+         ExcInternalError("The evaluation needs n_rows, n_columns > 0, but " +
+                          std::to_string(n_rows) + ", " +
+                          std::to_string(n_columns) + " was passed!"));
 
-  // @sect3{Equation data}
-  //
-  // First, we define a class describing the inhomogeneous boundary data. Since
-  // only its values are used, we implement value_list(), but leave all other
-  // functions of Function undefined.
-  template <int dim>
-  class BoundaryValues : public Function<dim>
-  {
-  public:
-    BoundaryValues() = default;
-    virtual void value_list(const std::vector<Point<dim>> &points,
-                            std::vector<double>           &values,
-                            const unsigned int component = 0) const override;
-  };
+  const Number *in1 = in0 + mm, *in2 = in1 + mm, *in3 = in2 + mm;
+  Number       *out1 = out0 + nn, *out2 = out1 + nn, *out3 = out2 + nn;
 
-  // Given the flow direction, the inflow boundary of the unit square $[0,1]^2$
-  // are the right and the lower boundaries. We prescribe discontinuous boundary
-  // values 1 and 0 on the x-axis and value 0 on the right boundary. The values
-  // of this function on the outflow boundaries will not be used within the DG
-  // scheme.
-  template <int dim>
-  void BoundaryValues<dim>::value_list(const std::vector<Point<dim>> &points,
-                                       std::vector<double>           &values,
-                                       const unsigned int component) const
-  {
-    (void)component;
-    AssertIndexRange(component, 1);
-    AssertDimension(values.size(), points.size());
-
-    for (unsigned int i = 0; i < values.size(); ++i)
-      {
-        if (points[i][0] < 0.5)
-          values[i] = 1.;
-        else
-          values[i] = 0.;
-      }
-  }
-
-
-  // Finally, a function that computes and returns the wind field
-  // $\beta=\beta(\mathbf x)$. As explained in the introduction, we will use a
-  // rotational field around the origin in 2d. In 3d, we simply leave the
-  // $z$-component unset (i.e., at zero), whereas the function can not be used
-  // in 1d in its current implementation:
-  template <int dim>
-  Tensor<1, dim> beta(const Point<dim> &p)
-  {
-    Assert(dim >= 2, ExcNotImplemented());
-
-    Tensor<1, dim> wind_field;
-    wind_field[0] = -p[1];
-    wind_field[1] = p[0];
-
-    if (wind_field.norm() > 1e-10)
-      wind_field /= wind_field.norm();
-
-    return wind_field;
-  }
-
-
-  // @sect3{The ScratchData and CopyData classes}
-  //
-  // The following objects are the scratch and copy objects we use in the call
-  // to MeshWorker::mesh_loop(). The new object is the FEInterfaceValues object,
-  // that works similar to FEValues or FEFaceValues, except that it acts on
-  // an interface between two cells and allows us to assemble the interface
-  // terms in our weak form.
-
-  template <int dim>
-  struct ScratchData
-  {
-    ScratchData(const Mapping<dim>        &mapping,
-                const FiniteElement<dim>  &fe,
-                const Quadrature<dim>     &quadrature,
-                const Quadrature<dim - 1> &quadrature_face,
-                const UpdateFlags          update_flags = update_values |
-                                                 update_gradients |
-                                                 update_quadrature_points |
-                                                 update_JxW_values,
-                const UpdateFlags interface_update_flags =
-                  update_values | update_gradients | update_quadrature_points |
-                  update_JxW_values | update_normal_vectors)
-      : fe_values(mapping, fe, quadrature, update_flags)
-      , fe_interface_values(mapping,
-                            fe,
-                            quadrature_face,
-                            interface_update_flags)
-    {}
-
-
-    ScratchData(const ScratchData<dim> &scratch_data)
-      : fe_values(scratch_data.fe_values.get_mapping(),
-                  scratch_data.fe_values.get_fe(),
-                  scratch_data.fe_values.get_quadrature(),
-                  scratch_data.fe_values.get_update_flags())
-      , fe_interface_values(scratch_data.fe_interface_values.get_mapping(),
-                            scratch_data.fe_interface_values.get_fe(),
-                            scratch_data.fe_interface_values.get_quadrature(),
-                            scratch_data.fe_interface_values.get_update_flags())
-    {}
-
-    FEValues<dim>          fe_values;
-    FEInterfaceValues<dim> fe_interface_values;
-  };
-
-
-
-  struct CopyDataFace
-  {
-    FullMatrix<double>                   cell_matrix;
-    std::vector<types::global_dof_index> joint_dof_indices;
-  };
-
-
-
-  struct CopyData
-  {
-    FullMatrix<double>                   cell_matrix;
-    Vector<double>                       cell_rhs;
-    std::vector<types::global_dof_index> local_dof_indices;
-    std::vector<CopyDataFace>            face_data;
-
-    template <class Iterator>
-    void reinit(const Iterator &cell, unsigned int dofs_per_cell)
+  int nn_regular = (nn / 4) * 4;
+  for (int col = 0; col < nn_regular; col += 4)
     {
-      cell_matrix.reinit(dofs_per_cell, dofs_per_cell);
-      cell_rhs.reinit(dofs_per_cell);
-
-      local_dof_indices.resize(dofs_per_cell);
-      cell->get_dof_indices(local_dof_indices);
-    }
-  };
-
-
-  // @sect3{The AdvectionProblem class}
-  //
-  // After this preparations, we proceed with the main class of this program,
-  // called AdvectionProblem.
-  //
-  // This should all be pretty familiar to you. Interesting details will only
-  // come up in the implementation of the assemble function.
-  template <int dim>
-  class AdvectionProblem
-  {
-  public:
-    AdvectionProblem();
-    void run();
-
-  private:
-    void setup_system();
-    void assemble_system();
-    void solve();
-    void refine_grid();
-    void output_results(const unsigned int cycle) const;
-
-    Triangulation<dim>   triangulation;
-    const MappingQ1<dim> mapping;
-
-    // Furthermore we want to use DG elements.
-    const FE_DGQ<dim> fe;
-    DoFHandler<dim>   dof_handler;
-
-    const QGauss<dim>     quadrature;
-    const QGauss<dim - 1> quadrature_face;
-
-    // The next four members represent the linear system to be solved.
-    // <code>system_matrix</code> and <code>right_hand_side</code> are generated
-    // by <code>assemble_system()</code>, the <code>solution</code> is computed
-    // in <code>solve()</code>. The <code>sparsity_pattern</code> is used to
-    // determine the location of nonzero elements in <code>system_matrix</code>.
-    SparsityPattern      sparsity_pattern;
-    SparseMatrix<double> system_matrix;
-
-    Vector<double> solution;
-    Vector<double> right_hand_side;
-  };
-
-
-  // We start with the constructor. The 1 in the constructor call of
-  // <code>fe</code> is the polynomial degree.
-  template <int dim>
-  AdvectionProblem<dim>::AdvectionProblem()
-    : mapping()
-    , fe(1)
-    , dof_handler(triangulation)
-    , quadrature(fe.tensor_degree() + 1)
-    , quadrature_face(fe.tensor_degree() + 1)
-  {}
-
-
-  template <int dim>
-  void AdvectionProblem<dim>::setup_system()
-  {
-    // In the function that sets up the usual finite element data structures, we
-    // first need to distribute the DoFs.
-    dof_handler.distribute_dofs(fe);
-
-    // We start by generating the sparsity pattern. To this end, we first fill
-    // an intermediate object of type DynamicSparsityPattern with the couplings
-    // appearing in the system. After building the pattern, this object is
-    // copied to <code>sparsity_pattern</code> and can be discarded.
-
-    // To build the sparsity pattern for DG discretizations, we can call the
-    // function analogue to DoFTools::make_sparsity_pattern, which is called
-    // DoFTools::make_flux_sparsity_pattern:
-    DynamicSparsityPattern dsp(dof_handler.n_dofs());
-    DoFTools::make_flux_sparsity_pattern(dof_handler, dsp);
-    sparsity_pattern.copy_from(dsp);
-
-    // Finally, we set up the structure of all components of the linear system.
-    system_matrix.reinit(sparsity_pattern);
-    solution.reinit(dof_handler.n_dofs());
-    right_hand_side.reinit(dof_handler.n_dofs());
-  }
-
-  // @sect4{The assemble_system function}
-
-  // Here we see the major difference to assembling by hand. Instead of
-  // writing loops over cells and faces, the logic is contained in the call to
-  // MeshWorker::mesh_loop() and we only need to specify what should happen on
-  // each cell, each boundary face, and each interior face. These three tasks
-  // are handled by the lambda functions inside the function below.
-
-  template <int dim>
-  void AdvectionProblem<dim>::assemble_system()
-  {
-    using Iterator = typename DoFHandler<dim>::active_cell_iterator;
-    const BoundaryValues<dim> boundary_function;
-
-    // This is the function that will be executed for each cell.
-    const auto cell_worker = [&](const Iterator   &cell,
-                                 ScratchData<dim> &scratch_data,
-                                 CopyData         &copy_data) {
-      const unsigned int n_dofs =
-        scratch_data.fe_values.get_fe().n_dofs_per_cell();
-      copy_data.reinit(cell, n_dofs);
-      scratch_data.fe_values.reinit(cell);
-
-      const auto &q_points = scratch_data.fe_values.get_quadrature_points();
-
-      const FEValues<dim>       &fe_v = scratch_data.fe_values;
-      const std::vector<double> &JxW  = fe_v.get_JxW_values();
-
-      // We solve a homogeneous equation, thus no right hand side shows up in
-      // the cell term.  What's left is integrating the matrix entries.
-      for (unsigned int point = 0; point < fe_v.n_quadrature_points; ++point)
+      ndarray<Number, 4, 4> res;
+      if (transpose_matrix == true)
         {
-          auto beta_q = beta(q_points[point]);
-          for (unsigned int i = 0; i < n_dofs; ++i)
-            for (unsigned int j = 0; j < n_dofs; ++j)
-              {
-                copy_data.cell_matrix(i, j) +=
-                  -beta_q                      // -\beta
-                  * fe_v.shape_grad(i, point)  // \nabla \phi_i
-                  * fe_v.shape_value(j, point) // \phi_j
-                  * JxW[point];                // dx
-              }
-        }
-    };
-
-    // This is the function called for boundary faces and consists of a normal
-    // integration using FEFaceValues. New is the logic to decide if the term
-    // goes into the system matrix (outflow) or the right-hand side (inflow).
-    const auto boundary_worker = [&](const Iterator     &cell,
-                                     const unsigned int &face_no,
-                                     ScratchData<dim>   &scratch_data,
-                                     CopyData           &copy_data) {
-      scratch_data.fe_interface_values.reinit(cell, face_no);
-      const FEFaceValuesBase<dim> &fe_face =
-        scratch_data.fe_interface_values.get_fe_face_values(0);
-
-      const auto &q_points = fe_face.get_quadrature_points();
-
-      const unsigned int n_facet_dofs = fe_face.get_fe().n_dofs_per_cell();
-      const std::vector<double>         &JxW     = fe_face.get_JxW_values();
-      const std::vector<Tensor<1, dim>> &normals = fe_face.get_normal_vectors();
-
-      std::vector<double> g(q_points.size());
-      boundary_function.value_list(q_points, g);
-
-      for (unsigned int point = 0; point < q_points.size(); ++point)
-        {
-          const double beta_dot_n = beta(q_points[point]) * normals[point];
-
-          if (beta_dot_n > 0)
+          const Number2 *matrix_ptr = matrix + col;
+          const Number   a = in0[0], b = in1[0], c = in2[0], d = in3[0];
+          for (unsigned int k = 0; k < 4; ++k)
             {
-              for (unsigned int i = 0; i < n_facet_dofs; ++i)
-                for (unsigned int j = 0; j < n_facet_dofs; ++j)
-                  copy_data.cell_matrix(i, j) +=
-                    fe_face.shape_value(i, point)   // \phi_i
-                    * fe_face.shape_value(j, point) // \phi_j
-                    * beta_dot_n                    // \beta . n
-                    * JxW[point];                   // dx
+              const Number m = matrix_ptr[k];
+              res[0][k]      = m * a;
+              res[1][k]      = m * b;
+              res[2][k]      = m * c;
+              res[3][k]      = m * d;
+            }
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              const Number a = in0[i], b = in1[i], c = in2[i], d = in3[i];
+              for (unsigned int k = 0; k < 4; ++k)
+                {
+                  const Number m = matrix_ptr[k];
+                  res[0][k] += m * a;
+                  res[1][k] += m * b;
+                  res[2][k] += m * c;
+                  res[3][k] += m * d;
+                }
+            }
+        }
+      else
+        {
+          const Number2 *matrix_0 = matrix + col * n_columns;
+          const Number2 *matrix_1 = matrix + (col + 1) * n_columns;
+          const Number2 *matrix_2 = matrix + (col + 2) * n_columns;
+          const Number2 *matrix_3 = matrix + (col + 3) * n_columns;
+
+          const Number a = in0[0], b = in1[0], c = in2[0], d = in3[0];
+          Number       m = matrix_0[0];
+          res[0][0]      = m * a;
+          res[1][0]      = m * b;
+          res[2][0]      = m * c;
+          res[3][0]      = m * d;
+          m              = matrix_1[0];
+          res[0][1]      = m * a;
+          res[1][1]      = m * b;
+          res[2][1]      = m * c;
+          res[3][1]      = m * d;
+          m              = matrix_2[0];
+          res[0][2]      = m * a;
+          res[1][2]      = m * b;
+          res[2][2]      = m * c;
+          res[3][2]      = m * d;
+          m              = matrix_3[0];
+          res[0][3]      = m * a;
+          res[1][3]      = m * b;
+          res[2][3]      = m * c;
+          res[3][3]      = m * d;
+          for (int i = 1; i < mm; ++i)
+            {
+              const Number a = in0[i], b = in1[i], c = in2[i], d = in3[i];
+              m = matrix_0[i];
+              res[0][0] += m * a;
+              res[1][0] += m * b;
+              res[2][0] += m * c;
+              res[3][0] += m * d;
+              m = matrix_1[i];
+              res[0][1] += m * a;
+              res[1][1] += m * b;
+              res[2][1] += m * c;
+              res[3][1] += m * d;
+              m = matrix_2[i];
+              res[0][2] += m * a;
+              res[1][2] += m * b;
+              res[2][2] += m * c;
+              res[3][2] += m * d;
+              m = matrix_3[i];
+              res[0][3] += m * a;
+              res[1][3] += m * b;
+              res[2][3] += m * c;
+              res[3][3] += m * d;
+            }
+        }
+      for (unsigned int i = 0; i < 4; ++i)
+        {
+          if (add)
+            {
+              out0[i] += res[0][i];
+              out1[i] += res[1][i];
+              out2[i] += res[2][i];
+              out3[i] += res[3][i];
             }
           else
-            for (unsigned int i = 0; i < n_facet_dofs; ++i)
-              copy_data.cell_rhs(i) += -fe_face.shape_value(i, point) // \phi_i
-                                       * g[point]                     // g
-                                       * beta_dot_n  // \beta . n
-                                       * JxW[point]; // dx
+            {
+              out0[i] = res[0][i];
+              out1[i] = res[1][i];
+              out2[i] = res[2][i];
+              out3[i] = res[3][i];
+            }
         }
-    };
-
-    // This is the function called on interior faces. The arguments specify
-    // cells, face and subface indices (for adaptive refinement). We just pass
-    // them along to the reinit() function of FEInterfaceValues.
-    const auto face_worker = [&](const Iterator     &cell,
-                                 const unsigned int &f,
-                                 const unsigned int &sf,
-                                 const Iterator     &ncell,
-                                 const unsigned int &nf,
-                                 const unsigned int &nsf,
-                                 ScratchData<dim>   &scratch_data,
-                                 CopyData           &copy_data) {
-      FEInterfaceValues<dim> &fe_iv = scratch_data.fe_interface_values;
-      fe_iv.reinit(cell, f, sf, ncell, nf, nsf);
-      const auto &q_points = fe_iv.get_quadrature_points();
-
-      copy_data.face_data.emplace_back();
-      CopyDataFace &copy_data_face = copy_data.face_data.back();
-
-      const unsigned int n_dofs        = fe_iv.n_current_interface_dofs();
-      copy_data_face.joint_dof_indices = fe_iv.get_interface_dof_indices();
-
-      copy_data_face.cell_matrix.reinit(n_dofs, n_dofs);
-
-      const std::vector<double>         &JxW     = fe_iv.get_JxW_values();
-      const std::vector<Tensor<1, dim>> &normals = fe_iv.get_normal_vectors();
-
-      for (unsigned int qpoint = 0; qpoint < q_points.size(); ++qpoint)
-        {
-          const double beta_dot_n = beta(q_points[qpoint]) * normals[qpoint];
-          for (unsigned int i = 0; i < n_dofs; ++i)
-            for (unsigned int j = 0; j < n_dofs; ++j)
-              copy_data_face.cell_matrix(i, j) +=
-                fe_iv.jump_in_shape_values(i, qpoint) // [\phi_i]
-                *
-                fe_iv.shape_value((beta_dot_n > 0), j, qpoint) // phi_j^{upwind}
-                * beta_dot_n                                   // (\beta . n)
-                * JxW[qpoint];                                 // dx
-        }
-    };
-
-    // The following lambda function will handle copying the data from the
-    // cell and face assembly into the global matrix and right-hand side.
-    //
-    // While we would not need an AffineConstraints object, because there are
-    // no hanging node constraints in DG discretizations, we use an empty
-    // object here as this allows us to use its `copy_local_to_global`
-    // functionality.
-    const AffineConstraints<double> constraints;
-
-    const auto copier = [&](const CopyData &c) {
-      constraints.distribute_local_to_global(c.cell_matrix,
-                                             c.cell_rhs,
-                                             c.local_dof_indices,
-                                             system_matrix,
-                                             right_hand_side);
-
-      for (const auto &cdf : c.face_data)
-        {
-          constraints.distribute_local_to_global(cdf.cell_matrix,
-                                                 cdf.joint_dof_indices,
-                                                 system_matrix);
-        }
-    };
-
-    ScratchData<dim> scratch_data(mapping, fe, quadrature, quadrature_face);
-    CopyData         copy_data;
-
-    // Here, we finally handle the assembly. We pass in ScratchData and
-    // CopyData objects, the lambda functions from above, an specify that we
-    // want to assemble interior faces once.
-    MeshWorker::mesh_loop(dof_handler.begin_active(),
-                          dof_handler.end(),
-                          cell_worker,
-                          copier,
-                          scratch_data,
-                          copy_data,
-                          MeshWorker::assemble_own_cells |
-                            MeshWorker::assemble_boundary_faces |
-                            MeshWorker::assemble_own_interior_faces_once,
-                          boundary_worker,
-                          face_worker);
-  }
-
-  // @sect3{All the rest}
-  //
-  // For this simple problem we use a standard iterative solver, called GMRES,
-  // that creates approximate solutions minimizing the residual in each
-  // iterations by adding a new basis vector to the Krylov subspace. This, in
-  // combination with a block SSOR preconditioner, that uses the special block
-  // matrix structure of system matrices arising from DG discretizations. The
-  // size of these blocks are the number of DoFs per cell. Here, we use a SSOR
-  // preconditioning as we have not renumbered the DoFs according to the flow
-  // field. If the DoFs are renumbered in the downstream direction of the flow,
-  // then a block Gauss-Seidel preconditioner (see the PreconditionBlockSOR
-  // class with relaxation=1) does a much better job.
-
-  // We create an additional data object for the GMRES solver to increase the
-  // maximum number of basis vectors of the Krylov subspace. When this number
-  // is reached the GMRES algorithm is restarted using the solution of the
-  // previous iteration as the starting approximation. The choice of the
-  // number of basis vectors is a trade-off between memory consumption and
-  // convergence speed, since a longer basis means minimization over a larger
-  // space.
-  template <int dim>
-  void AdvectionProblem<dim>::solve()
-  {
-    SolverControl solver_control(1000, 1e-6 * right_hand_side.l2_norm());
-
-    SolverGMRES<Vector<double>>::AdditionalData additional_data;
-    additional_data.max_basis_size = 100;
-    SolverGMRES<Vector<double>> solver(solver_control, additional_data);
-
-    // Here we create the preconditioner,
-    PreconditionBlockSSOR<SparseMatrix<double>> preconditioner;
-
-    // then assign the matrix to it and set the right block size:
-    preconditioner.initialize(system_matrix, fe.n_dofs_per_cell());
-
-    // After these preparations we are ready to start the linear solver.
-    solver.solve(system_matrix, solution, right_hand_side, preconditioner);
-
-    std::cout << "  Solver converged in " << solver_control.last_step()
-              << " iterations." << std::endl;
-  }
-
-
-  // We refine the grid according to a very simple refinement criterion, namely
-  // an approximation to the gradient of the solution. As here we consider the
-  // DG(1) method (i.e. we use piecewise bilinear shape functions) we could
-  // simply compute the gradients on each cell. But we do not want to base our
-  // refinement indicator on the gradients on each cell only, but want to base
-  // them also on jumps of the discontinuous solution function over faces
-  // between neighboring cells. The simplest way of doing that is to compute
-  // approximative gradients by difference quotients including the cell under
-  // consideration and its neighbors. This is done by the
-  // <code>DerivativeApproximation</code> class that computes the approximate
-  // gradients in a way similar to the <code>GradientEstimation</code> described
-  // in step-9 of this tutorial. In fact, the
-  // <code>DerivativeApproximation</code> class was developed following the
-  // <code>GradientEstimation</code> class of step-9. Relating to the discussion
-  // in step-9, here we consider $h^{1+d/2}|\nabla_h u_h|$. Furthermore we note
-  // that we do not consider approximate second derivatives because solutions to
-  // the linear advection equation are in general not in $H^2$ but only in $H^1$
-  // (or, to be more precise: in $H^1_\beta$, i.e., the space of functions whose
-  // derivatives in direction $\beta$ are square integrable).
-  template <int dim>
-  void AdvectionProblem<dim>::refine_grid()
-  {
-    // The <code>DerivativeApproximation</code> class computes the gradients to
-    // float precision. This is sufficient as they are approximate and serve as
-    // refinement indicators only.
-    Vector<float> gradient_indicator(triangulation.n_active_cells());
-
-    // Now the approximate gradients are computed
-    DerivativeApproximation::approximate_gradient(mapping,
-                                                  dof_handler,
-                                                  solution,
-                                                  gradient_indicator);
-
-    // and they are cell-wise scaled by the factor $h^{1+d/2}$
-    unsigned int cell_no = 0;
-    for (const auto &cell : dof_handler.active_cell_iterators())
-      gradient_indicator(cell_no++) *=
-        std::pow(cell->diameter(), 1 + 1.0 * dim / 2);
-
-    // Finally they serve as refinement indicator.
-    GridRefinement::refine_and_coarsen_fixed_number(triangulation,
-                                                    gradient_indicator,
-                                                    0.3,
-                                                    0.1);
-
-    triangulation.execute_coarsening_and_refinement();
-  }
-
-
-  // The output of this program consists of a vtk file of the adaptively
-  // refined grids and the numerical solutions. Finally, we also compute the
-  // L-infinity norm of the solution using VectorTools::integrate_difference().
-  template <int dim>
-  void AdvectionProblem<dim>::output_results(const unsigned int cycle) const
-  {
-    const std::string filename = "solution-" + std::to_string(cycle) + ".vtk";
-    std::cout << "  Writing solution to <" << filename << '>' << std::endl;
-    std::ofstream output(filename);
-
-    DataOut<dim> data_out;
-    data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(solution, "u", DataOut<dim>::type_dof_data);
-
-    data_out.build_patches(mapping);
-
-    data_out.write_vtk(output);
-
-    {
-      Vector<float> values(triangulation.n_active_cells());
-      VectorTools::integrate_difference(mapping,
-                                        dof_handler,
-                                        solution,
-                                        Functions::ZeroFunction<dim>(),
-                                        values,
-                                        quadrature,
-                                        VectorTools::Linfty_norm);
-      const double l_infty =
-        VectorTools::compute_global_error(triangulation,
-                                          values,
-                                          VectorTools::Linfty_norm);
-      std::cout << "  L-infinity norm: " << l_infty << std::endl;
+      out0 += 4;
+      out1 += 4;
+      out2 += 4;
+      out3 += 4;
     }
+  if (nn - nn_regular == 3)
+    {
+      Number res0, res1, res2, res3, res4, res5, res6, res7, res8, res9, res10,
+        res11;
+      if (transpose_matrix == true)
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[1] * in0[0];
+          res2                      = matrix_ptr[2] * in0[0];
+          res3                      = matrix_ptr[0] * in1[0];
+          res4                      = matrix_ptr[1] * in1[0];
+          res5                      = matrix_ptr[2] * in1[0];
+          res6                      = matrix_ptr[0] * in2[0];
+          res7                      = matrix_ptr[1] * in2[0];
+          res8                      = matrix_ptr[2] * in2[0];
+          res9                      = matrix_ptr[0] * in3[0];
+          res10                     = matrix_ptr[1] * in3[0];
+          res11                     = matrix_ptr[2] * in3[0];
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              res0 += matrix_ptr[0] * in0[i];
+              res1 += matrix_ptr[1] * in0[i];
+              res2 += matrix_ptr[2] * in0[i];
+              res3 += matrix_ptr[0] * in1[i];
+              res4 += matrix_ptr[1] * in1[i];
+              res5 += matrix_ptr[2] * in1[i];
+              res6 += matrix_ptr[0] * in2[i];
+              res7 += matrix_ptr[1] * in2[i];
+              res8 += matrix_ptr[2] * in2[i];
+              res9 += matrix_ptr[0] * in3[i];
+              res10 += matrix_ptr[1] * in3[i];
+              res11 += matrix_ptr[2] * in3[i];
+            }
+        }
+      else
+        {
+          const Number2 *matrix_0 = matrix + nn_regular * n_columns;
+          const Number2 *matrix_1 = matrix + (nn_regular + 1) * n_columns;
+          const Number2 *matrix_2 = matrix + (nn_regular + 2) * n_columns;
+
+          res0  = matrix_0[0] * in0[0];
+          res1  = matrix_1[0] * in0[0];
+          res2  = matrix_2[0] * in0[0];
+          res3  = matrix_0[0] * in1[0];
+          res4  = matrix_1[0] * in1[0];
+          res5  = matrix_2[0] * in1[0];
+          res6  = matrix_0[0] * in2[0];
+          res7  = matrix_1[0] * in2[0];
+          res8  = matrix_2[0] * in2[0];
+          res9  = matrix_0[0] * in3[0];
+          res10 = matrix_1[0] * in3[0];
+          res11 = matrix_2[0] * in3[0];
+          for (int i = 1; i < mm; ++i)
+            {
+              res0 += matrix_0[i] * in0[i];
+              res1 += matrix_1[i] * in0[i];
+              res2 += matrix_2[i] * in0[i];
+              res3 += matrix_0[i] * in1[i];
+              res4 += matrix_1[i] * in1[i];
+              res5 += matrix_2[i] * in1[i];
+              res6 += matrix_0[i] * in2[i];
+              res7 += matrix_1[i] * in2[i];
+              res8 += matrix_2[i] * in2[i];
+              res9 += matrix_0[i] * in3[i];
+              res10 += matrix_1[i] * in3[i];
+              res11 += matrix_2[i] * in3[i];
+            }
+        }
+      if (add)
+        {
+          out0[0] += res0;
+          out0[1] += res1;
+          out0[2] += res2;
+          out1[0] += res3;
+          out1[1] += res4;
+          out1[2] += res5;
+          out2[0] += res6;
+          out2[1] += res7;
+          out2[2] += res8;
+          out3[0] += res9;
+          out3[1] += res10;
+          out3[2] += res11;
+        }
+      else
+        {
+          out0[0] = res0;
+          out0[1] = res1;
+          out0[2] = res2;
+          out1[0] = res3;
+          out1[1] = res4;
+          out1[2] = res5;
+          out2[0] = res6;
+          out2[1] = res7;
+          out2[2] = res8;
+          out3[0] = res9;
+          out3[1] = res10;
+          out3[2] = res11;
+        }
+    }
+  else if (nn - nn_regular == 2)
+    {
+      Number res0, res1, res2, res3, res4, res5, res6, res7;
+      if (transpose_matrix == true)
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[1] * in0[0];
+          res2                      = matrix_ptr[0] * in1[0];
+          res3                      = matrix_ptr[1] * in1[0];
+          res4                      = matrix_ptr[0] * in2[0];
+          res5                      = matrix_ptr[1] * in2[0];
+          res6                      = matrix_ptr[0] * in3[0];
+          res7                      = matrix_ptr[1] * in3[0];
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              res0 += matrix_ptr[0] * in0[i];
+              res1 += matrix_ptr[1] * in0[i];
+              res2 += matrix_ptr[0] * in1[i];
+              res3 += matrix_ptr[1] * in1[i];
+              res4 += matrix_ptr[0] * in2[i];
+              res5 += matrix_ptr[1] * in2[i];
+              res6 += matrix_ptr[0] * in3[i];
+              res7 += matrix_ptr[1] * in3[i];
+            }
+        }
+      else
+        {
+          const Number2 *matrix_0 = matrix + nn_regular * n_columns;
+          const Number2 *matrix_1 = matrix + (nn_regular + 1) * n_columns;
+
+          res0 = matrix_0[0] * in0[0];
+          res1 = matrix_1[0] * in0[0];
+          res2 = matrix_0[0] * in1[0];
+          res3 = matrix_1[0] * in1[0];
+          res4 = matrix_0[0] * in2[0];
+          res5 = matrix_1[0] * in2[0];
+          res6 = matrix_0[0] * in3[0];
+          res7 = matrix_1[0] * in3[0];
+          for (int i = 1; i < mm; ++i)
+            {
+              res0 += matrix_0[i] * in0[i];
+              res1 += matrix_1[i] * in0[i];
+              res2 += matrix_0[i] * in1[i];
+              res3 += matrix_1[i] * in1[i];
+              res4 += matrix_0[i] * in2[i];
+              res5 += matrix_1[i] * in2[i];
+              res6 += matrix_0[i] * in3[i];
+              res7 += matrix_1[i] * in3[i];
+            }
+        }
+      if (add)
+        {
+          out0[0] += res0;
+          out0[1] += res1;
+          out1[0] += res2;
+          out1[1] += res3;
+          out2[0] += res4;
+          out2[1] += res5;
+          out3[0] += res6;
+          out3[1] += res7;
+        }
+      else
+        {
+          out0[0] = res0;
+          out0[1] = res1;
+          out1[0] = res2;
+          out1[1] = res3;
+          out2[0] = res4;
+          out2[1] = res5;
+          out3[0] = res6;
+          out3[1] = res7;
+        }
+    }
+  else if (nn - nn_regular == 1)
+    {
+      Number res0, res1, res2, res3;
+      if (transpose_matrix == true)
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[0] * in1[0];
+          res2                      = matrix_ptr[0] * in2[0];
+          res3                      = matrix_ptr[0] * in3[0];
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              res0 += matrix_ptr[0] * in0[i];
+              res1 += matrix_ptr[0] * in1[i];
+              res2 += matrix_ptr[0] * in2[i];
+              res3 += matrix_ptr[0] * in3[i];
+            }
+        }
+      else
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular * n_columns;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[0] * in1[0];
+          res2                      = matrix_ptr[0] * in2[0];
+          res3                      = matrix_ptr[0] * in3[0];
+          for (int i = 1; i < mm; ++i)
+            {
+              res0 += matrix_ptr[i] * in0[i];
+              res1 += matrix_ptr[i] * in1[i];
+              res2 += matrix_ptr[i] * in2[i];
+              res3 += matrix_ptr[i] * in3[i];
+            }
+        }
+      if (add)
+        {
+          out0[0] += res0;
+          out1[0] += res1;
+          out2[0] += res2;
+          out3[0] += res3;
+        }
+      else
+        {
+          out0[0] = res0;
+          out1[0] = res1;
+          out2[0] = res2;
+          out3[0] = res3;
+        }
+    }
+}
+
+
+
+template <bool transpose_matrix,
+          bool add,
+          int  n_rows,
+          int  n_columns,
+          typename Number,
+          typename Number2>
+void apply_matrix_vector_product_templated(const Number2 *matrix,
+                                           const Number  *in0,
+                                           Number        *out0)
+{
+  constexpr int mm = transpose_matrix ? n_rows : n_columns,
+                nn = transpose_matrix ? n_columns : n_rows;
+  Assert(n_rows > 0 && n_columns > 0,
+         ExcInternalError("Empty evaluation task!"));
+  Assert(n_rows > 0 && n_columns > 0,
+         ExcInternalError("The evaluation needs n_rows, n_columns > 0, but " +
+                          std::to_string(n_rows) + ", " +
+                          std::to_string(n_columns) + " was passed!"));
+
+  const Number *in1 = in0 + mm, *in2 = in1 + mm, *in3 = in2 + mm;
+  Number       *out1 = out0 + nn, *out2 = out1 + nn, *out3 = out2 + nn;
+
+  constexpr int nn_regular = (nn / 4) * 4;
+  for (int col = 0; col < nn_regular; col += 4)
+    {
+      ndarray<Number, 4, 4> res;
+      if constexpr (transpose_matrix == true)
+        {
+          const Number2 *matrix_ptr = matrix + col;
+          const Number   a = in0[0], b = in1[0], c = in2[0], d = in3[0];
+          for (unsigned int k = 0; k < 4; ++k)
+            {
+              const Number m = matrix_ptr[k];
+              res[0][k]      = m * a;
+              res[1][k]      = m * b;
+              res[2][k]      = m * c;
+              res[3][k]      = m * d;
+            }
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              const Number a = in0[i], b = in1[i], c = in2[i], d = in3[i];
+              for (unsigned int k = 0; k < 4; ++k)
+                {
+                  const Number m = matrix_ptr[k];
+                  res[0][k] += m * a;
+                  res[1][k] += m * b;
+                  res[2][k] += m * c;
+                  res[3][k] += m * d;
+                }
+            }
+        }
+      else
+        {
+          const Number2 *matrix_0 = matrix + col * n_columns;
+          const Number2 *matrix_1 = matrix + (col + 1) * n_columns;
+          const Number2 *matrix_2 = matrix + (col + 2) * n_columns;
+          const Number2 *matrix_3 = matrix + (col + 3) * n_columns;
+
+          const Number a = in0[0], b = in1[0], c = in2[0], d = in3[0];
+          Number       m = matrix_0[0];
+          res[0][0]      = m * a;
+          res[1][0]      = m * b;
+          res[2][0]      = m * c;
+          res[3][0]      = m * d;
+          m              = matrix_1[0];
+          res[0][1]      = m * a;
+          res[1][1]      = m * b;
+          res[2][1]      = m * c;
+          res[3][1]      = m * d;
+          m              = matrix_2[0];
+          res[0][2]      = m * a;
+          res[1][2]      = m * b;
+          res[2][2]      = m * c;
+          res[3][2]      = m * d;
+          m              = matrix_3[0];
+          res[0][3]      = m * a;
+          res[1][3]      = m * b;
+          res[2][3]      = m * c;
+          res[3][3]      = m * d;
+          for (int i = 1; i < mm; ++i)
+            {
+              const Number a = in0[i], b = in1[i], c = in2[i], d = in3[i];
+              m = matrix_0[i];
+              res[0][0] += m * a;
+              res[1][0] += m * b;
+              res[2][0] += m * c;
+              res[3][0] += m * d;
+              m = matrix_1[i];
+              res[0][1] += m * a;
+              res[1][1] += m * b;
+              res[2][1] += m * c;
+              res[3][1] += m * d;
+              m = matrix_2[i];
+              res[0][2] += m * a;
+              res[1][2] += m * b;
+              res[2][2] += m * c;
+              res[3][2] += m * d;
+              m = matrix_3[i];
+              res[0][3] += m * a;
+              res[1][3] += m * b;
+              res[2][3] += m * c;
+              res[3][3] += m * d;
+            }
+        }
+      for (unsigned int i = 0; i < 4; ++i)
+        {
+          if constexpr (add)
+            {
+              out0[i] += res[0][i];
+              out1[i] += res[1][i];
+              out2[i] += res[2][i];
+              out3[i] += res[3][i];
+            }
+          else
+            {
+              out0[i] = res[0][i];
+              out1[i] = res[1][i];
+              out2[i] = res[2][i];
+              out3[i] = res[3][i];
+            }
+        }
+      out0 += 4;
+      out1 += 4;
+      out2 += 4;
+      out3 += 4;
+    }
+  if constexpr (nn - nn_regular == 3)
+    {
+      Number res0, res1, res2, res3, res4, res5, res6, res7, res8, res9, res10,
+        res11;
+      if constexpr (transpose_matrix == true)
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[1] * in0[0];
+          res2                      = matrix_ptr[2] * in0[0];
+          res3                      = matrix_ptr[0] * in1[0];
+          res4                      = matrix_ptr[1] * in1[0];
+          res5                      = matrix_ptr[2] * in1[0];
+          res6                      = matrix_ptr[0] * in2[0];
+          res7                      = matrix_ptr[1] * in2[0];
+          res8                      = matrix_ptr[2] * in2[0];
+          res9                      = matrix_ptr[0] * in3[0];
+          res10                     = matrix_ptr[1] * in3[0];
+          res11                     = matrix_ptr[2] * in3[0];
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              res0 += matrix_ptr[0] * in0[i];
+              res1 += matrix_ptr[1] * in0[i];
+              res2 += matrix_ptr[2] * in0[i];
+              res3 += matrix_ptr[0] * in1[i];
+              res4 += matrix_ptr[1] * in1[i];
+              res5 += matrix_ptr[2] * in1[i];
+              res6 += matrix_ptr[0] * in2[i];
+              res7 += matrix_ptr[1] * in2[i];
+              res8 += matrix_ptr[2] * in2[i];
+              res9 += matrix_ptr[0] * in3[i];
+              res10 += matrix_ptr[1] * in3[i];
+              res11 += matrix_ptr[2] * in3[i];
+            }
+        }
+      else
+        {
+          const Number2 *matrix_0 = matrix + nn_regular * n_columns;
+          const Number2 *matrix_1 = matrix + (nn_regular + 1) * n_columns;
+          const Number2 *matrix_2 = matrix + (nn_regular + 2) * n_columns;
+
+          res0  = matrix_0[0] * in0[0];
+          res1  = matrix_1[0] * in0[0];
+          res2  = matrix_2[0] * in0[0];
+          res3  = matrix_0[0] * in1[0];
+          res4  = matrix_1[0] * in1[0];
+          res5  = matrix_2[0] * in1[0];
+          res6  = matrix_0[0] * in2[0];
+          res7  = matrix_1[0] * in2[0];
+          res8  = matrix_2[0] * in2[0];
+          res9  = matrix_0[0] * in3[0];
+          res10 = matrix_1[0] * in3[0];
+          res11 = matrix_2[0] * in3[0];
+          for (int i = 1; i < mm; ++i)
+            {
+              res0 += matrix_0[i] * in0[i];
+              res1 += matrix_1[i] * in0[i];
+              res2 += matrix_2[i] * in0[i];
+              res3 += matrix_0[i] * in1[i];
+              res4 += matrix_1[i] * in1[i];
+              res5 += matrix_2[i] * in1[i];
+              res6 += matrix_0[i] * in2[i];
+              res7 += matrix_1[i] * in2[i];
+              res8 += matrix_2[i] * in2[i];
+              res9 += matrix_0[i] * in3[i];
+              res10 += matrix_1[i] * in3[i];
+              res11 += matrix_2[i] * in3[i];
+            }
+        }
+      if constexpr (add)
+        {
+          out0[0] += res0;
+          out0[1] += res1;
+          out0[2] += res2;
+          out1[0] += res3;
+          out1[1] += res4;
+          out1[2] += res5;
+          out2[0] += res6;
+          out2[1] += res7;
+          out2[2] += res8;
+          out3[0] += res9;
+          out3[1] += res10;
+          out3[2] += res11;
+        }
+      else
+        {
+          out0[0] = res0;
+          out0[1] = res1;
+          out0[2] = res2;
+          out1[0] = res3;
+          out1[1] = res4;
+          out1[2] = res5;
+          out2[0] = res6;
+          out2[1] = res7;
+          out2[2] = res8;
+          out3[0] = res9;
+          out3[1] = res10;
+          out3[2] = res11;
+        }
+    }
+  else if constexpr (nn - nn_regular == 2)
+    {
+      Number res0, res1, res2, res3, res4, res5, res6, res7;
+      if constexpr (transpose_matrix == true)
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[1] * in0[0];
+          res2                      = matrix_ptr[0] * in1[0];
+          res3                      = matrix_ptr[1] * in1[0];
+          res4                      = matrix_ptr[0] * in2[0];
+          res5                      = matrix_ptr[1] * in2[0];
+          res6                      = matrix_ptr[0] * in3[0];
+          res7                      = matrix_ptr[1] * in3[0];
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              res0 += matrix_ptr[0] * in0[i];
+              res1 += matrix_ptr[1] * in0[i];
+              res2 += matrix_ptr[0] * in1[i];
+              res3 += matrix_ptr[1] * in1[i];
+              res4 += matrix_ptr[0] * in2[i];
+              res5 += matrix_ptr[1] * in2[i];
+              res6 += matrix_ptr[0] * in3[i];
+              res7 += matrix_ptr[1] * in3[i];
+            }
+        }
+      else
+        {
+          const Number2 *matrix_0 = matrix + nn_regular * n_columns;
+          const Number2 *matrix_1 = matrix + (nn_regular + 1) * n_columns;
+
+          res0 = matrix_0[0] * in0[0];
+          res1 = matrix_1[0] * in0[0];
+          res2 = matrix_0[0] * in1[0];
+          res3 = matrix_1[0] * in1[0];
+          res4 = matrix_0[0] * in2[0];
+          res5 = matrix_1[0] * in2[0];
+          res6 = matrix_0[0] * in3[0];
+          res7 = matrix_1[0] * in3[0];
+          for (int i = 1; i < mm; ++i)
+            {
+              res0 += matrix_0[i] * in0[i];
+              res1 += matrix_1[i] * in0[i];
+              res2 += matrix_0[i] * in1[i];
+              res3 += matrix_1[i] * in1[i];
+              res4 += matrix_0[i] * in2[i];
+              res5 += matrix_1[i] * in2[i];
+              res6 += matrix_0[i] * in3[i];
+              res7 += matrix_1[i] * in3[i];
+            }
+        }
+      if constexpr (add)
+        {
+          out0[0] += res0;
+          out0[1] += res1;
+          out1[0] += res2;
+          out1[1] += res3;
+          out2[0] += res4;
+          out2[1] += res5;
+          out3[0] += res6;
+          out3[1] += res7;
+        }
+      else
+        {
+          out0[0] = res0;
+          out0[1] = res1;
+          out1[0] = res2;
+          out1[1] = res3;
+          out2[0] = res4;
+          out2[1] = res5;
+          out3[0] = res6;
+          out3[1] = res7;
+        }
+    }
+  else if constexpr (nn - nn_regular == 1)
+    {
+      Number res0, res1, res2, res3;
+      if constexpr (transpose_matrix == true)
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[0] * in1[0];
+          res2                      = matrix_ptr[0] * in2[0];
+          res3                      = matrix_ptr[0] * in3[0];
+          matrix_ptr += n_columns;
+          for (int i = 1; i < mm; ++i, matrix_ptr += n_columns)
+            {
+              res0 += matrix_ptr[0] * in0[i];
+              res1 += matrix_ptr[0] * in1[i];
+              res2 += matrix_ptr[0] * in2[i];
+              res3 += matrix_ptr[0] * in3[i];
+            }
+        }
+      else
+        {
+          const Number2 *matrix_ptr = matrix + nn_regular * n_columns;
+          res0                      = matrix_ptr[0] * in0[0];
+          res1                      = matrix_ptr[0] * in1[0];
+          res2                      = matrix_ptr[0] * in2[0];
+          res3                      = matrix_ptr[0] * in3[0];
+          for (int i = 1; i < mm; ++i)
+            {
+              res0 += matrix_ptr[i] * in0[i];
+              res1 += matrix_ptr[i] * in1[i];
+              res2 += matrix_ptr[i] * in2[i];
+              res3 += matrix_ptr[i] * in3[i];
+            }
+        }
+      if constexpr (add)
+        {
+          out0[0] += res0;
+          out1[0] += res1;
+          out2[0] += res2;
+          out3[0] += res3;
+        }
+      else
+        {
+          out0[0] = res0;
+          out1[0] = res1;
+          out2[0] = res2;
+          out3[0] = res3;
+        }
+    }
+}
+
+
+
+const double FREQUENCY = 3.0 * dealii::numbers::PI;
+template <int dim>
+class Solution : public dealii::Function<dim>
+{
+public:
+  Solution(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
+  {}
+
+  double value(const dealii::Point<dim> &p,
+               const unsigned int /*component*/) const final
+  {
+    double result = 1.0;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
+
+    return result;
+  }
+};
+
+template <int dim>
+class RightHandSide : public dealii::Function<dim>
+{
+public:
+  RightHandSide(const unsigned int n_components = 1, const double time = 0.)
+    : dealii::Function<dim>(n_components, time)
+  {}
+
+  double value(const dealii::Point<dim> &p,
+               const unsigned int /* component */) const final
+  {
+    double result = FREQUENCY * FREQUENCY * dim;
+    for (unsigned int d = 0; d < dim; ++d)
+      result *= std::sin(FREQUENCY * p[d]);
+
+    return result;
   }
 
-
-  // The following <code>run</code> function is similar to previous examples.
-  template <int dim>
-  void AdvectionProblem<dim>::run()
+  VectorizedArray<double>
+  value_array(const Point<dim, VectorizedArray<double>> &p)
   {
-    for (unsigned int cycle = 0; cycle < 6; ++cycle)
+    Point<dim>              point;
+    VectorizedArray<double> results;
+
+    for (unsigned int v = 0; v < results.size(); ++v)
       {
-        std::cout << "Cycle " << cycle << std::endl;
-
-        if (cycle == 0)
+        for (unsigned int d = 0; d < dim; ++d)
           {
-            GridGenerator::hyper_cube(triangulation);
-            triangulation.refine_global(3);
+            point[d] = p[d][v];
           }
-        else
-          refine_grid();
 
-        std::cout << "  Number of active cells:       "
-                  << triangulation.n_active_cells() << std::endl;
+        results[v] = value(point, 0);
+      }
 
-        setup_system();
+    return results;
+  }
+};
 
-        std::cout << "  Number of degrees of freedom: " << dof_handler.n_dofs()
+template <int fe_degree>
+constexpr unsigned int compute_dofs_tet()
+{
+  return (fe_degree + 1) * (fe_degree + 2) * (fe_degree + 3) / 6;
+}
+
+template <int fe_degree>
+constexpr unsigned int compute_n_q_tet()
+{
+  if constexpr (fe_degree == 1)
+    return 6;
+  if constexpr (fe_degree == 2)
+    return 14;
+  if constexpr (fe_degree == 3)
+    return 35;
+  return (fe_degree + 1) * (fe_degree + 1) * (fe_degree + 1);
+}
+
+template <int dim_,
+          int fe_degree,
+          int q_block_size,
+          int batch_size_dgemm,
+          int q_block_size_dgemm,
+          int n_components = dim_,
+          typename Number  = double>
+class Operator : public Subscriptor
+{
+public:
+  using value_type = Number;
+  using number     = Number;
+  using VectorType = LinearAlgebra::distributed::Vector<Number>;
+
+  static const int dim = dim_;
+
+  using FECellIntegrator = FEEvaluation<dim, -1, 0, n_components, Number>;
+
+  void reinit(const MappingFE<dim>            &mapping,
+              const DoFHandler<dim>           &dof_handler,
+              const QGaussSimplex<dim>        &quad,
+              const AffineConstraints<number> &constraints,
+              const unsigned int mg_level = numbers::invalid_unsigned_int,
+              const bool         ones_on_diagonal = false)
+  {
+    this->constraints.copy_from(constraints);
+
+    typename MatrixFree<dim, number>::AdditionalData data;
+    data.mapping_update_flags = update_values | update_gradients |
+                                update_JxW_values | update_quadrature_points;
+    data.mg_level             = mg_level;
+
+    matrix_free.reinit(mapping, dof_handler, constraints, quad, data);
+    if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
+      {
+        std::cout << "Sizes shape info: "
+                  << matrix_free.get_shape_info()
+                       .data[0]
+                       .shape_values.memory_consumption()
+                  << " "
+                  << matrix_free.get_shape_info()
+                       .data[0]
+                       .shape_gradients.memory_consumption()
                   << std::endl;
+        std::cout << "DoFs per cell, n quadrature points: "
+                  << dof_handler.get_fe().dofs_per_cell << " "
+                  << matrix_free.get_shape_info().n_q_points << std::endl;
+        std::cout << "dofs per cell and n dof indices: "
+                  << matrix_free.get_shape_info().dofs_per_component_on_cell
+                  << " " << matrix_free.get_dof_info(0).dof_indices.size()
+                  << std::endl;
+        std::cout << "n_active_cells, number of dofs "
+                  << dof_handler.get_triangulation().n_active_cells() << " "
+                  << dof_handler.n_dofs() << std::endl;
+      }
 
-        assemble_system();
-        solve();
+    constrained_indices.clear();
 
-        output_results(cycle);
+    if (ones_on_diagonal)
+      for (auto i : this->matrix_free.get_constrained_dofs())
+        constrained_indices.push_back(i);
+
+
+    constexpr unsigned int n_lanes = VectorizedArray<number>::size();
+    manual_dof_indices.reinit(
+      matrix_free.n_cell_batches(),
+      matrix_free.get_dof_handler().get_fe().dofs_per_cell * n_lanes,
+      true);
+    manual_dof_indices.fill(numbers::invalid_unsigned_int);
+    std::vector<types::global_dof_index> dof_indices(
+      matrix_free.get_dof_handler().get_fe().dofs_per_cell);
+
+    dof_indices_have_constraints.clear();
+    dof_indices_have_constraints.resize(matrix_free.n_cell_batches());
+
+    for (unsigned int c = 0; c < matrix_free.n_cell_batches(); ++c)
+      {
+        bool has_constraints =
+          matrix_free.n_active_entries_per_cell_batch(c) < n_lanes;
+        for (unsigned int v = 0;
+             v < matrix_free.n_active_entries_per_cell_batch(c);
+             ++v)
+          {
+            matrix_free.get_cell_iterator(c, v)->get_dof_indices(dof_indices);
+            for (unsigned int i = 0; i < dof_indices.size(); ++i)
+              if (!constraints.is_constrained(dof_indices[i]))
+                manual_dof_indices(c, i * n_lanes + v) =
+                  matrix_free.get_dof_info()
+                    .vector_partitioner->global_to_local(dof_indices[i]);
+              else
+                has_constraints = true;
+          }
+        dof_indices_have_constraints[c] = has_constraints;
+      }
+
+
+    const unsigned int n_q        = quad.size();
+    const unsigned int n_dofs     = dof_handler.get_fe().dofs_per_cell;
+    const unsigned int array_size = n_dofs * n_q * dim;
+
+    shape_gradients_transpose.resize_fast(array_size);
+
+    const auto &shape_gradients =
+      matrix_free.get_shape_info().data[0].shape_gradients.data();
+
+    for (unsigned int i = 0; i < n_dofs; ++i)
+      for (unsigned int q = 0; q < n_q; ++q)
+        for (unsigned int d = 0; d < dim; ++d)
+          shape_gradients_transpose[i + n_dofs * d + q * n_dofs * dim] =
+            shape_gradients[i * n_q * dim + q * dim + d];
+
+
+    constexpr unsigned int q_block_size_effective = q_block_size;
+
+    unsigned int pack_total_size = 0;
+    for (unsigned int q_begin = 0; q_begin < n_q;
+         q_begin += q_block_size_effective)
+      {
+        const unsigned int n_q_block =
+          std::min(static_cast<unsigned int>(q_block_size_effective),
+                   n_q - q_begin);
+        pack_total_size += n_dofs * n_q_block * dim;
+      }
+
+    shape_gradients_packed.resize_fast(pack_total_size);
+    pack_total_size = 0;
+    for (unsigned int q_begin = 0; q_begin < n_q;
+         q_begin += q_block_size_effective)
+      {
+        const unsigned int n_q_block =
+          std::min(static_cast<unsigned int>(q_block_size_effective),
+                   n_q - q_begin);
+
+        number *integration = shape_gradients_packed.begin() + pack_total_size;
+
+        for (unsigned int q_local = 0; q_local < n_q_block; ++q_local)
+          {
+            const unsigned int q = q_begin + q_local;
+            for (unsigned int d = 0; d < dim; ++d)
+              {
+                const unsigned int k = q_local * dim + d;
+                for (unsigned int i = 0; i < n_dofs; ++i)
+                  {
+                    const number value =
+                      shape_gradients[i * n_q * dim + q * dim + d];
+                    integration[i * n_q_block * dim + k] = value;
+                  }
+              }
+          }
+        pack_total_size += n_dofs * n_q_block * dim;
       }
   }
-} // namespace Step12
+
+  virtual types::global_dof_index m() const
+  {
+    if (this->matrix_free.get_mg_level() != numbers::invalid_unsigned_int)
+      return this->matrix_free.get_dof_handler().n_dofs(
+        this->matrix_free.get_mg_level());
+    else
+      return this->matrix_free.get_dof_handler().n_dofs();
+  }
+
+  Number el(unsigned int, unsigned int) const
+  {
+    DEAL_II_NOT_IMPLEMENTED();
+    return 0;
+  }
+
+  virtual void initialize_dof_vector(VectorType &vec) const
+  {
+    matrix_free.initialize_dof_vector(vec);
+  }
+
+  virtual void vmult(VectorType &dst, const VectorType &src) const
+  {
+    this->matrix_free.cell_loop(
+      &Operator::do_cell_integral_range, this, dst, src, true);
+
+    for (unsigned int i = 0; i < constrained_indices.size(); ++i)
+      dst.local_element(constrained_indices[i]) =
+        src.local_element(constrained_indices[i]);
+  }
 
 
-// The following <code>main</code> function is similar to previous examples as
-// well, and need not be commented on.
-int main()
+  virtual void vmult_masked_gather(VectorType &dst, const VectorType &src) const
+  {
+    this->matrix_free.cell_loop(
+      &Operator::do_cell_integral_masked_gather, this, dst, src, true);
+
+    for (unsigned int i = 0; i < constrained_indices.size(); ++i)
+      dst.local_element(constrained_indices[i]) =
+        src.local_element(constrained_indices[i]);
+  }
+
+
+  virtual void vmult_dgemm(VectorType &dst, const VectorType &src) const
+  {
+    this->matrix_free.cell_loop(
+      &Operator::do_cell_integral_dgemm, this, dst, src, true);
+
+    for (unsigned int i = 0; i < constrained_indices.size(); ++i)
+      dst.local_element(constrained_indices[i]) =
+        src.local_element(constrained_indices[i]);
+  }
+
+
+  void Tvmult(VectorType &dst, const VectorType &src) const
+  {
+    vmult(dst, src);
+  }
+
+  void rhs(VectorType &rhs) const
+  {
+    VectorType dummy;
+    initialize_dof_vector(dummy);
+    dummy = 0.0;
+
+    this->matrix_free.cell_loop(
+      &Operator::do_rhs_range, this, rhs, dummy, true);
+
+    // for (unsigned int i = 0; i < constrained_indices.size(); ++i)
+    //   rhs.local_element(constrained_indices[i]) = 0.0;
+  }
+
+  const MatrixFree<dim, number> &get_matrix_free() const
+  {
+    return matrix_free;
+  }
+
+private:
+  void do_cell_integral_global(FECellIntegrator &integrator,
+                               VectorType       &dst,
+                               const VectorType &src) const
+  {
+    integrator.gather_evaluate(src, EvaluationFlags::gradients);
+
+    for (unsigned int q = 0; q < integrator.n_q_points; ++q)
+      integrator.submit_gradient(integrator.get_gradient(q), q);
+
+    integrator.integrate_scatter(EvaluationFlags::gradients, dst);
+  }
+
+  void do_cell_integral_range(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FECellIntegrator integrator(matrix_free, range);
+
+    for (unsigned int cell = range.first; cell < range.second; ++cell)
+      {
+        integrator.reinit(cell);
+        do_cell_integral_global(integrator, dst, src);
+      }
+  }
+
+
+  void do_rhs_range(const MatrixFree<dim, number> &matrix_free,
+                    VectorType                    &dst,
+                    const VectorType &,
+                    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    FECellIntegrator   integrator(matrix_free, range);
+    RightHandSide<dim> rhs_function;
+
+    for (unsigned int cell = range.first; cell < range.second; ++cell)
+      {
+        integrator.reinit(cell);
+        for (unsigned int q = 0; q < integrator.n_q_points; ++q)
+          integrator.submit_value(
+            rhs_function.value_array(integrator.quadrature_point(q)), q);
+
+        integrator.integrate_scatter(EvaluationFlags::values, dst);
+      }
+  }
+
+
+
+  void do_cell_integral_masked_gather_no_blocking(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    AlignedVector<VectorizedArray<number>> *scratch_data =
+      matrix_free.acquire_scratch_data();
+    const internal::MatrixFreeFunctions::ShapeInfo<number> &shape_info =
+      matrix_free.get_shape_info();
+    const unsigned int dofs_per_cell  = shape_info.dofs_per_component_on_cell;
+    constexpr unsigned int batch_size = 4;
+    const unsigned int     n_q_points = shape_info.n_q_points;
+    constexpr unsigned int n_lanes    = VectorizedArray<number>::size();
+
+    const auto   &mapping_data = matrix_free.get_mapping_info().cell_data[0];
+    const number *quadrature_weights =
+      mapping_data.descriptor[0].quadrature_weights.data();
+
+    scratch_data->resize_fast(batch_size * (dim * n_q_points + dofs_per_cell));
+    VectorizedArray<number> *values_dofs = scratch_data->begin();
+    VectorizedArray<number> *gradients_quad =
+      scratch_data->begin() + batch_size * dofs_per_cell;
+
+    for (unsigned int cell = range.first; cell < range.second;
+         cell += batch_size)
+      {
+        // read dof values
+        const unsigned int my_batch_size =
+          cell + batch_size <= range.second ? batch_size : range.second - cell;
+        const unsigned int *dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            const number *src_ptr = src.begin();
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  {
+#if 1
+                    values_dofs[batch * dofs_per_cell + i] = {};
+                    for (unsigned int v = 0; v < n_lanes; ++v)
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        values_dofs[batch * dofs_per_cell + i][v] =
+                          src_ptr[dof_indices[v]];
+#else
+                    values_dofs[batch * dofs_per_cell + i].gather(src_ptr,
+                                                                  dof_indices);
+#endif
+                  }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  values_dofs[batch * dofs_per_cell + i] = {};
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    values_dofs[batch * dofs_per_cell + i][v] =
+                      src_ptr[dof_indices[v]];
+                }
+          }
+
+        // interpolate
+        apply_matrix_vector_product<true, false>(
+          shape_info.data[0].shape_gradients.data(),
+          values_dofs,
+          gradients_quad,
+          dofs_per_cell,
+          n_q_points * dim);
+
+        // quadrature point operation
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            const unsigned int offsets =
+              mapping_data.data_index_offsets[cell + batch];
+            const Tensor<2, dim, VectorizedArray<number>> *jac =
+              mapping_data.jacobians[0].data() + offsets;
+            const VectorizedArray<number> *j_value =
+              &mapping_data.JxW_values[offsets];
+            VectorizedArray<number> *grad_ptr =
+              gradients_quad + batch * n_q_points * dim;
+            if (matrix_free.get_mapping_info().cell_type[cell + batch] <=
+                internal::MatrixFreeFunctions::affine)
+              {
+                // const SymmetricTensor<2, dim, VectorizedArray<number>>
+                //  my_metric = j_value[0] * symmetrize(transpose(jac[0]) *
+                //  jac[0]);
+                SymmetricTensor<2, dim, VectorizedArray<number>> my_metric;
+                for (unsigned int d = 0; d < dim; ++d)
+                  for (unsigned int f = d; f < dim; ++f)
+                    {
+                      VectorizedArray<number> sum = jac[0][0][d] * jac[0][0][f];
+                      for (unsigned int e = 1; e < dim; ++e)
+                        sum += jac[0][e][d] * jac[0][e][f];
+                      my_metric[d][f] = sum * j_value[0];
+                    }
+
+                for (unsigned int q = 0; q < n_q_points; ++q, grad_ptr += dim)
+                  {
+                    Tensor<1, dim, VectorizedArray<number>> grad;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad[d] = grad_ptr[d];
+                    Tensor<1, dim, VectorizedArray<number>> result =
+                      my_metric * grad;
+                    const number weight = quadrature_weights[q];
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad_ptr[d] = weight * result[d];
+                  }
+              }
+            else
+              {
+                for (unsigned int q = 0; q < n_q_points; ++q, grad_ptr += dim)
+                  {
+                    Tensor<1, dim, VectorizedArray<number>> grad;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad[d] = grad_ptr[d];
+                    Tensor<1, dim, VectorizedArray<number>> result =
+                      j_value[q] * (transpose(jac[q]) * (jac[q] * grad));
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad_ptr[d] = result[d];
+                  }
+              }
+          }
+
+        // integrate
+        apply_matrix_vector_product<false, false>(
+          shape_info.data[0].shape_gradients.data(),
+          gradients_quad,
+          values_dofs,
+          dofs_per_cell,
+          n_q_points * dim);
+
+        // distribute local to global
+        dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  {
+#if 1 || DEAL_II_VECTORIZATION_WIDTH_IN_BITS < 512
+                    for (unsigned int v = 0; v < n_lanes; ++v)
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        dst.local_element(dof_indices[v]) +=
+                          values_dofs[batch * dofs_per_cell + i][v];
+#else
+                    VectorizedArray<number> val;
+                    val.gather(dst.begin(), dof_indices);
+                    val += values_dofs[batch * dofs_per_cell + i];
+                    val.scatter(dof_indices, dst.begin());
+#endif
+                  }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    dst.local_element(dof_indices[v]) +=
+                      values_dofs[batch * dofs_per_cell + i][v];
+                }
+          }
+      }
+
+    matrix_free.release_scratch_data(scratch_data);
+  }
+
+  // with quadrature blocking and packed integration matrix
+  void do_cell_integral_masked_gather_q_blocking_packed(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    AlignedVector<VectorizedArray<number>> *scratch_data =
+      matrix_free.acquire_scratch_data();
+    const internal::MatrixFreeFunctions::ShapeInfo<number> &shape_info =
+      matrix_free.get_shape_info();
+    const unsigned int dofs_per_cell  = shape_info.dofs_per_component_on_cell;
+    constexpr unsigned int batch_size = 4;
+    // constexpr unsigned int q_block_size = 32;
+    const unsigned int     n_q_points = shape_info.n_q_points;
+    constexpr unsigned int n_lanes    = VectorizedArray<number>::size();
+
+    const auto   &mapping_data = matrix_free.get_mapping_info().cell_data[0];
+    const number *quadrature_weights =
+      mapping_data.descriptor[0].quadrature_weights.data();
+
+    scratch_data->resize_fast(batch_size *
+                              (dim * q_block_size + 2 * dofs_per_cell));
+    VectorizedArray<number> *values_dofs_in = scratch_data->begin();
+    VectorizedArray<number> *values_dofs_out =
+      scratch_data->begin() + batch_size * dofs_per_cell;
+    VectorizedArray<number> *gradients_quad =
+      scratch_data->begin() + 2 * batch_size * dofs_per_cell;
+
+    const number *src_ptr = src.begin();
+
+    for (unsigned int cell = range.first; cell < range.second;
+         cell += batch_size)
+      {
+        // read dof values
+        const unsigned int my_batch_size =
+          cell + batch_size <= range.second ? batch_size : range.second - cell;
+
+        std::fill(values_dofs_out,
+                  values_dofs_out + dofs_per_cell * batch_size,
+                  VectorizedArray<number>(0));
+
+        std::fill(values_dofs_in,
+                  values_dofs_in + dofs_per_cell * batch_size,
+                  VectorizedArray<number>(0)); // TODO:remove
+
+        const unsigned int *dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  {
+                    values_dofs_in[batch * dofs_per_cell + i] = {};
+                    for (unsigned int v = 0; v < n_lanes; ++v)
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        values_dofs_in[batch * dofs_per_cell + i][v] =
+                          src_ptr[dof_indices[v]];
+                  }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  values_dofs_in[batch * dofs_per_cell + i] = {};
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    values_dofs_in[batch * dofs_per_cell + i][v] =
+                      src_ptr[dof_indices[v]];
+                }
+          }
+
+        // block over quadrature size
+        const number *shape_block = shape_gradients_transpose.data();
+        // shape_info.data[0].shape_gradients.data();
+        for (unsigned int q_begin = 0; q_begin < n_q_points;
+             q_begin += q_block_size)
+          {
+            const unsigned int n_q_block =
+              std::min(static_cast<unsigned int>(q_block_size),
+                       n_q_points - q_begin);
+
+            const unsigned int n_block_columns = n_q_block * dim;
+
+            // interpolate
+            apply_matrix_vector_product<false, false>(shape_block,
+                                                      values_dofs_in,
+                                                      gradients_quad,
+                                                      n_block_columns,
+                                                      dofs_per_cell);
+
+            // quadrature point operation
+            for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+              {
+                const unsigned int offsets =
+                  mapping_data.data_index_offsets[cell + batch];
+                const Tensor<2, dim, VectorizedArray<number>> *jac =
+                  mapping_data.jacobians[0].data() + offsets;
+                const VectorizedArray<number> *j_value =
+                  &mapping_data.JxW_values[offsets];
+                VectorizedArray<number> *grad_ptr =
+                  gradients_quad + batch * n_block_columns;
+                if (matrix_free.get_mapping_info().cell_type[cell + batch] <=
+                    internal::MatrixFreeFunctions::affine)
+                  {
+                    // const SymmetricTensor<2, dim, VectorizedArray<number>>
+                    //  my_metric = j_value[0] * symmetrize(transpose(jac[0]) *
+                    //  jac[0]);
+                    SymmetricTensor<2, dim, VectorizedArray<number>> my_metric;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      for (unsigned int f = d; f < dim; ++f)
+                        {
+                          VectorizedArray<number> sum =
+                            jac[0][0][d] * jac[0][0][f];
+                          for (unsigned int e = 1; e < dim; ++e)
+                            sum += jac[0][e][d] * jac[0][e][f];
+                          my_metric[d][f] = sum * j_value[0];
+                        }
+
+                    for (unsigned int q_local = 0; q_local < n_q_block;
+                         ++q_local, grad_ptr += dim)
+                      {
+                        Tensor<1, dim, VectorizedArray<number>> grad;
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad[d] = grad_ptr[d];
+                        Tensor<1, dim, VectorizedArray<number>> result =
+                          my_metric * grad;
+                        const number weight =
+                          quadrature_weights[q_begin + q_local];
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad_ptr[d] = weight * result[d];
+                      }
+                  }
+                else
+                  {
+                    DEAL_II_NOT_IMPLEMENTED();
+                    for (unsigned int q = 0; q < n_q_points;
+                         ++q, grad_ptr += dim)
+                      {
+                        Tensor<1, dim, VectorizedArray<number>> grad;
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad[d] = grad_ptr[d];
+                        Tensor<1, dim, VectorizedArray<number>> result =
+                          j_value[q] * (transpose(jac[q]) * (jac[q] * grad));
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad_ptr[d] = result[d];
+                      }
+                  }
+              }
+
+            // integrate
+            apply_matrix_vector_product<false, true>(
+              shape_gradients_packed.begin() + q_begin * dim * dofs_per_cell,
+              gradients_quad,
+              values_dofs_out,
+              dofs_per_cell,
+              n_block_columns);
+
+            // advance shape block
+            shape_block += dim * dofs_per_cell * n_q_block;
+          }
+
+        // distribute local to global
+        dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  {
+                    for (unsigned int v = 0; v < n_lanes; ++v)
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        dst.local_element(dof_indices[v]) +=
+                          values_dofs_out[batch * dofs_per_cell + i][v];
+                  }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    dst.local_element(dof_indices[v]) +=
+                      values_dofs_out[batch * dofs_per_cell + i][v];
+                }
+          }
+      }
+
+    matrix_free.release_scratch_data(scratch_data);
+  }
+
+  // with quadrature blocking and packed integration matrix,
+  // templated matrix-vector kernels
+  void do_cell_integral_masked_gather(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    AlignedVector<VectorizedArray<number>> *scratch_data =
+      matrix_free.acquire_scratch_data();
+    const internal::MatrixFreeFunctions::ShapeInfo<number> &shape_info =
+      matrix_free.get_shape_info();
+    // const unsigned int dofs_per_cell  =
+    // shape_info.dofs_per_component_on_cell;
+    constexpr unsigned int dofs_per_cell = compute_dofs_tet<fe_degree>();
+    constexpr unsigned int q_block_size_effective = q_block_size;
+    // compute_n_q_tet<fe_degree>(); // q_block_size;
+    // Assert(q_block_size_effective == n_q_points, ExcInternalError());
+    constexpr unsigned int batch_size = 4;
+    // constexpr unsigned int q_block_size = 32;
+    const unsigned int     n_q_points = shape_info.n_q_points;
+    constexpr unsigned int n_lanes    = VectorizedArray<number>::size();
+
+    const auto   &mapping_data = matrix_free.get_mapping_info().cell_data[0];
+    const number *quadrature_weights =
+      mapping_data.descriptor[0].quadrature_weights.data();
+
+    scratch_data->resize_fast(
+      batch_size * (dim * q_block_size_effective + 2 * dofs_per_cell));
+    VectorizedArray<number> *values_dofs_in = scratch_data->begin();
+    VectorizedArray<number> *values_dofs_out =
+      scratch_data->begin() + batch_size * dofs_per_cell;
+    VectorizedArray<number> *gradients_quad =
+      scratch_data->begin() + 2 * batch_size * dofs_per_cell;
+
+    const number *src_ptr = src.begin();
+
+    for (unsigned int cell = range.first; cell < range.second;
+         cell += batch_size)
+      {
+        // read dof values
+        const unsigned int my_batch_size =
+          cell + batch_size <= range.second ? batch_size : range.second - cell;
+
+        std::fill(values_dofs_out,
+                  values_dofs_out + dofs_per_cell * batch_size,
+                  VectorizedArray<number>(0));
+
+        const unsigned int *dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  {
+                    values_dofs_in[batch * dofs_per_cell + i] = {};
+                    for (unsigned int v = 0; v < n_lanes; ++v)
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        values_dofs_in[batch * dofs_per_cell + i][v] =
+                          src_ptr[dof_indices[v]];
+                  }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  values_dofs_in[batch * dofs_per_cell + i] = {};
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    values_dofs_in[batch * dofs_per_cell + i][v] =
+                      src_ptr[dof_indices[v]];
+                }
+          }
+
+        // block over quadrature size
+        const number *shape_block = shape_gradients_transpose.data();
+        // shape_info.data[0].shape_gradients.data();
+        for (unsigned int q_begin = 0; q_begin < n_q_points;
+             q_begin += q_block_size_effective)
+          {
+            const unsigned int n_q_block =
+              std::min(static_cast<unsigned int>(q_block_size_effective),
+                       n_q_points - q_begin);
+
+            const unsigned int n_block_columns = n_q_block * dim;
+
+            // interpolate
+            if (n_q_block == q_block_size_effective)
+              apply_matrix_vector_product_templated<
+                false,
+                false,
+                q_block_size_effective * dim,
+                dofs_per_cell>(shape_block, values_dofs_in, gradients_quad);
+            else
+              apply_matrix_vector_product<false, false>(shape_block,
+                                                        values_dofs_in,
+                                                        gradients_quad,
+                                                        n_block_columns,
+                                                        dofs_per_cell);
+
+            // quadrature point operation
+            for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+              {
+                const unsigned int offsets =
+                  mapping_data.data_index_offsets[cell + batch];
+                const Tensor<2, dim, VectorizedArray<number>> *jac =
+                  mapping_data.jacobians[0].data() + offsets;
+                const VectorizedArray<number> *j_value =
+                  &mapping_data.JxW_values[offsets];
+                VectorizedArray<number> *grad_ptr =
+                  gradients_quad + batch * n_block_columns;
+                if (matrix_free.get_mapping_info().cell_type[cell + batch] <=
+                    internal::MatrixFreeFunctions::affine)
+                  {
+                    // const SymmetricTensor<2, dim, VectorizedArray<number>>
+                    //  my_metric = j_value[0] * symmetrize(transpose(jac[0]) *
+                    //  jac[0]);
+                    SymmetricTensor<2, dim, VectorizedArray<number>> my_metric;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      for (unsigned int f = d; f < dim; ++f)
+                        {
+                          VectorizedArray<number> sum =
+                            jac[0][0][d] * jac[0][0][f];
+                          for (unsigned int e = 1; e < dim; ++e)
+                            sum += jac[0][e][d] * jac[0][e][f];
+                          my_metric[d][f] = sum * j_value[0];
+                        }
+
+                    for (unsigned int q_local = 0; q_local < n_q_block;
+                         ++q_local, grad_ptr += dim)
+                      {
+                        Tensor<1, dim, VectorizedArray<number>> grad;
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad[d] = grad_ptr[d];
+                        Tensor<1, dim, VectorizedArray<number>> result =
+                          my_metric * grad;
+                        const number weight =
+                          quadrature_weights[q_begin + q_local];
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad_ptr[d] = weight * result[d];
+                      }
+                  }
+                else
+                  {
+                    DEAL_II_NOT_IMPLEMENTED();
+                    for (unsigned int q = 0; q < n_q_points;
+                         ++q, grad_ptr += dim)
+                      {
+                        Tensor<1, dim, VectorizedArray<number>> grad;
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad[d] = grad_ptr[d];
+                        Tensor<1, dim, VectorizedArray<number>> result =
+                          j_value[q] * (transpose(jac[q]) * (jac[q] * grad));
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad_ptr[d] = result[d];
+                      }
+                  }
+              }
+
+            // integrate
+            // apply_matrix_vector_product<true, true>(shape_block,
+            //                                         gradients_quad,
+            //                                         values_dofs_out,
+            //                                         n_block_columns,
+            //                                         dofs_per_cell);
+            if (n_q_block == q_block_size_effective)
+              apply_matrix_vector_product_templated<false,
+                                                    true,
+                                                    dofs_per_cell,
+                                                    q_block_size_effective *
+                                                      dim>(
+                shape_gradients_packed.begin() + q_begin * dim * dofs_per_cell,
+                gradients_quad,
+                values_dofs_out);
+            else
+              apply_matrix_vector_product<false, true>(
+                shape_gradients_packed.begin() + q_begin * dim * dofs_per_cell,
+                gradients_quad,
+                values_dofs_out,
+                dofs_per_cell,
+                n_block_columns);
+
+
+            // advance shape block
+            shape_block += n_block_columns * dofs_per_cell;
+          }
+
+        // distribute local to global
+        dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  {
+                    for (unsigned int v = 0; v < n_lanes; ++v)
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        dst.local_element(dof_indices[v]) +=
+                          values_dofs_out[batch * dofs_per_cell + i][v];
+                  }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    dst.local_element(dof_indices[v]) +=
+                      values_dofs_out[batch * dofs_per_cell + i][v];
+                }
+          }
+      }
+
+    matrix_free.release_scratch_data(scratch_data);
+  }
+
+
+
+  void do_cell_integral_dgemm_non_opt(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    AlignedVector<VectorizedArray<number>> *scratch_data =
+      matrix_free.acquire_scratch_data();
+    const internal::MatrixFreeFunctions::ShapeInfo<number> &shape_info =
+      matrix_free.get_shape_info();
+    const unsigned int dofs_per_cell = shape_info.dofs_per_component_on_cell;
+    // constexpr unsigned int batch_size_dgemm = 16;
+    const unsigned int     n_q_points = shape_info.n_q_points;
+    constexpr unsigned int n_lanes    = VectorizedArray<number>::size();
+
+    const auto   &mapping_data = matrix_free.get_mapping_info().cell_data[0];
+    const number *quadrature_weights =
+      mapping_data.descriptor[0].quadrature_weights.data();
+
+    scratch_data->resize_fast(batch_size_dgemm *
+                              (dim * n_q_points + dofs_per_cell));
+    number *values_dofs = &((scratch_data->begin())[0][0]);
+    number *gradients_quad =
+      &((scratch_data->begin() + batch_size_dgemm * dofs_per_cell)[0][0]);
+
+    const number            *src_ptr = src.begin();
+    VectorizedArray<number> *grad_ptr =
+      reinterpret_cast<VectorizedArray<number> *>(gradients_quad);
+
+    const Number          alpha = 1.;
+    const Number          beta  = 0.;
+    const types::blas_int m     = static_cast<types::blas_int>(dofs_per_cell);
+    const types::blas_int n = static_cast<types::blas_int>(n_q_points * dim);
+
+    for (unsigned int cell = range.first; cell < range.second;
+         cell += batch_size_dgemm)
+      {
+        // TODO: use remainder loop for last batch
+        // read dof values
+        const unsigned int my_batch_size =
+          cell + batch_size_dgemm <= range.second ? batch_size_dgemm :
+                                                    range.second - cell;
+        const unsigned int current_batch_size = my_batch_size * n_lanes;
+
+        const unsigned int *dof_indices = &manual_dof_indices(cell, 0);
+
+        std::fill(values_dofs,
+                  values_dofs + dofs_per_cell * current_batch_size,
+                  number(0));
+
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    {
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        values_dofs[i * current_batch_size + batch * n_lanes +
+                                    v] = src_ptr[dof_indices[v]];
+                    }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    values_dofs[i * current_batch_size + batch * n_lanes + v] =
+                      src_ptr[dof_indices[v]];
+                }
+          }
+
+        // interpolate
+        const types::blas_int k =
+          static_cast<types::blas_int>(current_batch_size);
+        // Use the BLAS function gemm for calculating the matrix-matrix
+        // product.
+        gemm("n",
+             "n",
+             &k,
+             &n,
+             &m,
+             &alpha,
+             values_dofs,
+             &k,
+             shape_gradients_transpose.data(),
+             &m,
+             &beta,
+             gradients_quad,
+             &k);
+
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            const unsigned int offsets =
+              mapping_data.data_index_offsets[cell + batch];
+            const Tensor<2, dim, VectorizedArray<number>> *jac =
+              mapping_data.jacobians[0].data() + offsets;
+            const VectorizedArray<number> *j_value =
+              &mapping_data.JxW_values[offsets];
+
+
+            if (matrix_free.get_mapping_info().cell_type[cell + batch] <=
+                internal::MatrixFreeFunctions::affine)
+              {
+                SymmetricTensor<2, dim, VectorizedArray<number>> my_metric;
+                for (unsigned int d = 0; d < dim; ++d)
+                  for (unsigned int f = d; f < dim; ++f)
+                    {
+                      VectorizedArray<number> sum = jac[0][0][d] * jac[0][0][f];
+                      for (unsigned int e = 1; e < dim; ++e)
+                        sum += jac[0][e][d] * jac[0][e][f];
+                      my_metric[d][f] = sum * j_value[0];
+                    }
+
+                for (unsigned int q = 0; q < n_q_points; ++q)
+                  {
+                    Tensor<1, dim, VectorizedArray<number>> grad;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad[d] = grad_ptr[(q * dim + d) * my_batch_size + batch];
+
+
+                    Tensor<1, dim, VectorizedArray<number>> result =
+                      my_metric * grad;
+                    const number weight = quadrature_weights[q];
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad_ptr[(q * dim + d) * my_batch_size + batch] =
+                        weight * result[d];
+                  }
+              }
+            else
+              {
+                // TODO: this is wrong
+                DEAL_II_NOT_IMPLEMENTED();
+                for (unsigned int q = 0; q < n_q_points; ++q, grad_ptr += dim)
+                  {
+                    Tensor<1, dim, VectorizedArray<number>> grad;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad[d] = grad_ptr[d];
+                    Tensor<1, dim, VectorizedArray<number>> result =
+                      j_value[q] * (transpose(jac[q]) * (jac[q] * grad));
+                    for (unsigned int d = 0; d < dim; ++d)
+                      grad_ptr[d] = result[d];
+                  }
+              }
+          }
+
+        // integrate
+        gemm("n",
+             "t",
+             &k,
+             &m,
+             &n,
+             &alpha,
+             gradients_quad,
+             &k,
+             shape_gradients_transpose.data(),
+             &m,
+             &beta,
+             values_dofs,
+             &k);
+
+        // distribute local to global
+        dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    {
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        dst.local_element(dof_indices[v]) +=
+                          values_dofs[i * current_batch_size + batch * n_lanes +
+                                      v];
+                    }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    dst.local_element(dof_indices[v]) +=
+                      values_dofs[i * current_batch_size + batch * n_lanes + v];
+                }
+          }
+      }
+
+    matrix_free.release_scratch_data(scratch_data);
+  }
+
+
+  // DGEMM with quadrature blocking
+  void do_cell_integral_dgemm(
+    const MatrixFree<dim, number>               &matrix_free,
+    VectorType                                  &dst,
+    const VectorType                            &src,
+    const std::pair<unsigned int, unsigned int> &range) const
+  {
+    AlignedVector<VectorizedArray<number>> *scratch_data =
+      matrix_free.acquire_scratch_data();
+    const internal::MatrixFreeFunctions::ShapeInfo<number> &shape_info =
+      matrix_free.get_shape_info();
+    const unsigned int dofs_per_cell = shape_info.dofs_per_component_on_cell;
+    // constexpr unsigned int batch_size_dgemm   = 16;
+    // constexpr unsigned int q_block_size_dgemm = 16;
+    const unsigned int     n_q_points = shape_info.n_q_points;
+    constexpr unsigned int n_lanes    = VectorizedArray<number>::size();
+
+    const auto   &mapping_data = matrix_free.get_mapping_info().cell_data[0];
+    const number *quadrature_weights =
+      mapping_data.descriptor[0].quadrature_weights.data();
+
+
+    Assert((matrix_free.get_mapping_info().cell_type[range.first] <=
+            internal::MatrixFreeFunctions::affine),
+           ExcInternalError());
+    // TODO: this should be checked for all cells
+
+    scratch_data->resize_fast(batch_size_dgemm *
+                              (dim * q_block_size_dgemm + 2 * dofs_per_cell));
+    number *values_dofs_input = &((scratch_data->begin())[0][0]);
+    number *values_dofs_output =
+      &((scratch_data->begin() + batch_size_dgemm * dofs_per_cell)[0][0]);
+    number *gradients_quad =
+      &((scratch_data->begin() + 2 * batch_size_dgemm * dofs_per_cell)[0][0]);
+
+    const number            *src_ptr = src.begin();
+    VectorizedArray<number> *grad_ptr =
+      reinterpret_cast<VectorizedArray<number> *>(gradients_quad);
+
+    const Number          alpha = 1.;
+    const Number          beta  = 0.;
+    const types::blas_int m     = static_cast<types::blas_int>(dofs_per_cell);
+
+    for (unsigned int cell = range.first; cell < range.second;
+         cell += batch_size_dgemm)
+      {
+        // TODO: use remainder loop for last batch
+        // read dof values
+        const unsigned int my_batch_size =
+          cell + batch_size_dgemm <= range.second ? batch_size_dgemm :
+                                                    range.second - cell;
+        const unsigned int    current_batch_size = my_batch_size * n_lanes;
+        const types::blas_int k =
+          static_cast<types::blas_int>(current_batch_size);
+
+        const unsigned int *dof_indices = &manual_dof_indices(cell, 0);
+        std::fill(values_dofs_input,
+                  values_dofs_input + dofs_per_cell * current_batch_size,
+                  number(0));
+        std::fill(values_dofs_output,
+                  values_dofs_output + dofs_per_cell * current_batch_size,
+                  number(0));
+
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    {
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        values_dofs_input[i * current_batch_size +
+                                          batch * n_lanes + v] =
+                          src_ptr[dof_indices[v]];
+                    }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    values_dofs_input[i * current_batch_size + batch * n_lanes +
+                                      v] = src_ptr[dof_indices[v]];
+                }
+          }
+
+        // block over quadrature points
+        const number *shape_block = shape_gradients_transpose.data();
+        for (unsigned int q_begin = 0; q_begin < n_q_points;
+             q_begin += q_block_size_dgemm)
+          {
+            const unsigned int n_q_block =
+              std::min(static_cast<unsigned int>(q_block_size_dgemm),
+                       n_q_points - q_begin);
+
+            const types::blas_int n =
+              static_cast<types::blas_int>(n_q_block * dim);
+
+            // interpolate
+            // Use the BLAS function gemm for calculating the matrix-matrix
+            // product.
+            gemm("n",
+                 "n",
+                 &k,
+                 &n,
+                 &m,
+                 &alpha,
+                 values_dofs_input,
+                 &k,
+                 shape_block,
+                 &m,
+                 &beta,
+                 gradients_quad,
+                 &k);
+
+
+            for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+              {
+                const unsigned int offsets =
+                  mapping_data.data_index_offsets[cell + batch];
+                const Tensor<2, dim, VectorizedArray<number>> *jac =
+                  mapping_data.jacobians[0].data() + offsets;
+                const VectorizedArray<number> *j_value =
+                  &mapping_data.JxW_values[offsets];
+
+                if (matrix_free.get_mapping_info().cell_type[cell + batch] <=
+                    internal::MatrixFreeFunctions::affine)
+                  {
+                    SymmetricTensor<2, dim, VectorizedArray<number>> my_metric;
+                    for (unsigned int d = 0; d < dim; ++d)
+                      for (unsigned int f = d; f < dim; ++f)
+                        {
+                          VectorizedArray<number> sum =
+                            jac[0][0][d] * jac[0][0][f];
+                          for (unsigned int e = 1; e < dim; ++e)
+                            sum += jac[0][e][d] * jac[0][e][f];
+                          my_metric[d][f] = sum * j_value[0];
+                        }
+
+                    for (unsigned int q_local = 0; q_local < n_q_block;
+                         ++q_local)
+                      {
+                        const unsigned int q = q_local + q_begin;
+                        Tensor<1, dim, VectorizedArray<number>> grad;
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad[d] =
+                            grad_ptr[(q_local * dim + d) * my_batch_size +
+                                     batch];
+
+                        Tensor<1, dim, VectorizedArray<number>> result =
+                          my_metric * grad;
+                        const number weight = quadrature_weights[q];
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad_ptr[(q_local * dim + d) * my_batch_size +
+                                   batch] = weight * result[d];
+                      }
+                  }
+                else
+                  {
+                    // TODO: this is wrong
+                    DEAL_II_NOT_IMPLEMENTED();
+                    for (unsigned int q = 0; q < n_q_points;
+                         ++q, grad_ptr += dim)
+                      {
+                        Tensor<1, dim, VectorizedArray<number>> grad;
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad[d] = grad_ptr[d];
+                        Tensor<1, dim, VectorizedArray<number>> result =
+                          j_value[q] * (transpose(jac[q]) * (jac[q] * grad));
+                        for (unsigned int d = 0; d < dim; ++d)
+                          grad_ptr[d] = result[d];
+                      }
+                  }
+              }
+
+            // integrate
+            gemm("n",
+                 "t",
+                 &k,
+                 &m,
+                 &n,
+                 &alpha,
+                 gradients_quad,
+                 &k,
+                 shape_block,
+                 &m,
+                 &alpha,
+                 values_dofs_output,
+                 &k);
+
+            // advance shape_block
+            shape_block += dim * dofs_per_cell * n_q_block;
+          }
+
+        // distribute local to global
+        dof_indices = &manual_dof_indices(cell, 0);
+        for (unsigned int batch = 0; batch < my_batch_size; ++batch)
+          {
+            if (dof_indices_have_constraints[cell + batch])
+              {
+                for (unsigned int i = 0; i < dofs_per_cell;
+                     ++i, dof_indices += n_lanes)
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    {
+                      if (dof_indices[v] != numbers::invalid_unsigned_int)
+                        dst.local_element(dof_indices[v]) +=
+                          values_dofs_output[i * current_batch_size +
+                                             batch * n_lanes + v];
+                    }
+              }
+            else
+              for (unsigned int i = 0; i < dofs_per_cell;
+                   ++i, dof_indices += n_lanes)
+                {
+                  for (unsigned int v = 0; v < n_lanes; ++v)
+                    dst.local_element(dof_indices[v]) +=
+                      values_dofs_output[i * current_batch_size +
+                                         batch * n_lanes + v];
+                }
+          }
+      }
+
+    matrix_free.release_scratch_data(scratch_data);
+  }
+
+  MatrixFree<dim, number> matrix_free;
+
+  AffineConstraints<number> constraints;
+
+  std::vector<unsigned int> constrained_indices;
+
+  Table<2, unsigned int> manual_dof_indices;
+
+  std::vector<unsigned char> dof_indices_have_constraints;
+
+  AlignedVector<number> shape_gradients_transpose;
+
+  AlignedVector<number> shape_gradients_packed;
+};
+
+
+
+template <int dim,
+          int fe_degree,
+          int q_block_size,
+          int batch_size_dgemm,
+          int q_block_size_dgemm,
+          typename Number>
+void do_test(const unsigned int n_cycles_max)
 {
-  try
-    {
-      Step12::AdvectionProblem<2> dgmethod;
-      dgmethod.run();
-    }
-  catch (std::exception &exc)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Exception on processing: " << std::endl
-                << exc.what() << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      return 1;
-    }
-  catch (...)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Unknown exception!" << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      return 1;
-    }
+  ConditionalOStream pcout(std::cout,
+                           Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) ==
+                             0);
+  pcout
+    << "Running in " << dim << "D with degree " << fe_degree
+    << " on tet elements with q_block_size, batch_size_dgemm, q_block_size_dgemm: "
+    << q_block_size << ", " << batch_size_dgemm << ", " << q_block_size_dgemm
+    << std::endl;
 
-  return 0;
+  FE_SimplexP<dim>          mapping_fe_simplex(1, true);
+  MappingFE<dim>            mapping(mapping_fe_simplex);
+  QGaussSimplex<dim>        quad(fe_degree + 1);
+  AffineConstraints<double> constraint;
+
+  for (unsigned int cycle = 1; cycle < n_cycles_max; ++cycle)
+    {
+      const auto serial_grid_generator =
+        [&cycle](dealii::Triangulation<dim, dim> &tria_serial) {
+          // set up triangulation
+          GridGenerator::subdivided_hyper_cube_with_simplices(tria_serial, 2);
+          if (cycle > 0)
+            tria_serial.refine_global(cycle);
+        };
+      const auto serial_grid_partitioner =
+        [&](dealii::Triangulation<dim, dim> &tria_serial,
+            const MPI_Comm                   comm,
+            const unsigned int) {
+          dealii::GridTools::partition_triangulation(
+            dealii::Utilities::MPI::n_mpi_processes(comm), tria_serial);
+        };
+
+      const unsigned int group_size = 20;
+
+      parallel::fullydistributed::Triangulation<dim> tria(MPI_COMM_WORLD);
+      typename dealii::TriangulationDescription::Settings
+                 triangulation_description_setting =
+                   dealii::TriangulationDescription::default_setting;
+      const auto description = dealii::TriangulationDescription::Utilities::
+        create_description_from_triangulation_in_groups<dim, dim>(
+          serial_grid_generator,
+          serial_grid_partitioner,
+          tria.get_mpi_communicator(),
+          group_size,
+          dealii::Triangulation<dim>::none,
+          triangulation_description_setting);
+
+      tria.create_triangulation(description);
+      pcout << "Cycle " << cycle << " set up triangulation" << std::endl;
+
+      DoFHandler<dim>  dof_handler(tria);
+      FE_SimplexP<dim> fe(fe_degree, false);
+
+      pcout << "reinit triangulation done...";
+      dof_handler.distribute_dofs(fe);
+      pcout << " distributed dofs" << std::endl;
+
+      // set up constraints, then renumber dofs, and set up constraints
+      // again
+      if (true)
+        {
+          const IndexSet locally_relevant_dofs =
+            DoFTools::extract_locally_relevant_dofs(dof_handler);
+          constraint.reinit(dof_handler.locally_owned_dofs(),
+                            locally_relevant_dofs);
+          VectorTools::interpolate_boundary_values(
+            mapping,
+            dof_handler,
+            0,
+            Functions::ZeroFunction<dim>(),
+            constraint);
+          constraint.close();
+          typename MatrixFree<dim, Number>::AdditionalData data;
+          DoFRenumbering::matrix_free_data_locality(dof_handler,
+                                                    constraint,
+                                                    data);
+        }
+      const IndexSet locally_relevant_dofs =
+        DoFTools::extract_locally_relevant_dofs(dof_handler);
+      constraint.reinit(dof_handler.locally_owned_dofs(),
+                        locally_relevant_dofs);
+      VectorTools::interpolate_boundary_values(
+        mapping, dof_handler, 0, Functions::ZeroFunction<dim>(), constraint);
+      constraint.close();
+
+
+
+      pcout << "Set up operator of degree " << fe_degree << std::endl;
+      Operator<dim,
+               fe_degree,
+               q_block_size,
+               batch_size_dgemm,
+               q_block_size_dgemm,
+               1,
+               Number>
+        op;
+      // set up operator
+      op.reinit(mapping,
+                dof_handler,
+                quad,
+                constraint,
+                numbers::invalid_unsigned_int,
+                false);
+
+      LinearAlgebra::distributed::Vector<Number> vec1, vec2, vec3, vec4;
+      op.initialize_dof_vector(vec1);
+      op.initialize_dof_vector(vec2);
+      op.initialize_dof_vector(vec3);
+      op.initialize_dof_vector(vec4);
+      for (Number &a : vec1)
+        a = static_cast<double>(rand()) / RAND_MAX;
+
+      for (unsigned int r = 0; r < 1; ++r)
+        {
+          Timer time;
+          for (unsigned int t = 0; t < 10; ++t)
+            op.vmult(vec2, vec1);
+          const double run_time = time.wall_time();
+          pcout << "n_dofs mf basic  " << dof_handler.n_dofs() << "  time "
+                << run_time / 10 << "  GDoFs/s "
+                << 1e-9 * dof_handler.n_dofs() * 10 / run_time << std::endl;
+        }
+      for (unsigned int r = 0; r < 5; ++r)
+        {
+          Timer time;
+#ifdef LIKWID_PERFMON
+          LIKWID_MARKER_START(("matvec_masked_gather_p" +
+                               std::to_string(fe_degree) + "_s" +
+                               std::to_string(dof_handler.n_dofs()))
+                                .c_str());
+#endif
+          for (unsigned int t = 0; t < 100; ++t)
+            op.vmult_masked_gather(vec3, vec1);
+#ifdef LIKWID_PERFMON
+          LIKWID_MARKER_STOP(("matvec_masked_gather_p" +
+                              std::to_string(fe_degree) + "_s" +
+                              std::to_string(dof_handler.n_dofs()))
+                               .c_str());
+#endif
+          const double run_time = time.wall_time();
+          pcout << "n_dofs mf mk gthr " << dof_handler.n_dofs() << " time "
+                << run_time / 100 << "  GDoFs/s "
+                << 1e-9 * dof_handler.n_dofs() * 100 / run_time << std::endl;
+        }
+      if (false)
+        for (unsigned int r = 0; r < 5; ++r)
+          {
+            Timer time;
+#ifdef LIKWID_PERFMON
+            LIKWID_MARKER_START(("matvec_dgemm_p" + std::to_string(fe_degree) +
+                                 "_s" + std::to_string(dof_handler.n_dofs()))
+                                  .c_str());
+#endif
+            for (unsigned int t = 0; t < 100; ++t)
+              op.vmult_dgemm(vec4, vec1);
+#ifdef LIKWID_PERFMON
+            LIKWID_MARKER_STOP(("matvec_dgemm_p" + std::to_string(fe_degree) +
+                                "_s" + std::to_string(dof_handler.n_dofs()))
+                                 .c_str());
+#endif
+            const double run_time = time.wall_time();
+            pcout << "n_dofs mf dgemm " << dof_handler.n_dofs() << "  time "
+                  << run_time / 100 << "  GDoFs/s "
+                  << 1e-9 * dof_handler.n_dofs() * 100 / run_time << std::endl;
+          }
+      pcout << std::endl;
+
+      vec3 -= vec2;
+      // vec4 -= vec2;
+
+      pcout << "   Error MF variants: " << vec3.l2_norm() / vec2.l2_norm()
+            << std::endl;
+      //   << " " << vec4.l2_norm() / vec2.l2_norm() << std::endl;
+      pcout << std::endl << std::endl;
+    }
+  pcout << std::endl;
+  pcout << std::endl;
+}
+
+
+int main(int argc, char **argv)
+{
+  constexpr int dim                = 3;
+  constexpr int q_block_size       = 8;
+  constexpr int batch_size_dgemm   = 16;
+  constexpr int q_block_size_dgemm = 16;
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_INIT;
+  LIKWID_MARKER_THREADINIT;
+#endif
+  Utilities::MPI::MPI_InitFinalize mpi(argc, argv, 1);
+
+  int min_degree   = 1;
+  int max_degree   = 7;
+  int n_cycles_max = 7;
+  if (argc > 1)
+    min_degree = std::atoi(argv[1]);
+  if (argc > 2)
+    max_degree = std::atoi(argv[2]);
+  if (argc > 3)
+    n_cycles_max = std::atoi(argv[3]);
+
+  if (min_degree == 1)
+    do_test<dim, 1, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 2 && 2 <= max_degree)
+    do_test<dim, 2, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 3 && 3 <= max_degree)
+    do_test<dim, 3, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 4 && 4 <= max_degree)
+    do_test<dim, 4, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 5 && 5 <= max_degree)
+    do_test<dim, 5, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 6 && 6 <= max_degree)
+    do_test<dim, 6, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 7 && 7 <= max_degree)
+    do_test<dim, 7, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 8 && 8 <= max_degree)
+    do_test<dim, 8, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 9 && 9 <= max_degree)
+    do_test<dim, 9, q_block_size, batch_size_dgemm, q_block_size_dgemm, double>(
+      n_cycles_max);
+  if (min_degree <= 10 && 10 <= max_degree)
+    do_test<dim,
+            10,
+            q_block_size,
+            batch_size_dgemm,
+            q_block_size_dgemm,
+            double>(n_cycles_max);
+
+
+
+#ifdef LIKWID_PERFMON
+  LIKWID_MARKER_CLOSE;
+#endif
 }

@@ -718,7 +718,6 @@ void do_test(const unsigned int min_degree,
             }
 
             tria_serial.create_triangulation(vertices, cells, SubCellData());
-            tria_serial.refine_global(1);
 
             // std::ofstream out("grid-mixed.vtk");
             // GridOut       grid_out;
