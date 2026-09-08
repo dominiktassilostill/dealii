@@ -2339,9 +2339,9 @@ QStroudSimplex<dim>::QStroudSimplex(const unsigned int n_points_1D)
       const std::vector<long double> points_z =
         Polynomials::jacobi_polynomial_roots<long double>(n_points_1D, 2, 0);
 
-      for (unsigned int i = 0; i < n_points_1D; ++i)
+      for (unsigned int k = 0; k < n_points_1D; ++k)
         for (unsigned int j = 0; j < n_points_1D; ++j)
-          for (unsigned int k = 0; k < n_points_1D; ++k)
+          for (unsigned int i = 0; i < n_points_1D; ++i)
             {
               // rescale y according to y = nu * (1 - z)
               const double y = points_y[j] * (1.0 - points_z[k]);

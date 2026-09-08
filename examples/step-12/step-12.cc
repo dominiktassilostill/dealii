@@ -865,7 +865,7 @@ public:
     typename MatrixFree<dim, number>::AdditionalData data;
     data.mapping_update_flags = update_values | update_gradients |
                                 update_JxW_values | update_quadrature_points;
-    data.mg_level             = mg_level;
+    data.mg_level = mg_level;
 
     matrix_free.reinit(mapping, dof_handler, constraints, quad, data);
     if (Utilities::MPI::this_mpi_process(MPI_COMM_WORLD) == 0)
@@ -2170,8 +2170,8 @@ void do_test(const unsigned int n_cycles_max)
 
       parallel::fullydistributed::Triangulation<dim> tria(MPI_COMM_WORLD);
       typename dealii::TriangulationDescription::Settings
-                 triangulation_description_setting =
-                   dealii::TriangulationDescription::default_setting;
+        triangulation_description_setting =
+          dealii::TriangulationDescription::default_setting;
       const auto description = dealii::TriangulationDescription::Utilities::
         create_description_from_triangulation_in_groups<dim, dim>(
           serial_grid_generator,
