@@ -587,7 +587,7 @@ FE_SimplexPoly<dim, spacedim>::FE_SimplexPoly(
   const FiniteElementData<dim>                  &fe_data,
   const bool                                     prolongation_is_additive,
   const std::vector<Point<dim>>                 &unit_support_points,
-  const std::vector<std::vector<Point<dim - 1>>> unit_face_support_points,
+  const std::vector<std::vector<Point<dim - 1>>> unit_face_support_points_in,
   const FullMatrix<double>                      &interface_constraints)
   : dealii::FE_Poly<dim, spacedim>(
       polynomials,
@@ -596,9 +596,16 @@ FE_SimplexPoly<dim, spacedim>::FE_SimplexPoly(
       std::vector<ComponentMask>(fe_data.dofs_per_cell,
                                  ComponentMask(std::vector<bool>(1, true))))
 {
-  this->unit_support_points      = unit_support_points;
-  this->unit_face_support_points = unit_face_support_points;
-  this->interface_constraints    = interface_constraints;
+  this->unit_support_points = unit_support_points;
+  if (unit_face_support_points_in.empty())
+    {
+      this->unit_face_support_points.resize(1);
+      this->unit_face_support_points[0].clear();
+      // this->unit_face_support_points.clear();
+    }
+  else
+    this->unit_face_support_points = unit_face_support_points_in;
+  this->interface_constraints = interface_constraints;
 }
 
 
