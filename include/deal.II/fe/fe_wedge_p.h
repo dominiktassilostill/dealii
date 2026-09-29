@@ -49,6 +49,43 @@ public:
   convert_generalized_support_point_values_to_dof_values(
     const std::vector<Vector<double>> &support_point_values,
     std::vector<double>               &nodal_values) const override;
+
+  /**
+   * @copydoc dealii::FiniteElement::get_prolongation_matrix()
+   *
+   * @note Only implemented for RefinementCase::isotropic_refinement.
+   */
+  virtual const FullMatrix<double> &
+  get_prolongation_matrix(
+    const unsigned int         child,
+    const RefinementCase<dim> &refinement_case =
+      RefinementCase<dim>::isotropic_refinement) const override;
+
+  /**
+   * @copydoc dealii::FiniteElement::get_restriction_matrix()
+   *
+   * @note Only implemented for RefinementCase::isotropic_refinement.
+   */
+  virtual const FullMatrix<double> &
+  get_restriction_matrix(
+    const unsigned int         child,
+    const RefinementCase<dim> &refinement_case =
+      RefinementCase<dim>::isotropic_refinement) const override;
+
+  /**
+   * Return a list of constant modes of the element. For this element, the
+   * list consists of true arguments for all components.
+   */
+  virtual std::pair<Table<2, bool>, std::vector<unsigned int>>
+  get_constant_modes() const override;
+
+protected:
+  /**
+   * Mutex variables used for protecting the initialization of restriction
+   * and embedding matrices.
+   */
+  mutable Threads::Mutex restriction_matrix_mutex;
+  mutable Threads::Mutex prolongation_matrix_mutex;
 };
 
 /**
@@ -167,6 +204,17 @@ public:
   std::vector<std::pair<unsigned int, unsigned int>>
   hp_quad_dof_identities(const FiniteElement<dim, spacedim> &fe_other,
                          const unsigned int face_no) const override;
+
+  /**
+   * @copydoc dealii::FiniteElement::get_restriction_matrix()
+   *
+   * @note Only implemented for RefinementCase::isotropic_refinement.
+   */
+  virtual const FullMatrix<double> &
+  get_restriction_matrix(
+    const unsigned int         child,
+    const RefinementCase<dim> &refinement_case =
+      RefinementCase<dim>::isotropic_refinement) const override;
 
   /**
    * @copydoc dealii::FiniteElement::clone()

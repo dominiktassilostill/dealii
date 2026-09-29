@@ -25,6 +25,8 @@
 #include <deal.II/fe/fe_tools.h>
 #include <deal.II/fe/fe_wedge_p.h>
 
+#include <deal.II/grid/grid_generator.h>
+
 DEAL_II_NAMESPACE_OPEN
 
 namespace
@@ -317,6 +319,169 @@ FE_WedgePoly<dim, spacedim>::
 
       nodal_values[i] = support_point_values[i](0);
     }
+}
+
+
+
+template <int dim, int spacedim>
+const FullMatrix<double> &
+FE_WedgePoly<dim, spacedim>::get_prolongation_matrix(
+  const unsigned int         child,
+  const RefinementCase<dim> &refinement_case) const
+{
+  Assert(refinement_case ==
+           RefinementCase<dim>(RefinementCase<dim>::isotropic_refinement),
+         ExcNotImplemented());
+  AssertDimension(dim, spacedim);
+
+  // initialization upon first request
+  if (this->prolongation[refinement_case - 1][child].n() == 0)
+    {
+      std::scoped_lock lock(prolongation_matrix_mutex);
+
+      // if matrix got updated while waiting for the lock
+      if (this->prolongation[refinement_case - 1][child].n() ==
+          this->n_dofs_per_cell())
+        return this->prolongation[refinement_case - 1][child];
+
+      // now do the work. need to get a non-const version of data in order to
+      // be able to modify them inside a const function
+      auto &this_nonconst = const_cast<FE_WedgePoly<dim, spacedim> &>(*this);
+
+      std::vector<std::vector<FullMatrix<double>>> isotropic_matrices(
+        RefinementCase<dim>::isotropic_refinement);
+      isotropic_matrices.back().resize(
+        this->reference_cell().n_children(RefinementCase<dim>(refinement_case)),
+        FullMatrix<double>(this->n_dofs_per_cell(), this->n_dofs_per_cell()));
+
+      FETools::compute_embedding_matrices(*this, isotropic_matrices, true);
+
+      this_nonconst.prolongation[refinement_case - 1] =
+        std::move(isotropic_matrices.back());
+    }
+
+  // finally return the matrix
+  return this->prolongation[refinement_case - 1][child];
+}
+
+
+
+template <int dim, int spacedim>
+const FullMatrix<double> &
+FE_WedgePoly<dim, spacedim>::get_restriction_matrix(
+  const unsigned int         child,
+  const RefinementCase<dim> &refinement_case) const
+{
+  Assert(refinement_case == RefinementCase<dim>::isotropic_refinement,
+         ExcNotImplemented());
+  AssertDimension(dim, spacedim);
+
+  // initialization upon first request
+  if (this->restriction[refinement_case - 1][child].n() == 0)
+    {
+      std::scoped_lock lock(restriction_matrix_mutex);
+
+      // if matrix got updated while waiting for the lock
+      if (this->restriction[refinement_case - 1][child].n() ==
+          this->n_dofs_per_cell())
+        return this->restriction[refinement_case - 1][child];
+
+      // get the restriction matrix
+      // Refine a unit cell. As the parent cell is a unit
+      // cell, the reference cell of the children equals the parent, i.e. they
+      // have the support points at the same locations. So we just have to check
+      // if a support point of the parent is one of the interpolation points of
+      // the child. If this is not the case we find the interpolation of the
+      // point.
+
+      const double       eps = 1e-12;
+      FullMatrix<double> restriction_mat(this->n_dofs_per_cell(),
+                                         this->n_dofs_per_cell());
+
+      // first get all support points on the reference cell
+      const std::vector<Point<dim>> unit_support_points =
+        this->get_unit_support_points();
+
+      // now create children on the reference cell
+      Triangulation<dim> tria;
+      GridGenerator::reference_cell(tria, this->reference_cell());
+      tria.begin_active()->set_refine_flag(
+        RefinementCase<dim>::isotropic_refinement);
+      tria.execute_coarsening_and_refinement();
+
+      const auto &child_cell = tria.begin(0)->child(child);
+
+      // iterate over all support points and transform them to the unit cell of
+      // the child
+      for (unsigned int i = 0; i < unit_support_points.size(); i++)
+        {
+          std::vector<Point<dim>>            transformed_point(1);
+          const std::vector<Point<spacedim>> unit_support_point = {
+            Point<spacedim>(unit_support_points[i][0],
+                            unit_support_points[i][1],
+                            unit_support_points[i][2])};
+          this->reference_cell()
+            .template get_default_linear_mapping<spacedim>()
+            .transform_points_real_to_unit_cell(
+              child_cell,
+              make_array_view(unit_support_point),
+              make_array_view(transformed_point));
+
+          // if point is inside the unit cell iterate over all shape functions
+          if (this->reference_cell().contains_point(transformed_point[0], eps))
+            for (unsigned int j = 0; j < this->n_dofs_per_cell(); j++)
+              restriction_mat[i][j] =
+                this->shape_value(j, transformed_point[0]);
+        }
+      if constexpr (running_in_debug_mode())
+        {
+          for (unsigned int i = 0; i < this->n_dofs_per_cell(); i++)
+            {
+              double sum = 0.;
+
+              for (unsigned int j = 0; j < this->n_dofs_per_cell(); j++)
+                sum += restriction_mat[i][j];
+
+              Assert(std::fabs(sum - 1) < eps || std::fabs(sum) < eps,
+                     ExcInternalError(
+                       "The entries in a row of the local "
+                       "restriction matrix do not add to zero or one. "
+                       "This typically indicates that the "
+                       "polynomial interpolation is "
+                       "ill-conditioned such that round-off "
+                       "prevents the sum to be one."));
+            }
+        }
+
+      // Remove small entries from the matrix
+      for (unsigned int i = 0; i < restriction_mat.m(); ++i)
+        for (unsigned int j = 0; j < restriction_mat.n(); ++j)
+          {
+            if (std::fabs(restriction_mat(i, j)) < eps)
+              restriction_mat(i, j) = 0.;
+            if (std::fabs(restriction_mat(i, j) - 1) < eps)
+              restriction_mat(i, j) = 1.;
+          }
+
+      const_cast<FullMatrix<double> &>(
+        this->restriction[refinement_case - 1][child]) =
+        std::move(restriction_mat);
+    }
+
+  // finally return the matrix
+  return this->restriction[refinement_case - 1][child];
+}
+
+
+
+template <int dim, int spacedim>
+std::pair<Table<2, bool>, std::vector<unsigned int>>
+FE_WedgePoly<dim, spacedim>::get_constant_modes() const
+{
+  Table<2, bool> constant_modes(1, this->n_dofs_per_cell());
+  constant_modes.fill(true);
+  return std::pair<Table<2, bool>, std::vector<unsigned int>>(
+    constant_modes, std::vector<unsigned int>(1, 0));
 }
 
 
@@ -690,6 +855,48 @@ FE_WedgeDGP<dim, spacedim>::hp_quad_dof_identities(
   const unsigned int) const
 {
   return {};
+}
+
+
+
+template <int dim, int spacedim>
+const FullMatrix<double> &
+FE_WedgeDGP<dim, spacedim>::get_restriction_matrix(
+  const unsigned int         child,
+  const RefinementCase<dim> &refinement_case) const
+{
+  Assert(refinement_case == RefinementCase<dim>::isotropic_refinement,
+         ExcNotImplemented());
+  AssertDimension(dim, spacedim);
+
+  // initialization upon first request
+  if (this->restriction[refinement_case - 1][child].n() == 0)
+    {
+      std::scoped_lock lock(this->restriction_matrix_mutex);
+
+      // if matrix got updated while waiting for the lock
+      if (this->restriction[refinement_case - 1][child].n() ==
+          this->n_dofs_per_cell())
+        return this->restriction[refinement_case - 1][child];
+
+      // now do the work. need to get a non-const version of data in order to
+      // be able to modify them inside a const function
+      auto &this_nonconst = const_cast<FE_WedgeDGP<dim, spacedim> &>(*this);
+
+      std::vector<std::vector<FullMatrix<double>>> isotropic_matrices(
+        RefinementCase<dim>::isotropic_refinement);
+      isotropic_matrices.back().resize(
+        this->reference_cell().n_children(RefinementCase<dim>(refinement_case)),
+        FullMatrix<double>(this->n_dofs_per_cell(), this->n_dofs_per_cell()));
+
+      FETools::compute_projection_matrices(*this, isotropic_matrices, true);
+
+      this_nonconst.restriction[refinement_case - 1] =
+        std::move(isotropic_matrices.back());
+    }
+
+  // finally return the matrix
+  return this->restriction[refinement_case - 1][child];
 }
 
 
