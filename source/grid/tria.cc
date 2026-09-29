@@ -6443,6 +6443,7 @@ namespace internal
           unsigned int needed_faces_single = 0;
           unsigned int needed_lines_pair   = 0;
           unsigned int needed_faces_pair   = 0;
+          bool         contains_pyramid    = false;
           for (int level_no = triangulation.levels.size() - 2; level_no >= 0;
                --level_no)
             {
@@ -6478,6 +6479,7 @@ namespace internal
                           // - 4 times 2 for the remaining tets
                           needed_lines_single += 4;
                           needed_faces_single += 13;
+                          contains_pyramid = true;
                           break;
 
                         case ReferenceCells::Wedge:
@@ -6548,6 +6550,16 @@ namespace internal
               // TODO: perhaps we can merge this with TriaLevel::allocate_end()
               next_level.cells.allocate_end(needed_cells, 0);
             }
+
+          if (contains_pyramid)
+            if (std::find(triangulation.reference_cells.begin(),
+                          triangulation.reference_cells.end(),
+                          ReferenceCells::Tetrahedron) ==
+                triangulation.reference_cells.end())
+              // Add it to start of vector to keep sorting intact.
+              triangulation.reference_cells.insert(
+                triangulation.reference_cells.begin(),
+                ReferenceCells::Tetrahedron);
 
           // now count the faces and lines which were flagged for
           // refinement
@@ -13730,8 +13742,8 @@ void Triangulation<dim, spacedim>::compute_line_to_adjacent_cells_map()
           this->n_active_cells(),
           (is_mixed_mesh() ?
              GeometryInfo<dim>::lines_per_cell : // err on the safe side: choose
-                                                 // the largest number of lines
-                                                 // per cell
+                                                   // the largest number of lines
+                                                   // per cell
                                                  get_reference_cells()[0]
                .n_lines()) // choose the right number of  lines per cell for the
                            // mesh type used

@@ -91,7 +91,9 @@ namespace parallel
       this->coarse_cell_index_to_coarse_cell_id_vector.clear();
 
       // check if no locally relevant coarse-grid cells have been provided
-      if (construction_data.coarse_cell_vertices.empty())
+      const bool no_local_cells =
+        construction_data.coarse_cell_vertices.empty();
+      if (no_local_cells)
         {
           // 1) create a dummy hypercube
           currently_processing_create_triangulation_for_internal_usage = true;
@@ -213,6 +215,21 @@ namespace parallel
 
       this->update_number_cache();
       this->update_cell_relations();
+
+      this->reference_cells.clear();
+      std::set<ReferenceCell<dim>> ref_cells;
+
+      if (!no_local_cells)
+        for (const auto &cell : this->cell_iterators())
+          if (cell->is_active())
+            ref_cells.insert(cell->reference_cell());
+
+      for (const auto &r : ref_cells)
+        this->reference_cells.push_back(r);
+
+      this->reference_cells =
+        dealii::Utilities::MPI::compute_set_union(this->reference_cells,
+                                                  this->mpi_communicator);
     }
 
 
