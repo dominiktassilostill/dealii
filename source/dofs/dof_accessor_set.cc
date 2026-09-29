@@ -245,11 +245,51 @@ namespace internal
 
         for (unsigned int child = 0; child < cell.n_children(); ++child)
           {
+            types::fe_index child_fe_index = fe_index;
+            if (cell.reference_cell() == ReferenceCells::Pyramid &&
+                cell.child(child)->reference_cell() ==
+                  ReferenceCells::Tetrahedron)
+              {
+                // go over all leaves and check if they have the same fe index
+                auto recurively_check_leaves =
+                  [](auto &&self, const auto &cell) -> types::fe_index {
+                  if (cell->is_active())
+                    {
+                      Assert(cell->n_active_fe_indices() == 1,
+                             ExcInternalError());
+                      return cell->active_fe_index();
+                    }
+
+                  Assert(cell->has_children(), ExcInternalError());
+                  // check all children, compare the fe index to the first
+                  // child
+                  const types::fe_index fe_index_of_first_child =
+                    self(self, cell->child(0));
+
+                  for (unsigned int child = 1; child < cell->n_children();
+                       ++child)
+                    Assert(self(self, cell->child(child)) ==
+                             fe_index_of_first_child,
+                           ExcInternalError());
+
+                  return fe_index_of_first_child;
+                };
+
+                child_fe_index =
+                  recurively_check_leaves(recurively_check_leaves,
+                                          cell.child(child));
+
+                tmp.grow_or_shrink(cell.get_dof_handler()
+                                     .get_fe(child_fe_index)
+                                     .n_dofs_per_cell());
+              }
             if (tmp.size() > 0)
               fe.get_prolongation_matrix(child, cell.refinement_case())
                 .vmult(tmp, local_values);
             process_by_interpolation(
-              *cell.child(child), tmp, values, fe_index, processor);
+              *cell.child(child), tmp, values, child_fe_index, processor);
+
+            tmp.grow_or_shrink(dofs_per_cell);
           }
       }
   }

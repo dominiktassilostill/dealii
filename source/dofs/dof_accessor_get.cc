@@ -153,6 +153,7 @@ DoFCellAccessor<dim, spacedim, lda>::get_interpolated_dof_values(
                     interpolated_values.end(),
                     Number(0.0));
 
+          bool size_of_tmp1_changed = false;
           // later on we will have to push the values interpolated from the
           // child to the mother cell into the output vector. unfortunately,
           // there are two types of elements: ones where you add up the
@@ -184,9 +185,56 @@ DoFCellAccessor<dim, spacedim, lda>::get_interpolated_dof_values(
               // interpolation itself either from its own children or
               // by interpolating from the finite element on an active
               // child to the finite element space requested here
-              this->child(child)->get_interpolated_dof_values(values,
-                                                              tmp1,
-                                                              fe_index);
+
+              // the special case is if we are on a pyramid and the children
+              // cells are tet, then we need to find the correct fe index of the
+              // tetrahedral children
+              if (this->reference_cell() == ReferenceCells::Pyramid &&
+                  this->child(child)->reference_cell() ==
+                    ReferenceCells::Tetrahedron)
+                {
+                  // go over all leaves and check if they have the same fe index
+                  auto recurively_check_leaves =
+                    [](auto &&self, const auto &cell) -> types::fe_index {
+                    if (cell->is_active())
+                      {
+                        Assert(cell->n_active_fe_indices() == 1,
+                               ExcInternalError());
+                        return cell->active_fe_index();
+                      }
+
+                    Assert(cell->has_children(), ExcInternalError());
+                    // check all children, compare the fe index to the first
+                    // child
+                    const types::fe_index fe_index_of_first_child =
+                      self(self, cell->child(0));
+
+                    for (unsigned int child = 1; child < cell->n_children();
+                         ++child)
+                      Assert(self(self, cell->child(child)) ==
+                               fe_index_of_first_child,
+                             ExcInternalError());
+
+                    return fe_index_of_first_child;
+                  };
+
+                  const types::fe_index tet_index =
+                    recurively_check_leaves(recurively_check_leaves,
+                                            this->child(child));
+
+                  tmp1.grow_or_shrink(this->get_dof_handler()
+                                        .get_fe(tet_index)
+                                        .n_dofs_per_cell());
+                  size_of_tmp1_changed = true;
+
+                  this->child(child)->get_interpolated_dof_values(values,
+                                                                  tmp1,
+                                                                  tet_index);
+                }
+              else
+                this->child(child)->get_interpolated_dof_values(values,
+                                                                tmp1,
+                                                                fe_index);
               // interpolate these to the mother cell
               fe.get_restriction_matrix(child, this->refinement_case())
                 .vmult(tmp2, tmp1);
@@ -197,6 +245,13 @@ DoFCellAccessor<dim, spacedim, lda>::get_interpolated_dof_values(
                   interpolated_values[i] += tmp2(i);
                 else if (tmp2(i) != Number())
                   interpolated_values[i] = tmp2(i);
+
+              // if the vector was resized, change the size again
+              if (size_of_tmp1_changed)
+                {
+                  size_of_tmp1_changed = false;
+                  tmp1.grow_or_shrink(dofs_per_cell);
+                }
             }
         }
     }

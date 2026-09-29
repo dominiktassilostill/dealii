@@ -13742,8 +13742,8 @@ void Triangulation<dim, spacedim>::compute_line_to_adjacent_cells_map()
           this->n_active_cells(),
           (is_mixed_mesh() ?
              GeometryInfo<dim>::lines_per_cell : // err on the safe side: choose
-                                                   // the largest number of lines
-                                                   // per cell
+                                                 // the largest number of lines
+                                                 // per cell
                                                  get_reference_cells()[0]
                .n_lines()) // choose the right number of  lines per cell for the
                            // mesh type used
