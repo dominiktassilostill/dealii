@@ -23,7 +23,10 @@
 #include <deal.II/fe/fe_simplex_p.h>
 #include <deal.II/fe/fe_simplex_p_bubbles.h>
 #include <deal.II/fe/fe_tools.h>
+#include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/fe_wedge_p.h>
+
+#include <deal.II/grid/grid_generator.h>
 
 #include <deal.II/lac/householder.h>
 
@@ -642,6 +645,391 @@ FE_PyramidPoly<dim, spacedim>::
 }
 
 
+template <int dim, int spacedim>
+const FullMatrix<double> &
+FE_PyramidPoly<dim, spacedim>::get_prolongation_matrix(
+  const unsigned int         child,
+  const RefinementCase<dim> &refinement_case) const
+{
+  Assert(refinement_case ==
+           RefinementCase<dim>(RefinementCase<dim>::isotropic_refinement),
+         ExcNotImplemented());
+  AssertDimension(dim, spacedim);
+
+  // initialization upon first request
+  if (this->prolongation[refinement_case - 1][child].n() == 0)
+    {
+      std::scoped_lock lock(prolongation_matrix_mutex);
+
+      // if matrix got updated while waiting for the lock
+      if (this->prolongation[refinement_case - 1][child].n() ==
+          this->n_dofs_per_cell())
+        return this->prolongation[refinement_case - 1][child];
+
+      // now do the work. need to get a non-const version of data in order to
+      // be able to modify them inside a const function
+      auto &this_nonconst = const_cast<FE_PyramidPoly<dim, spacedim> &>(*this);
+
+      const ReferenceCell reference_cell = this->reference_cell();
+
+      std::vector<FullMatrix<double>> isotropic_matrices(
+        reference_cell.n_children(RefinementCase<dim>(refinement_case)));
+
+      // Set up meshes, one with a single
+      // reference cell and refine it once
+      Triangulation<dim, spacedim> tria;
+      GridGenerator::reference_cell(tria, reference_cell);
+      tria.begin_active()->set_refine_flag(
+        RefinementCase<dim>(refinement_case));
+      tria.execute_coarsening_and_refinement();
+
+      const unsigned int n_pyramid = this->n_dofs_per_cell();
+      const unsigned int degree    = this->degree;
+      const auto        &mapping_pyramid =
+        reference_cell.template get_default_linear_mapping<spacedim>();
+      const auto &q_pyramid = Quadrature<dim>(this->get_unit_support_points());
+
+      FEValues<dim, spacedim> fine_pyramid(mapping_pyramid,
+                                           *this,
+                                           q_pyramid,
+                                           update_quadrature_points |
+                                             update_JxW_values | update_values);
+
+      const FE_SimplexP<dim, spacedim> fe_p(degree, false);
+      const Quadrature<dim>            q_tet(fe_p.get_unit_support_points());
+      const unsigned int               n_tet = fe_p.n_dofs_per_cell();
+
+      FEValues<dim, spacedim> fine_tet(
+        fe_p.reference_cell().template get_default_linear_mapping<spacedim>(),
+        fe_p,
+        q_tet,
+        update_quadrature_points | update_values);
+
+      // We search for the polynomial on the small cell, being equal to
+      // the coarse polynomial in all quadrature points.
+
+      // First build the matrix for this least squares problem. This
+      // contains the values of the fine cell polynomials in the fine cell
+      // grid points.
+      for (const auto &fine_cell : tria.active_cell_iterators())
+        {
+          const bool child_is_pyramid =
+            fine_cell->reference_cell() == reference_cell;
+
+          FEValues<dim, spacedim> &fine =
+            child_is_pyramid ? fine_pyramid : fine_tet;
+          fine.reinit(fine_cell);
+
+          const unsigned int n = child_is_pyramid ? n_pyramid : n_tet;
+          FullMatrix<double> prolongation_matrix(n, n_pyramid);
+
+          for (unsigned int i = 0; i < n; ++i)
+            {
+              const Point<spacedim> child_point = fine.quadrature_point(i);
+              Point<dim>            point_on_parent;
+              for (unsigned int d = 0; d < dim; ++d)
+                point_on_parent[d] = child_point[d];
+
+              for (unsigned int j = 0; j < n_pyramid; ++j)
+                prolongation_matrix[i][j] =
+                  this->shape_value(j, point_on_parent);
+            }
+
+          // Remove small entries from the matrix
+          for (unsigned int i = 0; i < prolongation_matrix.m(); ++i)
+            for (unsigned int j = 0; j < prolongation_matrix.n(); ++j)
+              if (std::fabs(prolongation_matrix(i, j)) < 1e-12)
+                prolongation_matrix(i, j) = 0.;
+
+          isotropic_matrices[fine_cell->active_cell_index()] =
+            prolongation_matrix;
+        }
+
+      this_nonconst.prolongation[refinement_case - 1] =
+        std::move(isotropic_matrices);
+    }
+
+  // finally return the matrix
+  return this->prolongation[refinement_case - 1][child];
+}
+
+
+template <int dim, int spacedim>
+const FullMatrix<double> &
+FE_PyramidPoly<dim, spacedim>::get_restriction_matrix(
+  const unsigned int         child,
+  const RefinementCase<dim> &refinement_case) const
+{
+  Assert(refinement_case ==
+           RefinementCase<dim>(RefinementCase<dim>::isotropic_refinement),
+         ExcNotImplemented());
+  AssertDimension(dim, spacedim);
+
+  // initialization upon first request
+  if (this->restriction[refinement_case - 1][child].m() == 0)
+    {
+      std::scoped_lock lock(restriction_matrix_mutex);
+
+      // if matrix got updated while waiting for the lock
+      if (this->restriction[refinement_case - 1][child].m() ==
+          this->n_dofs_per_cell())
+        return this->restriction[refinement_case - 1][child];
+
+      // now do the work. need to get a non-const version of data in order to
+      // be able to modify them inside a const function
+      auto &this_nonconst = const_cast<FE_PyramidPoly<dim, spacedim> &>(*this);
+
+      const ReferenceCell reference_cell = this->reference_cell();
+
+      std::vector<FullMatrix<double>> isotropic_matrices(
+        reference_cell.n_children(RefinementCase<dim>(refinement_case)));
+
+      // Set up meshes, one with a single
+      // reference cell and refine it once
+      Triangulation<dim, spacedim> tria;
+      GridGenerator::reference_cell(tria, reference_cell);
+      tria.begin_active()->set_refine_flag(
+        RefinementCase<dim>(refinement_case));
+      tria.execute_coarsening_and_refinement();
+
+      const auto &points_coarse = this->get_unit_support_points();
+
+      const unsigned int n_pyramid = this->n_dofs_per_cell();
+      const unsigned int degree    = this->degree;
+
+      const FE_SimplexP<dim, spacedim> fe_p(degree, false);
+      const unsigned int               n_tet = fe_p.n_dofs_per_cell();
+
+      const auto get_barycentric_coordinates =
+        [](const std::vector<Point<dim>> &vertices, const Point<dim> &p) {
+          Vector<double>     r(dim);
+          FullMatrix<double> m(dim, dim);
+          for (unsigned int d = 0; d < dim; ++d)
+            {
+              r[d] = p[d] - vertices[0][d];
+              for (unsigned int e = 1; e < dim + 1; ++e)
+                m[d][e - 1] = vertices[e][d] - vertices[0][d];
+            }
+
+          double m_det_inverse =
+            1.0 / (m(0, 0) * (m(1, 1) * m(2, 2) - m(2, 1) * m(1, 2)) -
+                   m(0, 1) * (m(1, 0) * m(2, 2) - m(1, 2) * m(2, 0)) +
+                   m(0, 2) * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0)));
+
+          FullMatrix<double> m_inverse(dim, dim);
+          m_inverse(0, 0) =
+            (m(1, 1) * m(2, 2) - m(2, 1) * m(1, 2)) * m_det_inverse;
+          m_inverse(0, 1) =
+            (m(0, 2) * m(2, 1) - m(0, 1) * m(2, 2)) * m_det_inverse;
+          m_inverse(0, 2) =
+            (m(0, 1) * m(1, 2) - m(0, 2) * m(1, 1)) * m_det_inverse;
+          m_inverse(1, 0) =
+            (m(1, 2) * m(2, 0) - m(1, 0) * m(2, 2)) * m_det_inverse;
+          m_inverse(1, 1) =
+            (m(0, 0) * m(2, 2) - m(0, 2) * m(2, 0)) * m_det_inverse;
+          m_inverse(1, 2) =
+            (m(1, 0) * m(0, 2) - m(0, 0) * m(1, 2)) * m_det_inverse;
+          m_inverse(2, 0) =
+            (m(1, 0) * m(2, 1) - m(2, 0) * m(1, 1)) * m_det_inverse;
+          m_inverse(2, 1) =
+            (m(2, 0) * m(0, 1) - m(0, 0) * m(2, 1)) * m_det_inverse;
+          m_inverse(2, 2) =
+            (m(0, 0) * m(1, 1) - m(1, 0) * m(0, 1)) * m_det_inverse;
+
+          Vector<double> barycentric(dim);
+          m_inverse.vmult(barycentric, r);
+
+          Point<dim> coordinates;
+          for (unsigned int d = 0; d < dim; ++d)
+            coordinates[d] = barycentric[d];
+
+          return coordinates;
+        };
+
+      unsigned int child_counter = 0;
+      if constexpr (dim == 3)
+        for (const auto &fine_cell : tria.active_cell_iterators())
+          {
+            const bool child_is_pyramid =
+              fine_cell->reference_cell() == reference_cell;
+
+            const unsigned int n = child_is_pyramid ? n_pyramid : n_tet;
+            FullMatrix<double> restriction_matrix(n_pyramid, n);
+
+            for (unsigned int i = 0; i < n_pyramid; ++i)
+              {
+                const auto point_coarse = points_coarse[i];
+
+                if (child_is_pyramid)
+                  {
+                    // split the pyramid child into two tetrahedrals
+                    const Point<dim> point_on_child_1 =
+                      get_barycentric_coordinates(
+                        std::vector<Point<dim>>{{fine_cell->vertex(0),
+                                                 fine_cell->vertex(1),
+                                                 fine_cell->vertex(2),
+                                                 fine_cell->vertex(4)}},
+                        point_coarse);
+
+                    const Point<dim> point_on_child_2 =
+                      get_barycentric_coordinates(
+                        std::vector<Point<dim>>{{fine_cell->vertex(1),
+                                                 fine_cell->vertex(3),
+                                                 fine_cell->vertex(2),
+                                                 fine_cell->vertex(4)}},
+                        point_coarse);
+
+                    const bool contains_point_1 =
+                      fe_p.reference_cell().contains_point(point_on_child_1,
+                                                           1e-12);
+                    const bool contains_point_2 =
+                      fe_p.reference_cell().contains_point(point_on_child_2,
+                                                           1e-12);
+
+                    if ((contains_point_1 || contains_point_2))
+                      {
+                        Point<dim> point_on_child;
+                        // get from the tet coordinates to the pyramid
+                        // coordinates
+                        if (contains_point_1)
+                          {
+                            point_on_child =
+                              (1.0 - point_on_child_1[0] - point_on_child_1[1] -
+                               point_on_child_1[2]) *
+                                reference_cell.vertex(0) +
+                              point_on_child_1[0] * reference_cell.vertex(1) +
+                              point_on_child_1[1] * reference_cell.vertex(2) +
+                              point_on_child_1[2] * reference_cell.vertex(4);
+                          }
+                        else
+                          {
+                            point_on_child =
+                              (1.0 - point_on_child_2[0] - point_on_child_2[1] -
+                               point_on_child_2[2]) *
+                                reference_cell.vertex(1) +
+                              point_on_child_2[0] * reference_cell.vertex(3) +
+                              point_on_child_2[1] * reference_cell.vertex(2) +
+                              point_on_child_2[2] * reference_cell.vertex(4);
+                          }
+
+                        // sanity check
+                        if constexpr (running_in_debug_mode())
+                          {
+                            Point<dim> child_point_on_parent;
+                            for (unsigned int v = 0; v < 5; ++v)
+                              child_point_on_parent +=
+                                reference_cell.d_linear_shape_function(
+                                  point_on_child, v) *
+                                fine_cell->vertex(v);
+
+                            Assert(child_point_on_parent.distance(
+                                     point_coarse) < 1e-12,
+                                   ExcInternalError());
+                          }
+
+                        for (unsigned int j = 0; j < n; ++j)
+                          restriction_matrix[i][j] =
+                            this->shape_value(j, point_on_child);
+                      }
+                  }
+                else
+                  {
+                    const Point<dim> point_on_child =
+                      get_barycentric_coordinates(
+                        std::vector<Point<dim>>{{fine_cell->vertex(0),
+                                                 fine_cell->vertex(1),
+                                                 fine_cell->vertex(2),
+                                                 fine_cell->vertex(3)}},
+                        point_coarse);
+
+                    const bool contains_point =
+                      fe_p.reference_cell().contains_point(point_on_child,
+                                                           1e-12);
+
+                    if (contains_point)
+                      {
+                        for (unsigned int j = 0; j < n; ++j)
+                          restriction_matrix[i][j] =
+                            fe_p.shape_value(j, point_on_child);
+                      }
+                  }
+              }
+
+            // Remove small entries from the matrix
+            for (unsigned int i = 0; i < restriction_matrix.m(); ++i)
+              for (unsigned int j = 0; j < restriction_matrix.n(); ++j)
+                if (std::fabs(restriction_matrix(i, j)) < 1e-12)
+                  restriction_matrix(i, j) = 0.;
+
+            // More checks
+            if constexpr (running_in_debug_mode())
+              for (unsigned int i = 0; i < restriction_matrix.m(); ++i)
+                {
+                  double row_sum = 0.0;
+                  for (unsigned int j = 0; j < restriction_matrix.n(); ++j)
+                    row_sum += restriction_matrix(i, j);
+
+                  Assert(std::abs(row_sum) < 1e-12 ||
+                           std::abs(row_sum - 1.0) < 1e-10,
+                         ExcInternalError());
+                }
+
+            isotropic_matrices[fine_cell->active_cell_index()] =
+              restriction_matrix;
+
+            Assert(child_counter == fine_cell->active_cell_index(),
+                   ExcInternalError());
+
+            ++child_counter;
+          }
+
+
+      // More checks
+      if constexpr (running_in_debug_mode())
+        for (unsigned int i = 0; i < n_pyramid; ++i)
+          {
+            bool covered = false;
+
+            for (const auto &matrix : isotropic_matrices)
+              {
+                double row_sum = 0.0;
+                for (unsigned int j = 0; j < matrix.n(); ++j)
+                  row_sum += matrix(i, j);
+
+                if (std::abs(row_sum) > 1e-12)
+                  {
+                    Assert(std::abs(row_sum - 1.0) < 1e-10,
+                           ExcMessage(
+                             "Restriction row does not preserve constants."));
+                    covered = true;
+                  }
+              }
+            Assert(covered,
+                   ExcMessage(
+                     "A coarse support point is not covered by any child."));
+          }
+
+      this_nonconst.restriction[refinement_case - 1] =
+        std::move(isotropic_matrices);
+    }
+
+  // finally return the matrix
+  return this->restriction[refinement_case - 1][child];
+}
+
+
+
+template <int dim, int spacedim>
+std::pair<Table<2, bool>, std::vector<unsigned int>>
+FE_PyramidPoly<dim, spacedim>::get_constant_modes() const
+{
+  Table<2, bool> constant_modes(1, this->n_dofs_per_cell());
+  constant_modes.fill(true);
+  return std::pair<Table<2, bool>, std::vector<unsigned int>>(
+    constant_modes, std::vector<unsigned int>(1, 0));
+}
+
+
 
 template <int dim, int spacedim>
 FE_PyramidP<dim, spacedim>::FE_PyramidP(
@@ -1061,6 +1449,216 @@ FE_PyramidDGP<dim, spacedim>::hp_quad_dof_identities(
   const unsigned int) const
 {
   return {};
+}
+
+
+
+template <int dim, int spacedim>
+const FullMatrix<double> &
+FE_PyramidDGP<dim, spacedim>::get_restriction_matrix(
+  const unsigned int         child,
+  const RefinementCase<dim> &refinement_case) const
+{
+  Assert(refinement_case == RefinementCase<dim>::isotropic_refinement,
+         ExcNotImplemented());
+  AssertDimension(dim, spacedim);
+
+  // initialization upon first request
+  if (this->restriction[refinement_case - 1][child].m() == 0)
+    {
+      std::scoped_lock lock(this->restriction_matrix_mutex);
+
+      // if matrix got updated while waiting for the lock
+      if (this->restriction[refinement_case - 1][child].m() ==
+          this->n_dofs_per_cell())
+        return this->restriction[refinement_case - 1][child];
+
+      // now do the work. need to get a non-const version of data in order to
+      // be able to modify them inside a const function
+      auto &this_nonconst = const_cast<FE_PyramidDGP<dim, spacedim> &>(*this);
+
+      std::vector<FullMatrix<double>> isotropic_matrices;
+      isotropic_matrices.reserve(this->reference_cell().n_children(
+        RefinementCase<dim>(refinement_case)));
+
+      // FETools::compute_projection_matrices(*this, isotropic_matrices, true);
+      if constexpr (dim == 3)
+        {
+          const unsigned int n_pyramid = this->n_dofs_per_cell();
+          const unsigned int degree    = this->degree;
+
+          const ReferenceCell reference_cell = this->reference_cell();
+
+          const auto &q_fine =
+            reference_cell.get_gauss_type_quadrature(2 * degree + 3);
+
+          // prepare FEValues, quadrature etc on coarse cell
+          const unsigned int nq = q_fine.size();
+
+          // create mass matrix on coarse cell.
+          FullMatrix<double> mass_inverse(n_pyramid, n_pyramid);
+          {
+            FullMatrix<double> mass(n_pyramid, n_pyramid);
+            mass = 0.0;
+            for (unsigned int q = 0; q < nq; ++q)
+              for (unsigned int i = 0; i < n_pyramid; ++i)
+                for (unsigned int j = 0; j < n_pyramid; ++j)
+                  mass(i, j) += this->shape_value(i, q_fine.point(q)) *
+                                this->shape_value(j, q_fine.point(q)) *
+                                q_fine.weight(q);
+
+            mass_inverse = 0.0;
+            Householder<double> householder(mass);
+            Vector<double>      e(n_pyramid);
+            Vector<double>      x(n_pyramid);
+            for (unsigned int j = 0; j < n_pyramid; ++j)
+              {
+                e    = 0.;
+                e[j] = 1.;
+                x    = 0.;
+                householder.least_squares(x, e);
+
+                for (unsigned int i = 0; i < n_pyramid; ++i)
+                  mass_inverse[i][j] = x[i];
+              }
+          }
+          {
+            // create a respective refinement on the triangulation
+            Triangulation<dim, spacedim> tr;
+            GridGenerator::reference_cell(tr, reference_cell);
+
+            tr.begin_active()->set_refine_flag(
+              RefinementCase<dim>(refinement_case));
+            tr.execute_coarsening_and_refinement();
+
+            const auto &mapping =
+              reference_cell.template get_default_linear_mapping<spacedim>();
+            FEValues<dim, spacedim> fine_pyramid(mapping,
+                                                 *this,
+                                                 q_fine,
+                                                 update_quadrature_points |
+                                                   update_JxW_values |
+                                                   update_values);
+
+            const FE_SimplexP<dim, spacedim> fe_p(this->degree, false);
+
+            FEValues<dim, spacedim> fine_tet(
+              fe_p.reference_cell()
+                .template get_default_linear_mapping<spacedim>(),
+              fe_p,
+              fe_p.reference_cell().get_gauss_type_quadrature(2 * fe_p.degree +
+                                                              3),
+              update_quadrature_points | update_JxW_values | update_values);
+
+            // typename Triangulation<dim, spacedim>::cell_iterator coarse_cell
+            // =
+            //   tr.begin(0);
+
+            unsigned int child_counter = 0;
+            for (const auto &fine_cell : tr.active_cell_iterators())
+              {
+                const bool fine_cell_is_pyramid =
+                  fine_cell->reference_cell() == ReferenceCells::Pyramid;
+
+                const unsigned int n =
+                  fine_cell_is_pyramid ? n_pyramid : fe_p.n_dofs_per_cell();
+
+                // Vector<double> v_coarse(n_pyramid);
+                // Vector<double> v_fine(n_pyramid);
+
+                FullMatrix<double> restriction_matrix(n_pyramid, n);
+                FullMatrix<double> B(n_pyramid, n);
+
+                FEValues<dim, spacedim> &fine =
+                  fine_cell_is_pyramid ? fine_pyramid : fine_tet;
+                fine.reinit(fine_cell);
+
+                // Compute right hand side, which is a fine level basis
+                // function tested with the coarse level functions.
+                // const std::vector<Point<spacedim>> &q_points_fine =
+                // fine.get_quadrature_points();
+                // std::vector<Point<dim>>
+                // q_points_coarse(q_points_fine.size()); for (unsigned int q =
+                // 0; q < q_points_fine.size(); ++q)
+                //   for (unsigned int j = 0; j < dim; ++j)
+                //     q_points_coarse[q][j] = q_points_fine[q][j];
+                //  Quadrature<dim> q_coarse(q_points_coarse,
+                //  fine.get_JxW_values()); FEValues<dim, spacedim> coarse(
+                //    coarse_cell->reference_cell()
+                //      .template get_default_linear_mapping<spacedim>(),
+                //    *this,
+                //    q_coarse,
+                //    update_values);
+                //   coarse.reinit(coarse_cell);
+
+                // Build RHS
+                // const std::vector<double> &JxW = fine.get_JxW_values();
+
+                // Outer loop over all fine grid shape functions phi_j
+                // for (unsigned int j = 0; j < n; ++j)
+                //   {
+                //     for (unsigned int i = 0; i < n_pyramid; ++i)
+                //       {
+                //         const double *coarse_i = &coarse.shape_value(i, 0);
+                //         const double *fine_j   = &fine.shape_value(j, 0);
+
+                //         double update = 0;
+                //         for (unsigned int k = 0; k < JxW.size(); ++k)
+                //           update += JxW[k] * coarse_i[k] * fine_j[k];
+                //         v_fine(i) = update;
+                //       }
+
+                //     // RHS ready. Solve system and enter row into matrix
+                //     mass_inverse.vmult(v_coarse, v_fine);
+                //     for (unsigned int i = 0; i < n_pyramid; ++i)
+                //       restriction_matrix(i, j) = v_coarse(i);
+                //   }
+                FullMatrix<double> shape_values(n_pyramid,
+                                                fine.n_quadrature_points);
+                for (unsigned int i = 0; i < n_pyramid; ++i)
+                  for (unsigned int q = 0; q < fine.n_quadrature_points; ++q)
+                    {
+                      shape_values[i][q] =
+                        this->shape_value(i, fine.quadrature_point(q));
+                    }
+
+                B = 0.;
+                for (unsigned int q = 0; q < fine.n_quadrature_points; ++q)
+                  {
+                    const double jxw = fine.JxW(q);
+                    for (unsigned int j = 0; j < n; ++j)
+                      {
+                        const double fine_shape_value =
+                          fine.shape_value(j, q) * jxw;
+                        for (unsigned int i = 0; i < n_pyramid; ++i)
+                          {
+                            B[i][j] += fine_shape_value * shape_values[i][q];
+                          }
+                      }
+                  }
+
+                mass_inverse.mmult(restriction_matrix, B, false);
+
+                // Remove small entries from the matrix
+                for (unsigned int i = 0; i < restriction_matrix.m(); ++i)
+                  for (unsigned int j = 0; j < restriction_matrix.n(); ++j)
+                    if (std::fabs(restriction_matrix(i, j)) < 1e-12)
+                      restriction_matrix(i, j) = 0.;
+
+                isotropic_matrices.push_back(restriction_matrix);
+                Assert(child_counter == fine_cell->active_cell_index(),
+                       ExcInternalError());
+                ++child_counter;
+              }
+          }
+        }
+
+      this_nonconst.restriction[refinement_case - 1] =
+        std::move(isotropic_matrices);
+    }
+
+  // finally return the matrix
+  return this->restriction[refinement_case - 1][child];
 }
 
 
