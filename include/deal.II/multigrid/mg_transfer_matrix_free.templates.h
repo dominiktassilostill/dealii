@@ -1557,12 +1557,11 @@ namespace internal
                     transfer.constraint_info_fine.dof_indices[offset + i]);
 
               const bool can_compress_weights =
-                is_feq[counter++] &&
-                compute_weights_fe_q_dofs_by_entity<dim, -1>(
-                  local_weights.data(),
-                  transfer.n_components,
-                  scheme.degree_fine + 1,
-                  local_weights_compressed.data());
+                is_feq[counter] && compute_weights_fe_q_dofs_by_entity<dim, -1>(
+                                     local_weights.data(),
+                                     transfer.n_components,
+                                     scheme.degree_fine + 1,
+                                     local_weights_compressed.data());
 
               if (can_compress_weights && scheme.degree_fine > 1)
                 {
@@ -1577,6 +1576,8 @@ namespace internal
                 for (const VectorizedArray<Number> weight : local_weights)
                   transfer.weights.push_back(weight);
             }
+
+          ++counter;
         }
       AssertDimension(transfer.weights_start.size(), n_batches);
     }
@@ -2615,19 +2616,19 @@ namespace internal
                    fine_element_is_discontinuous,
                  ExcNotImplemented());
         }
-      const bool is_feq =
-        std::all_of(dof_handler_fine.get_fe_collection().begin(),
-                    dof_handler_fine.get_fe_collection().end(),
-                    [](const auto &fe) {
-                      return fe.n_base_elements() == 1 &&
-                             (dynamic_cast<const FE_Q<dim> *>(
-                                &fe.base_element(0)) != nullptr);
-                    });
+      // const bool is_feq =
+      //   std::all_of(dof_handler_fine.get_fe_collection().begin(),
+      //               dof_handler_fine.get_fe_collection().end(),
+      //               [](const auto &fe) {
+      //                 return fe.n_base_elements() == 1 &&
+      //                        (dynamic_cast<const FE_Q<dim> *>(
+      //                           &fe.base_element(0)) != nullptr);
+      //               });
 
-      const bool has_tp_structure =
-        std::all_of(dof_handler_fine.get_fe_collection().begin(),
-                    dof_handler_fine.get_fe_collection().end(),
-                    [](const auto &fe) { return fe_has_tp_structure(fe); });
+      // const bool has_tp_structure =
+      //   std::all_of(dof_handler_fine.get_fe_collection().begin(),
+      //               dof_handler_fine.get_fe_collection().end(),
+      //               [](const auto &fe) { return fe_has_tp_structure(fe); });
 
       const auto process_cells = [&](const auto &fu) {
         loop_over_active_or_level_cells(
@@ -2653,6 +2654,8 @@ namespace internal
         f.second = counter++;
 
       transfer.schemes.resize(counter);
+      std::vector<bool> is_feq_vector(transfer.schemes.size());
+      std::vector<bool> has_tp_structure_vector(transfer.schemes.size());
 
       // extract number of coarse cells
       {
@@ -2679,6 +2682,16 @@ namespace internal
             dof_handler_coarse.get_fe(fe_index_pair.first.first).degree;
           transfer.schemes[fe_index_pair.second].degree_fine =
             dof_handler_fine.get_fe(fe_index_pair.first.second).degree;
+
+          is_feq_vector[fe_index_pair.second] =
+            dof_handler_coarse.get_fe(fe_index_pair.first.first)
+                .n_base_elements() == 1 &&
+            (dynamic_cast<const FE_Q<dim> *>(
+               &dof_handler_coarse.get_fe(fe_index_pair.first.first)
+                  .base_element(0)) != nullptr);
+
+          has_tp_structure_vector[fe_index_pair.second] = fe_has_tp_structure(
+            dof_handler_coarse.get_fe(fe_index_pair.first.first));
         }
 
       std::vector<unsigned int> n_dof_indices_fine(fe_index_pairs.size() + 1);
@@ -2730,7 +2743,7 @@ namespace internal
 
             // ------------------- lexicographic_numbering
             // --------------------
-            if (has_tp_structure)
+            if (has_tp_structure_vector[fe_index_pair.second])
               {
                 const Quadrature<1> dummy_quadrature(
                   std::vector<Point<1>>(1, Point<1>()));
@@ -2856,7 +2869,6 @@ namespace internal
 
       // ------------------------------- weights
       // -------------------------------
-      const std::vector<bool> is_feq_vector(transfer.schemes.size(), is_feq);
       if (transfer.fine_element_is_continuous)
         setup_weights(constraints_fine, transfer, is_feq_vector);
     }
@@ -3530,7 +3542,8 @@ MGTwoLevelTransfer<dim, VectorType>::restrict_and_add_internal(
                                                n_scalar_dofs_coarse);
                   }
               else
-                evaluation_data_coarse = evaluation_data_fine; // TODO
+                evaluation_data_coarse = evaluation_data_fine;
+              // TODO
               // ----------------------------- coarse
               // --------------------------
 

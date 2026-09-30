@@ -2101,6 +2101,10 @@ namespace Utilities
 
     template std::set<unsigned int>
     compute_set_union(const std::set<unsigned int> &set, const MPI_Comm comm);
+
+    template std::set<types::global_dof_index>
+    compute_set_union(const std::set<types::global_dof_index> &set,
+                      const MPI_Comm                           comm);
 #endif
 
 #include "base/mpi.inst"
