@@ -351,7 +351,8 @@ GridIn<dim, spacedim>::read_vtk(std::istream &in)
                     "Unknown VTK version encountered...Only VTK versions 3.0 and 5.1 are supported."));
 
               // VTK_TETRA is 10, VTK_HEXAHEDRON is 12
-              if (cell_types[count] == 10 || cell_types[count] == 12)
+              if (cell_types[count] == 10 || cell_types[count] == 12 ||
+                  cell_types[count] == 13 || cell_types[count] == 14)
                 {
                   // we assume that the file contains first all cells,
                   // and only then any faces or lines
@@ -373,6 +374,11 @@ GridIn<dim, spacedim>::read_vtk(std::istream &in)
                                 cells.back().vertices[3]);
                       std::swap(cells.back().vertices[6],
                                 cells.back().vertices[7]);
+                    }
+                  else if (cell_types[count] == 14)
+                    {
+                      std::swap(cells.back().vertices[2],
+                                cells.back().vertices[3]);
                     }
 
                   cells.back().material_id = 0;
