@@ -1,630 +1,772 @@
-/* ------------------------------------------------------------------------
- *
- * SPDX-License-Identifier: LGPL-2.1-or-later
- * Copyright (C) 2012 - 2024 by the deal.II authors
- *
- * This file is part of the deal.II library.
- *
- * Part of the source code is dual licensed under Apache-2.0 WITH
- * LLVM-exception OR LGPL-2.1-or-later. Detailed license information
- * governing the source code and code contributions can be found in
- * LICENSE.md and CONTRIBUTING.md at the top level directory of deal.II.
- *
- * ------------------------------------------------------------------------
- *
- * Author: Sven Wetterauer, University of Heidelberg, 2012
- */
+// -----------------------------------------------------------------------------
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception OR LGPL-2.1-or-later
+// Copyright (C) 2002 - 2024 by the deal.II authors
+//
+// This file is part of the deal.II library.
+//
+// Detailed license information governing the source code and contributions
+// can be found in LICENSE.md and CONTRIBUTING.md at the top level directory.
+//
+// -----------------------------------------------------------------------------
 
+// like fe/up_and_down test but use simplex elements instead
+// Restrict a vector to a coarse grid and prolongate it again,
+// repeat the procedure twice and check if the reslting vectors are the same
+// i.e. if prolongation and restriction are successful.
 
-// @sect3{Include files}
-
-// The first few files have already been covered in previous examples and will
-// thus not be further commented on.
 #include <deal.II/base/quadrature_lib.h>
-#include <deal.II/base/function.h>
-#include <deal.II/base/utilities.h>
+
+#include <deal.II/dofs/dof_accessor.h>
+
+#include <deal.II/fe/fe_pyramid_p.h>
+#include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/fe_values.h>
+#include <deal.II/hp/fe_values.h>
+
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_tools.h>
+#include <deal.II/grid/tria.h>
+#include <deal.II/grid/tria_iterator.h>
 
 #include <deal.II/lac/vector.h>
-#include <deal.II/lac/full_matrix.h>
-#include <deal.II/lac/sparse_matrix.h>
-#include <deal.II/lac/dynamic_sparsity_pattern.h>
-#include <deal.II/lac/solver_cg.h>
-#include <deal.II/lac/precondition.h>
-#include <deal.II/lac/affine_constraints.h>
-
-#include <deal.II/grid/tria.h>
-#include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/grid_refinement.h>
-
-#include <deal.II/dofs/dof_handler.h>
-#include <deal.II/dofs/dof_tools.h>
-
-#include <deal.II/fe/fe_values.h>
-#include <deal.II/fe/fe_q.h>
 
 #include <deal.II/numerics/vector_tools.h>
-#include <deal.II/numerics/data_out.h>
-#include <deal.II/numerics/error_estimator.h>
 
 
-#include <fstream>
-#include <iostream>
+#include <deal.II/base/function_lib.h>
 
-// We will use adaptive mesh refinement between Newton iterations. To do so,
-// we need to be able to work with a solution on the new mesh, although it was
-// computed on the old one. The SolutionTransfer class transfers the solution
-// from the old to the new mesh:
+#include <string>
+#include <vector>
 
-#include <deal.II/numerics/solution_transfer.h>
+using namespace dealii;
 
-// We then open a namespace for this program and import everything from the
-// dealii namespace into it, as in previous programs:
-namespace Step15
+
+template <int dim>
+void check_constant_prolongation(const Triangulation<dim>    &tr,
+                                 const hp::FECollection<dim> &fe)
 {
-  using namespace dealii;
+  (void)tr;
+
+  const double value_coarse = 1.5;
+
+  const unsigned int n_dofs_coarse = fe[0].dofs_per_cell;
+  Vector<double>     vector_coarse(n_dofs_coarse);
+  for (unsigned int i = 0; i < n_dofs_coarse; ++i)
+    {
+      vector_coarse[i] = value_coarse;
+    }
+
+  Vector<double> vector_fine;
+  for (unsigned int c = 0; c < fe[0].reference_cell().n_isotropic_children();
+       ++c)
+    {
+      const bool pyramid_child = (c > 3 && c < 8) ? false : true;
+
+      const unsigned int n_dofs_fine =
+        pyramid_child ? n_dofs_coarse : fe[1].dofs_per_cell;
+
+      vector_fine.grow_or_shrink(n_dofs_fine);
+
+      const auto prolongation_matrix = fe[0].get_prolongation_matrix(c);
+
+      prolongation_matrix.vmult(vector_fine, vector_coarse);
 
 
-  // @sect3{The <code>MinimalSurfaceProblem</code> class template}
-
-  // The class template is basically the same as in step-6.  Three additions
-  // are made:
-  // - There are two solution vectors, one for the Newton update
-  //   $\delta u^n$, and one for the current iterate $u^n$.
-  // - The single AffineConstraints<> object in step-6 that is used to store
-  //   boundary conditions and hanging node constraints, is replaced by two
-  //   different objects of the same type: `zero_constraints` and
-  //   `nonzero_constraints`. The former contains homogeneous boundary
-  //   conditions to be used for the residual and solution updates, while the
-  //   latter contains the correct boundary conditions for the solution. Both
-  //   objects also contain the hanging nodes constraints.
-  // - The <code>setup_system</code> function takes an argument that denotes
-  //   whether this is the first time it is called or not. The difference is
-  //   that the first time around we need to distribute the degrees of freedom
-  //   and set the solution vector for $u^n$ to the correct size. The following
-  //   times, the function is called after we have already done these steps as
-  //   part of refining the mesh in <code>refine_mesh</code>.
-  // - We then also need a few new functions:
-  //   <code>compute_residual()</code> is a function that computes
-  //   the norm of the nonlinear (discrete) residual. We use this function to
-  //   monitor convergence of the Newton iteration. The function takes a step
-  //   length $\alpha^n$ as argument to compute the residual of $u^n + \alpha^n
-  //   \; \delta u^n$. This is something one typically needs for step length
-  //   control, although we will not use this feature here. Finally,
-  //   <code>determine_step_length()</code> computes the step length $\alpha^n$
-  //   in each Newton iteration. As discussed in the introduction, we here use a
-  //   fixed step length and leave implementing a better strategy as an
-  //   exercise. (step-77 does this differently: It simply uses an
-  //   external package for the whole solution process, and a good
-  //   line search strategy is part of what that package provides.)
-
-  template <int dim>
-  class MinimalSurfaceProblem
-  {
-  public:
-    MinimalSurfaceProblem();
-    void run();
-
-  private:
-    void   setup_system();
-    void   assemble_system();
-    void   solve();
-    void   refine_mesh();
-    double compute_residual(const double alpha) const;
-    double determine_step_length() const;
-    void   output_results(const unsigned int refinement_cycle) const;
-
-    Triangulation<dim> triangulation;
-
-    DoFHandler<dim> dof_handler;
-    const FE_Q<dim> fe;
-
-    AffineConstraints<double> zero_constraints;
-    AffineConstraints<double> nonzero_constraints;
-
-    SparsityPattern      sparsity_pattern;
-    SparseMatrix<double> system_matrix;
-
-    Vector<double> current_solution;
-    Vector<double> newton_update;
-    Vector<double> system_rhs;
-  };
-
-  // @sect3{Boundary condition}
-
-  // The boundary condition is implemented just like in step-4.  It is chosen
-  // as $g(x,y)=\sin(2 \pi (x+y))$:
-
-  template <int dim>
-  class BoundaryValues : public Function<dim>
-  {
-  public:
-    virtual double value(const Point<dim>  &p,
-                         const unsigned int component = 0) const override;
-  };
+      for (unsigned int i = 0; i < vector_fine.size(); ++i)
+        Assert(std::abs(value_coarse - vector_fine[i]) < 1e-12,
+               ExcInternalError());
+      // std::cout << std::endl << "Child " << c << ": ";
+      // for (unsigned int i = 0; i < vector_fine.size(); ++i)
+      //   std::cout << vector_fine[i] << " ";
+      // std::cout << std::endl;
+    }
+}
 
 
-  template <int dim>
-  double BoundaryValues<dim>::value(const Point<dim> &p,
-                                    const unsigned int /*component*/) const
-  {
-    return std::sin(2 * numbers::PI * (p[0] + p[1]));
-  }
+template <int dim>
+void check_basis_function_prolongation(const Triangulation<dim>    &tr,
+                                       const hp::FECollection<dim> &fe)
+{
+  DoFHandler<dim> dof_handler(tr);
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      if (cell->reference_cell() == ReferenceCells::Pyramid)
+        cell->set_active_fe_index(0);
+      else if (cell->reference_cell() == ReferenceCells::Tetrahedron)
+        cell->set_active_fe_index(1);
+      else
+        DEAL_II_NOT_IMPLEMENTED();
+    }
 
-  // @sect3{The <code>MinimalSurfaceProblem</code> class implementation}
+  dof_handler.distribute_dofs(fe);
+  // const unsigned int n_dofs_fine   = dof_handler.n_dofs();
+  unsigned int n_dofs_fine = 0;
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    n_dofs_fine += cell->get_fe().dofs_per_cell;
 
-  // @sect4{MinimalSurfaceProblem::MinimalSurfaceProblem}
+  const unsigned int n_dofs_coarse = fe[0].dofs_per_cell;
+  Vector<double>     vector_coarse(n_dofs_coarse);
+  Vector<double>     vector_fine(n_dofs_fine);
+  Vector<double>     vector_nodal(n_dofs_fine);
+  Vector<double>     vector_child;
 
-  // The constructor and destructor of the class are the same as in the first
-  // few tutorials.
+  hp::MappingCollection<dim, dim> mappings;
+  mappings.push_back(fe[0].reference_cell().get_default_linear_mapping());
+  mappings.push_back(fe[1].reference_cell().get_default_linear_mapping());
+  hp::QCollection<dim> quadratures;
+  Quadrature<dim>      q0(fe[0].get_unit_support_points());
+  Quadrature<dim>      q1(fe[1].get_unit_support_points());
+  quadratures.push_back(q0);
+  quadratures.push_back(q1);
 
-  template <int dim>
-  MinimalSurfaceProblem<dim>::MinimalSurfaceProblem()
-    : dof_handler(triangulation)
-    , fe(2)
-  {}
+  hp::FEValues<dim> hp_fe_values(mappings,
+                                 fe,
+                                 quadratures,
+                                 update_quadrature_points);
+
+  for (unsigned e = 0; e < n_dofs_coarse; ++e)
+    {
+      vector_coarse    = 0.;
+      vector_coarse[e] = 1.0;
+
+      unsigned int counter = 0;
+      for (unsigned int c = 0;
+           c < fe[0].reference_cell().n_isotropic_children();
+           ++c)
+        {
+          const bool pyramid_child = (c > 3 && c < 8) ? false : true;
+
+          const unsigned int n_dofs_child =
+            pyramid_child ? n_dofs_coarse : fe[1].dofs_per_cell;
+
+          vector_child.grow_or_shrink(n_dofs_child);
+
+          const auto prolongation_matrix = fe[0].get_prolongation_matrix(c);
+
+          prolongation_matrix.vmult(vector_child, vector_coarse);
+
+          for (unsigned int i = 0; i < vector_child.size(); ++i)
+            vector_fine[counter++] = vector_child[i];
+        }
+
+      counter = 0;
+      for (const auto &cell : dof_handler.active_cell_iterators())
+        {
+          hp_fe_values.reinit(cell);
+          auto      &fe_values        = hp_fe_values.get_present_fe_values();
+          const auto quadrature_point = fe_values.get_quadrature_points();
+
+          for (unsigned int i = 0; i < quadrature_point.size(); ++i)
+            vector_nodal[counter++] = fe[0].shape_value(e, quadrature_point[i]);
+        }
+
+      for (unsigned int i = 0; i < vector_nodal.size(); ++i)
+        Assert(std::abs(vector_nodal[i] - vector_fine[i]) < 1e-12,
+               ExcInternalError());
+    }
+}
+
+template <int dim>
+void check_polynomials_prolongation(const Triangulation<dim>    &tr,
+                                    const hp::FECollection<dim> &fe)
+{
+  Triangulation<dim> tr_coarse;
+  GridGenerator::reference_cell(tr_coarse, ReferenceCells::Pyramid);
+  DoFHandler<dim> dof_handler_coarse(tr_coarse);
+  for (const auto &cell : dof_handler_coarse.active_cell_iterators())
+    cell->set_active_fe_index(0);
+  dof_handler_coarse.distribute_dofs(fe);
+
+  DoFHandler<dim> dof_handler(tr);
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      if (cell->reference_cell() == ReferenceCells::Pyramid)
+        cell->set_active_fe_index(0);
+      else if (cell->reference_cell() == ReferenceCells::Tetrahedron)
+        cell->set_active_fe_index(1);
+      else
+        DEAL_II_NOT_IMPLEMENTED();
+    }
+
+  dof_handler.distribute_dofs(fe);
+
+  const unsigned int degree        = fe[0].degree;
+  const unsigned int n_dofs_coarse = fe[0].dofs_per_cell;
+  const unsigned int n_dofs_fine   = dof_handler.n_dofs();
+
+  Vector<double> vector_coarse(n_dofs_coarse);
+  Vector<double> vector_coarse_global(n_dofs_coarse);
+  Vector<double> vector_fine(n_dofs_fine);
+
+  hp::MappingCollection<dim, dim> mappings;
+  mappings.push_back(fe[0].reference_cell().get_default_linear_mapping());
+  mappings.push_back(fe[1].reference_cell().get_default_linear_mapping());
 
 
-  // @sect4{MinimalSurfaceProblem::setup_system}
-
-  // As always in the setup-system function, we set up the variables of the
-  // finite element method. There are some differences to step-6, because
-  // we need to construct two AffineConstraint<> objects.
-  template <int dim>
-  void MinimalSurfaceProblem<dim>::setup_system()
-  {
-    dof_handler.distribute_dofs(fe);
-    current_solution.reinit(dof_handler.n_dofs());
-
-    zero_constraints.clear();
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             0,
-                                             Functions::ZeroFunction<dim>(),
-                                             zero_constraints);
-    DoFTools::make_hanging_node_constraints(dof_handler, zero_constraints);
-    zero_constraints.close();
-
-    nonzero_constraints.clear();
-    VectorTools::interpolate_boundary_values(dof_handler,
-                                             0,
-                                             BoundaryValues<dim>(),
-                                             nonzero_constraints);
-
-    DoFTools::make_hanging_node_constraints(dof_handler, nonzero_constraints);
-    nonzero_constraints.close();
-
-    newton_update.reinit(dof_handler.n_dofs());
-    system_rhs.reinit(dof_handler.n_dofs());
-
-    DynamicSparsityPattern dsp(dof_handler.n_dofs());
-    DoFTools::make_sparsity_pattern(dof_handler, dsp, zero_constraints);
-
-    sparsity_pattern.copy_from(dsp);
-    system_matrix.reinit(sparsity_pattern);
-  }
-
-  // @sect4{MinimalSurfaceProblem::assemble_system}
-
-  // This function does the same as in the previous tutorials except that now,
-  // of course, the matrix and right hand side functions depend on the
-  // previous iteration's solution. As discussed in the introduction, we need
-  // to use zero boundary values for the Newton updates; this is done by using
-  // the `zero_constraints` object when assembling into the global matrix and
-  // vector.
-  //
-  // The top of the function contains the usual boilerplate code, setting up
-  // the objects that allow us to evaluate shape functions at quadrature
-  // points and temporary storage locations for the local matrices and
-  // vectors, as well as for the gradients of the previous solution at the
-  // quadrature points. We then start the loop over all cells:
-  template <int dim>
-  void MinimalSurfaceProblem<dim>::assemble_system()
-  {
-    const QGauss<dim> quadrature_formula(fe.degree + 1);
-
-    system_matrix = 0;
-    system_rhs    = 0;
-
-    FEValues<dim> fe_values(fe,
-                            quadrature_formula,
-                            update_gradients | update_quadrature_points |
-                              update_JxW_values);
-
-    const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-    const unsigned int n_q_points    = quadrature_formula.size();
-
-    FullMatrix<double> cell_matrix(dofs_per_cell, dofs_per_cell);
-    Vector<double>     cell_rhs(dofs_per_cell);
-
-    std::vector<Tensor<1, dim>> old_solution_gradients(n_q_points);
-
-    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-    for (const auto &cell : dof_handler.active_cell_iterators())
-      {
-        cell_matrix = 0;
-        cell_rhs    = 0;
-
-        fe_values.reinit(cell);
-
-        // For the assembly of the linear system, we have to obtain the values
-        // of the previous solution's gradients at the quadrature
-        // points. There is a standard way of doing this: the
-        // FEValues::get_function_gradients function takes a vector that
-        // represents a finite element field defined on a DoFHandler, and
-        // evaluates the gradients of this field at the quadrature points of the
-        // cell with which the FEValues object has last been reinitialized.
-        // The values of the gradients at all quadrature points are then written
-        // into the second argument:
-        fe_values.get_function_gradients(current_solution,
-                                         old_solution_gradients);
-
-        // With this, we can then do the integration loop over all quadrature
-        // points and shape functions.  Having just computed the gradients of
-        // the old solution in the quadrature points, we are able to compute
-        // the coefficients $a_{n}$ in these points.  The assembly of the
-        // system itself then looks similar to what we always do with the
-        // exception of the nonlinear terms, as does copying the results from
-        // the local objects into the global ones:
-        for (unsigned int q = 0; q < n_q_points; ++q)
+  for (unsigned int i = 0; i < degree + 1; ++i)
+    for (unsigned int j = 0; j < degree + 1; ++j)
+      for (unsigned int k = 0; k < degree + 1; ++k)
+        if (i + j + k < degree + 1)
           {
-            const double coeff =
-              1.0 / std::sqrt(1 + old_solution_gradients[q] *
-                                    old_solution_gradients[q]);
+            Tensor<1, dim> exponents;
+            exponents[0] = i;
+            exponents[1] = j;
+            exponents[2] = k;
+            const Functions::Monomial function_to_interpolate(exponents, 1);
 
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            VectorTools::interpolate(mappings,
+                                     dof_handler_coarse,
+                                     function_to_interpolate,
+                                     vector_coarse_global);
+
+            const auto coarse_cell = dof_handler_coarse.begin_active();
+            coarse_cell->get_dof_values(vector_coarse_global, vector_coarse);
+
+            VectorTools::interpolate(mappings,
+                                     dof_handler,
+                                     function_to_interpolate,
+                                     vector_fine);
+
+            const auto parent = dof_handler.begin(0);
+            // for (const auto &cell : dof_handler.active_cell_iterators())
+            for (unsigned int c = 0; c < parent->n_children(); ++c)
               {
-                for (unsigned int j = 0; j < dofs_per_cell; ++j)
-                  cell_matrix(i, j) +=
-                    (((fe_values.shape_grad(i, q)      // ((\nabla \phi_i
-                       * coeff                         //   * a_n
-                       * fe_values.shape_grad(j, q))   //   * \nabla \phi_j)
-                      -                                //  -
-                      (fe_values.shape_grad(i, q)      //  (\nabla \phi_i
-                       * coeff * coeff * coeff         //   * a_n^3
-                       * (fe_values.shape_grad(j, q)   //   * (\nabla \phi_j
-                          * old_solution_gradients[q]) //      * \nabla u_n)
-                       * old_solution_gradients[q]))   //   * \nabla u_n)))
-                     * fe_values.JxW(q));              // * dx
+                const auto &cell = parent->child(c);
 
-                cell_rhs(i) -= (fe_values.shape_grad(i, q)  // \nabla \phi_i
-                                * coeff                     // * a_n
-                                * old_solution_gradients[q] // * \nabla u_n
-                                * fe_values.JxW(q));        // * dx
+                Vector<double> vector_child(cell->get_fe().dofs_per_cell);
+                Vector<double> vector_child_interpolated(
+                  cell->get_fe().dofs_per_cell);
+
+                cell->get_dof_values(vector_fine, vector_child);
+
+                fe[0].get_prolongation_matrix(c).vmult(
+                  vector_child_interpolated, vector_coarse);
+
+                for (unsigned int v = 0; v < vector_child_interpolated.size();
+                     ++v)
+                  if (std::abs(vector_child_interpolated[v] - vector_child[v]) >
+                      1e-12)
+                    {
+                      Assert(false, ExcInternalError());
+                    }
               }
           }
+}
 
-        cell->get_dof_indices(local_dof_indices);
-        zero_constraints.distribute_local_to_global(
-          cell_matrix, cell_rhs, local_dof_indices, system_matrix, system_rhs);
-      }
-  }
+template <int dim>
+void check_constant_prolongation_transpose(const Triangulation<dim>    &tr,
+                                           const hp::FECollection<dim> &fe)
+{
+  (void)tr;
 
+  const double value_fine = 1.5;
 
+  const unsigned int n_dofs_coarse = fe[0].dofs_per_cell;
+  Vector<double>     vector_coarse(n_dofs_coarse);
+  Vector<double>     vector_coarse_sum(n_dofs_coarse);
 
-  // @sect4{MinimalSurfaceProblem::solve}
+  Vector<double> vector_fine;
+  for (unsigned int c = 0; c < fe[0].reference_cell().n_isotropic_children();
+       ++c)
+    {
+      const bool pyramid_child = (c > 3 && c < 8) ? false : true;
 
-  // The solve function is the same as always. At the end of the solution
-  // process we update the current solution by setting
-  // $u^{n+1}=u^n+\alpha^n\;\delta u^n$.
-  template <int dim>
-  void MinimalSurfaceProblem<dim>::solve()
-  {
-    SolverControl            solver_control(system_rhs.size(),
-                                 system_rhs.l2_norm() * 1e-6);
-    SolverCG<Vector<double>> solver(solver_control);
+      const unsigned int n_dofs_fine =
+        pyramid_child ? n_dofs_coarse : fe[1].dofs_per_cell;
 
-    PreconditionSSOR<SparseMatrix<double>> preconditioner;
-    preconditioner.initialize(system_matrix, 1.2);
+      vector_fine.grow_or_shrink(n_dofs_fine);
+      for (unsigned int i = 0; i < n_dofs_fine; ++i)
+        {
+          vector_fine[i] = value_fine;
+        }
 
-    solver.solve(system_matrix, newton_update, system_rhs, preconditioner);
+      const auto prolongation_matrix = fe[0].get_prolongation_matrix(c);
 
-    zero_constraints.distribute(newton_update);
-
-    const double alpha = determine_step_length();
-    current_solution.add(alpha, newton_update);
-  }
-
-
-  // @sect4{MinimalSurfaceProblem::refine_mesh}
-
-  // The first part of this function is the same as in step-6... However,
-  // after refining the mesh we have to transfer the old solution to the new
-  // one which we do with the help of the SolutionTransfer class. The process
-  // is slightly convoluted, so let us describe it in detail:
-  template <int dim>
-  void MinimalSurfaceProblem<dim>::refine_mesh()
-  {
-    Vector<float> estimated_error_per_cell(triangulation.n_active_cells());
-
-    KellyErrorEstimator<dim>::estimate(
-      dof_handler,
-      QGauss<dim - 1>(fe.degree + 1),
-      std::map<types::boundary_id, const Function<dim> *>(),
-      current_solution,
-      estimated_error_per_cell);
-
-    GridRefinement::refine_and_coarsen_fixed_number(triangulation,
-                                                    estimated_error_per_cell,
-                                                    0.3,
-                                                    0.03);
-
-    // Then we need an additional step: if, for example, you flag a cell that
-    // is once more refined than its neighbor, and that neighbor is not
-    // flagged for refinement, we would end up with a jump of two refinement
-    // levels across a cell interface.  To avoid these situations, the library
-    // will silently also have to refine the neighbor cell once. It does so by
-    // calling the Triangulation::prepare_coarsening_and_refinement function
-    // before actually doing the refinement and coarsening.  This function
-    // flags a set of additional cells for refinement or coarsening, to
-    // enforce rules like the one-hanging-node rule.  The cells that are
-    // flagged for refinement and coarsening after calling this function are
-    // exactly the ones that will actually be refined or coarsened. Usually,
-    // you don't have to do this by hand
-    // (Triangulation::execute_coarsening_and_refinement does this for
-    // you). However, we need to initialize the SolutionTransfer class and it
-    // needs to know the final set of cells that will be coarsened or refined
-    // in order to store the data from the old mesh and transfer to the new
-    // one. Thus, we call the function by hand:
-    triangulation.prepare_coarsening_and_refinement();
-
-    // With this out of the way, we initialize a SolutionTransfer object with
-    // the present DoFHandler. We make a copy of the solution vector and attach
-    // it to the SolutionTransfer. Now we can actually execute the refinement
-    // and create the new matrices and vectors including the vector
-    // `current_solution`, that will hold the current solution on the new mesh
-    // after calling SolutionTransfer::interpolate():
-    SolutionTransfer<dim> solution_transfer(dof_handler);
-    const Vector<double>  coarse_solution = current_solution;
-    solution_transfer.prepare_for_coarsening_and_refinement(coarse_solution);
-
-    triangulation.execute_coarsening_and_refinement();
-
-    setup_system();
-
-    solution_transfer.interpolate(current_solution);
-
-    // On the new mesh, there are different hanging nodes, computed in
-    // `setup_system()` above. To be on the safe side, we should  make sure that
-    // the current solution's vector entries satisfy the hanging node
-    // constraints (see the discussion in the documentation of the
-    // SolutionTransfer class for why this is necessary) and boundary values. As
-    // explained at the end of the introduction, the interpolated solution does
-    // not automatically satisfy the boundary values even if the solution before
-    // refinement had the correct boundary values.
-    nonzero_constraints.distribute(current_solution);
-  }
+      prolongation_matrix.Tvmult(vector_coarse, vector_fine);
+      prolongation_matrix.Tvmult_add(vector_coarse_sum, vector_fine);
 
 
+      std::cout << "Child " << c << ": ";
+      for (unsigned int i = 0; i < vector_coarse.size(); ++i)
+        std::cout << vector_coarse[i] << " ";
+      std::cout << std::endl;
 
-  // @sect4{MinimalSurfaceProblem::compute_residual}
+      // for (unsigned int i = 0; i < vector_coarse.size(); ++i)
+      //   Assert(std::abs(value_fine - vector_coarse[i]) < 1e-12,
+      //          ExcInternalError());
+    }
 
-  // In order to monitor convergence, we need a way to compute the norm of the
-  // (discrete) residual, i.e., the norm of the vector
-  // $\left<F(u^n),\varphi_i\right>$ with $F(u)=-\nabla \cdot \left(
-  // \frac{1}{\sqrt{1+|\nabla u|^{2}}}\nabla u \right)$ as discussed in the
-  // introduction. It turns out that (although we don't use this feature in
-  // the current version of the program) one needs to compute the residual
-  // $\left<F(u^n+\alpha^n\;\delta u^n),\varphi_i\right>$ when determining
-  // optimal step lengths, and so this is what we implement here: the function
-  // takes the step length $\alpha^n$ as an argument. The original
-  // functionality is of course obtained by passing a zero as argument.
-  //
-  // In the function below, we first set up a vector for the residual, and
-  // then a vector for the evaluation point $u^n+\alpha^n\;\delta u^n$. This
-  // is followed by the same boilerplate code we use for all integration
-  // operations:
-  template <int dim>
-  double MinimalSurfaceProblem<dim>::compute_residual(const double alpha) const
-  {
-    Vector<double> residual(dof_handler.n_dofs());
+  std::cout << "Sum of results " << std::endl;
+  for (unsigned int i = 0; i < vector_coarse_sum.size(); ++i)
+    std::cout << vector_coarse_sum[i] << " ";
+  std::cout << std::endl;
+}
 
-    Vector<double> evaluation_point(dof_handler.n_dofs());
-    evaluation_point = current_solution;
-    evaluation_point.add(alpha, newton_update);
+template <int dim>
+void check_constant_restriction(const Triangulation<dim>    &tr,
+                                const hp::FECollection<dim> &fe)
+{
+  DoFHandler<dim> dof_handler(tr);
 
-    const QGauss<dim> quadrature_formula(fe.degree + 1);
-    FEValues<dim>     fe_values(fe,
-                            quadrature_formula,
-                            update_gradients | update_quadrature_points |
-                              update_JxW_values);
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      if (cell->reference_cell() == ReferenceCells::Pyramid)
+        cell->set_active_fe_index(0);
+      else if (cell->reference_cell() == ReferenceCells::Tetrahedron)
+        cell->set_active_fe_index(1);
+      else
+        DEAL_II_NOT_IMPLEMENTED();
+    }
 
-    const unsigned int dofs_per_cell = fe.n_dofs_per_cell();
-    const unsigned int n_q_points    = quadrature_formula.size();
+  dof_handler.distribute_dofs(fe);
 
-    Vector<double>              cell_residual(dofs_per_cell);
-    std::vector<Tensor<1, dim>> gradients(n_q_points);
+  const double value_fine = 1.5;
 
-    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+  const unsigned int n_dofs_coarse = fe[0].dofs_per_cell;
+  Vector<double>     vector_coarse(n_dofs_coarse);
+  Vector<double>     vector_coarse_sum(n_dofs_coarse);
+  vector_coarse_sum = 0.;
 
-    for (const auto &cell : dof_handler.active_cell_iterators())
-      {
-        cell_residual = 0;
-        fe_values.reinit(cell);
+  Vector<double> vector_fine_global(dof_handler.n_dofs());
+  for (auto &v : vector_fine_global)
+    v = value_fine;
+  Vector<double> vector_fine;
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      const bool pyramid_child =
+        cell->reference_cell() == ReferenceCells::Pyramid;
 
-        // The actual computation is much as in
-        // <code>assemble_system()</code>. We first evaluate the gradients of
-        // $u^n+\alpha^n\,\delta u^n$ at the quadrature points, then compute
-        // the coefficient $a_n$, and then plug it all into the formula for
-        // the residual:
-        fe_values.get_function_gradients(evaluation_point, gradients);
+      const unsigned int n_dofs_fine =
+        pyramid_child ? n_dofs_coarse : fe[1].dofs_per_cell;
+
+      vector_fine.grow_or_shrink(n_dofs_fine);
+      cell->get_dof_values(vector_fine_global, vector_fine);
+
+      const auto restriction_matrix =
+        fe[0].get_restriction_matrix(cell->active_cell_index());
 
 
-        for (unsigned int q = 0; q < n_q_points; ++q)
+      if (fe[0].n_dofs_per_vertex() == 0)
+        restriction_matrix.vmult_add(vector_coarse_sum, vector_fine);
+      else
+        {
+          vector_coarse = 0.;
+          restriction_matrix.vmult(vector_coarse, vector_fine);
+          for (unsigned int i = 0; i < vector_coarse.size(); ++i)
+            if (std::abs(vector_coarse[i]) > 1e-12)
+              vector_coarse_sum[i] = vector_coarse[i];
+        }
+
+      // std::cout << "Child " << cell->active_cell_index() << ": ";
+      // for (const auto &v : vector_coarse)
+      //   std::cout << v << " ";
+      // std::cout << std::endl;
+
+      // for (unsigned int i = 0; i < vector_coarse.size(); ++i)
+      //   Assert(std::abs(value_fine - vector_coarse[i]) < 1e-12,
+      //          ExcInternalError());
+    }
+
+  // std::cout << "Sum of results " << std::endl;
+  // for (const auto &v : vector_coarse_sum)
+  //   std::cout << v << " ";
+  // std::cout << std::endl;
+  // bool wrote_value = false;
+  for (const auto &v : vector_coarse_sum)
+    Assert(std::abs(value_fine - v) < 1e-8, ExcInternalError());
+  //   if (std::abs(value_fine - v) > 1e-12)
+  //     {
+  //       std::cout << std::abs(value_fine - v) << " ";
+  //       wrote_value = true;
+  //     }
+  // if (wrote_value)
+  //   std::cout << std::endl;
+}
+
+
+
+template <int dim>
+void check_basis_function_restriction(const Triangulation<dim>    &tr,
+                                      const hp::FECollection<dim> &fe)
+{
+  DoFHandler<dim> dof_handler(tr);
+
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      if (cell->reference_cell() == ReferenceCells::Pyramid)
+        cell->set_active_fe_index(0);
+      else if (cell->reference_cell() == ReferenceCells::Tetrahedron)
+        cell->set_active_fe_index(1);
+      else
+        DEAL_II_NOT_IMPLEMENTED();
+    }
+
+  dof_handler.distribute_dofs(fe);
+
+  const unsigned int n_dofs_coarse = fe[0].dofs_per_cell;
+  Vector<double>     vector_coarse(n_dofs_coarse);
+  Vector<double>     vector_coarse_sum(n_dofs_coarse);
+  Vector<double>     vector_coarse_one_basis(n_dofs_coarse);
+
+  Vector<double> vector_fine_global(dof_handler.n_dofs());
+  for (unsigned int i = 0; i < dof_handler.n_dofs(); ++i)
+    {
+      vector_fine_global      = 0.0;
+      vector_fine_global[i]   = 1.0;
+      vector_coarse_one_basis = 0.0;
+
+      Vector<double> vector_fine(n_dofs_coarse);
+      for (const auto &cell : dof_handler.active_cell_iterators())
+        {
+          vector_fine = 0.0;
+          const bool pyramid_child =
+            cell->reference_cell() == ReferenceCells::Pyramid;
+
+          const unsigned int n_dofs_fine =
+            pyramid_child ? n_dofs_coarse : fe[1].dofs_per_cell;
+
+          vector_fine.grow_or_shrink(n_dofs_fine);
+          cell->get_dof_values(vector_fine_global, vector_fine);
+
+          const auto restriction_matrix =
+            fe[0].get_restriction_matrix(cell->active_cell_index());
+
+          if (fe[0].n_dofs_per_vertex() == 0)
+            restriction_matrix.vmult_add(vector_coarse_one_basis, vector_fine);
+          else
+            {
+              vector_coarse = 0.;
+              restriction_matrix.vmult(vector_coarse, vector_fine);
+              for (unsigned int i = 0; i < vector_coarse.size(); ++i)
+                if (std::abs(vector_coarse[i]) > 1e-12)
+                  vector_coarse_one_basis[i] = vector_coarse[i];
+            }
+        }
+      for (unsigned int i = 0; i < vector_coarse_one_basis.size(); ++i)
+        vector_coarse_sum[i] += vector_coarse_one_basis[i];
+    }
+  for (const auto &v : vector_coarse_sum)
+    if (std::abs(1.0 - v) > 1e-8)
+      std::cout << std::abs(1.0 - v) << " ";
+  std::cout << std::endl;
+}
+
+template <int dim>
+void check_polynomials_restriction(const Triangulation<dim>    &tr,
+                                   const hp::FECollection<dim> &fe)
+{
+  Triangulation<dim> tr_coarse;
+  GridGenerator::reference_cell(tr_coarse, ReferenceCells::Pyramid);
+  DoFHandler<dim> dof_handler_coarse(tr_coarse);
+  for (const auto &cell : dof_handler_coarse.active_cell_iterators())
+    cell->set_active_fe_index(0);
+  dof_handler_coarse.distribute_dofs(fe);
+
+  DoFHandler<dim> dof_handler(tr);
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      if (cell->reference_cell() == ReferenceCells::Pyramid)
+        cell->set_active_fe_index(0);
+      else if (cell->reference_cell() == ReferenceCells::Tetrahedron)
+        cell->set_active_fe_index(1);
+      else
+        DEAL_II_NOT_IMPLEMENTED();
+    }
+
+  dof_handler.distribute_dofs(fe);
+
+  const unsigned int degree        = fe[0].degree;
+  const unsigned int n_dofs_coarse = fe[0].dofs_per_cell;
+  const unsigned int n_dofs_fine   = dof_handler.n_dofs();
+
+  Vector<double> vector_coarse(n_dofs_coarse);
+  Vector<double> vector_coarse_global(n_dofs_coarse);
+  Vector<double> vector_fine_global(n_dofs_fine);
+  Vector<double> vector_fine_global_interpolated(n_dofs_fine);
+
+  hp::MappingCollection<dim, dim> mappings;
+  mappings.push_back(fe[0].reference_cell().get_default_linear_mapping());
+  mappings.push_back(fe[1].reference_cell().get_default_linear_mapping());
+
+
+  for (unsigned int i = 0; i < degree + 1; ++i)
+    for (unsigned int j = 0; j < degree + 1; ++j)
+      for (unsigned int k = 0; k < degree + 1; ++k)
+        if (i + j + k < degree + 1)
           {
-            const double coeff =
-              1. / std::sqrt(1 + gradients[q] * gradients[q]);
+            Tensor<1, dim> exponents;
+            exponents[0] = i;
+            exponents[1] = j;
+            exponents[2] = k;
+            const Functions::Monomial function_to_interpolate(exponents, 1);
 
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-              cell_residual(i) -= (fe_values.shape_grad(i, q) // \nabla \phi_i
-                                   * coeff                    // * a_n
-                                   * gradients[q]             // * \nabla u_n
-                                   * fe_values.JxW(q));       // * dx
+            VectorTools::interpolate(mappings,
+                                     dof_handler_coarse,
+                                     function_to_interpolate,
+                                     vector_coarse_global);
+
+            VectorTools::interpolate(mappings,
+                                     dof_handler,
+                                     function_to_interpolate,
+                                     vector_fine_global_interpolated);
+
+            const auto coarse_cell = dof_handler_coarse.begin_active();
+            coarse_cell->get_dof_values(vector_coarse_global, vector_coarse);
+
+            const auto parent = dof_handler.begin(0);
+            for (unsigned int c = 0; c < parent->n_children(); ++c)
+              {
+                const auto    &cell = parent->child(c);
+                Vector<double> vector_child(cell->get_fe().dofs_per_cell);
+                fe[0].get_prolongation_matrix(c).vmult(vector_child,
+                                                       vector_coarse);
+                cell->set_dof_values(vector_child, vector_fine_global);
+              }
+            {
+              // check that interpolated vector and set vector are similar
+              bool printed = false;
+              for (unsigned int v = 0; v < n_dofs_fine; ++v)
+                if (std::abs(vector_fine_global_interpolated[v] -
+                             vector_fine_global[v]) > 1e-12)
+                  {
+                    printed = true;
+                    std::cout << std::abs(vector_fine_global_interpolated[v] -
+                                          vector_fine_global[v])
+                              << " ";
+                  }
+              if (printed)
+                std::cout << "Values above from interpolation" << std::endl;
+            }
+
+            // now restrict the function
+            vector_coarse = 0.0;
+            Vector<double>                       tmp(n_dofs_coarse);
+            std::vector<types::global_dof_index> dof_indices(n_dofs_coarse);
+            coarse_cell->get_dof_indices(dof_indices);
+
+            for (unsigned int c = 0; c < parent->n_children(); ++c)
+              {
+                const auto    &cell = parent->child(c);
+                Vector<double> vector_child(cell->get_fe().dofs_per_cell);
+                cell->get_dof_values(vector_fine_global, vector_child);
+                tmp = 0.0;
+                fe[0].get_restriction_matrix(c).vmult(tmp, vector_child);
+
+                if (fe[0].n_dofs_per_vertex() == 0)
+                  for (unsigned int v = 0; v < dof_indices.size(); ++v)
+                    vector_coarse[dof_indices[v]] += tmp[v];
+                else
+                  for (unsigned int v = 0; v < dof_indices.size(); ++v)
+                    if (std::abs(tmp[v]) > 1e-12)
+                      vector_coarse[dof_indices[v]] = tmp[v];
+              }
+
+            // now check that the coarse and the interpolated coarse vectors are
+            // same same
+            bool printed = false;
+            for (unsigned int v = 0; v < n_dofs_coarse; ++v)
+              if (std::abs(vector_coarse[v] - vector_coarse_global[v]) > 1e-8)
+                {
+                  std::cout << vector_coarse[v] - vector_coarse_global[v]
+                            << " ";
+
+                  printed = true;
+                }
+            if (printed)
+              std::cout << std::endl
+                        << "Above is for " << i << " " << j << " " << k
+                        << std::endl;
           }
+}
 
-        cell->get_dof_indices(local_dof_indices);
-        zero_constraints.distribute_local_to_global(cell_residual,
-                                                    local_dof_indices,
-                                                    residual);
-      }
+template <int dim>
+void check_element(const Triangulation<dim>    &tr,
+                   const hp::FECollection<dim> &fe)
+{
+  DoFHandler<dim> dof_handler(tr);
 
-    return residual.l2_norm();
-  }
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      if (cell->reference_cell() == ReferenceCells::Pyramid)
+        cell->set_active_fe_index(0);
+      else if (cell->reference_cell() == ReferenceCells::Tetrahedron)
+        cell->set_active_fe_index(1);
+      else
+        DEAL_II_NOT_IMPLEMENTED();
+    }
 
+  dof_handler.distribute_dofs(fe);
 
+  const unsigned int n_dofs_fine = dof_handler.n_dofs();
+  // create a mostly arbitrary
+  // function plus a trend on this
+  // grid
+  Vector<double> vector_fine(n_dofs_fine);
+  vector_fine = 0.0;
 
-  // @sect4{MinimalSurfaceProblem::determine_step_length}
+  hp::MappingCollection<dim> mappings;
+  hp::QCollection<dim>       quadratures;
+  mappings.push_back(fe[0].reference_cell().get_default_linear_mapping());
+  mappings.push_back(fe[1].reference_cell().get_default_linear_mapping());
+  quadratures.push_back(Quadrature<dim>(fe[0].get_unit_support_points()));
+  quadratures.push_back(Quadrature<dim>(fe[1].get_unit_support_points()));
 
-  // As discussed in the introduction, Newton's method frequently does not
-  // converge if we always take full steps, i.e., compute $u^{n+1}=u^n+\delta
-  // u^n$. Rather, one needs a damping parameter (step length) $\alpha^n$ and
-  // set $u^{n+1}=u^n+\alpha^n\delta u^n$. This function is the one called
-  // to compute $\alpha^n$.
-  //
-  // Here, we simply always return 0.1. This is of course a sub-optimal
-  // choice: ideally, what one wants is that the step size goes to one as we
-  // get closer to the solution, so that we get to enjoy the rapid quadratic
-  // convergence of Newton's method. We will discuss better strategies below
-  // in the results section, and step-77 also covers this aspect.
-  template <int dim>
-  double MinimalSurfaceProblem<dim>::determine_step_length() const
-  {
-    return 0.1;
-  }
+  hp::FEValues<dim> hp_fe_values(mappings,
+                                 fe,
+                                 quadratures,
+                                 update_quadrature_points);
+  for (const auto &cell : dof_handler.active_cell_iterators())
+    {
+      hp_fe_values.reinit(cell);
+      auto &fe_values = hp_fe_values.get_present_fe_values();
+      std::vector<types::global_dof_index> dof_indices(
+        cell->get_fe().dofs_per_cell);
+      cell->get_dof_indices(dof_indices);
+      for (unsigned int i = 0; i < dof_indices.size(); ++i)
+        {
+          vector_fine(dof_indices[i]) =
+            fe_values.quadrature_point(i)[0] + fe_values.quadrature_point(i)[1];
+        }
+    }
 
-
-
-  // @sect4{MinimalSurfaceProblem::output_results}
-
-  // This last function to be called from `run()` outputs the current solution
-  // (and the Newton update) in graphical form as a VTU file. It is entirely the
-  // same as what has been used in previous tutorials.
-  template <int dim>
-  void MinimalSurfaceProblem<dim>::output_results(
-    const unsigned int refinement_cycle) const
-  {
-    DataOut<dim> data_out;
-
-    data_out.attach_dof_handler(dof_handler);
-    data_out.add_data_vector(current_solution, "solution");
-    data_out.add_data_vector(newton_update, "update");
-    data_out.build_patches();
-
-    const std::string filename =
-      "solution-" + Utilities::int_to_string(refinement_cycle, 2) + ".vtu";
-    std::ofstream output(filename);
-    data_out.write_vtu(output);
-  }
-
-
-  // @sect4{MinimalSurfaceProblem::run}
-
-  // In the run function, we build the first grid and then have the top-level
-  // logic for the Newton iteration.
-  //
-  // As described in the introduction, the domain is the unit disk around
-  // the origin, created in the same way as shown in step-6. The mesh is
-  // globally refined twice followed later on by several adaptive cycles.
-  //
-  // Before starting the Newton loop, we also need to do
-  // ensure that the first Newton iterate already has the correct
-  // boundary values, as discussed in the introduction.
-  template <int dim>
-  void MinimalSurfaceProblem<dim>::run()
-  {
-    GridGenerator::hyper_ball(triangulation);
-    triangulation.refine_global(2);
-
-    setup_system();
-    nonzero_constraints.distribute(current_solution);
-
-    // The Newton iteration starts next. We iterate until the (norm of the)
-    // residual computed at the end of the previous iteration is less than
-    // $10^{-3}$, as checked at the end of the `do { ... } while` loop that
-    // starts here. Because we don't have a reasonable value to initialize
-    // the variable, we just use the largest value that can be represented
-    // as a `double`.
-    double       last_residual_norm = std::numeric_limits<double>::max();
-    unsigned int refinement_cycle   = 0;
-    do
+  // restrict this function to the
+  // next coarser level and
+  // distribute it again to the
+  // higher level
+  Vector<double> x(vector_fine.size());
+  Vector<double> vector_coarse(fe[0].dofs_per_cell);
+  for (typename DoFHandler<dim>::cell_iterator cell = dof_handler.begin();
+       cell != dof_handler.end();
+       ++cell)
+    if (cell->has_children() && cell->child(0)->is_active())
       {
-        std::cout << "Mesh refinement step " << refinement_cycle << std::endl;
+        // first make sure that what
+        // we do is reasonable. for
+        // this, _all_ children have
+        // to be active, not only
+        // some of them
+        for (unsigned int c = 0;
+             c < fe[0].reference_cell().n_isotropic_children();
+             ++c)
+          AssertThrow(cell->child(c)->is_active(), ExcInternalError());
 
-        if (refinement_cycle != 0)
-          refine_mesh();
+        // then restrict and prolongate
+        cell->get_interpolated_dof_values(vector_fine, vector_coarse, 0);
+        cell->set_dof_values_by_interpolation(vector_coarse, x, 0);
+      };
 
-        // On every mesh we do exactly five Newton steps. We print the initial
-        // residual here and then start the iterations on this mesh.
-        //
-        // In every Newton step the system matrix and the right hand side have
-        // to be computed first, after which we store the norm of the right
-        // hand side as the residual to check against when deciding whether to
-        // stop the iterations. We then solve the linear system (the function
-        // also updates $u^{n+1}=u^n+\alpha^n\;\delta u^n$) and output the
-        // norm of the residual at the end of this Newton step.
-        //
-        // After the end of this loop, we then also output the solution on the
-        // current mesh in graphical form and increment the counter for the
-        // mesh refinement cycle.
-        std::cout << "  Initial residual: " << compute_residual(0) << std::endl;
+  // now x is a function on the fine
+  // grid that is representable on
+  // the coarse grid. so another
+  // cycle should not alter it any
+  // more:
+  Vector<double> x2(x.size());
+  for (typename DoFHandler<dim>::cell_iterator cell = dof_handler.begin();
+       cell != dof_handler.end();
+       ++cell)
+    if (cell->has_children() && cell->child(0)->is_active())
+      {
+        cell->get_interpolated_dof_values(x, vector_coarse, 0);
+        cell->set_dof_values_by_interpolation(vector_coarse, x2, 0);
+      };
 
-        for (unsigned int inner_iteration = 0; inner_iteration < 5;
-             ++inner_iteration)
-          {
-            assemble_system();
-            last_residual_norm = system_rhs.l2_norm();
+  // then check that this is so:
+  x2 -= x;
+  const double relative_residual = (x2.l2_norm() / x.l2_norm());
 
-            solve();
+  const double threshold = 1e-6;
+  std::cout << ", dofs_per_cell=" << fe[0].dofs_per_cell
+            << "; relative residual: " << relative_residual << " "
+            << (relative_residual < threshold ? "ok" : "botched up!")
+            << std::endl;
 
-            std::cout << "  Residual: " << compute_residual(0) << std::endl;
-          }
+  // TODO:[WB] Why this exception with a value different from above. Output of
+  // the error should be sufficient!
+  //  Assert (relative_residual < threshold*x.l2_norm(), ExcInternalError());
+}
 
-        output_results(refinement_cycle);
 
-        ++refinement_cycle;
-        std::cout << std::endl;
+template <int dim>
+void test()
+{
+  // make a coarse triangulation as a
+  // hypercube. if in more than 1d,
+  // distort it so that it is no more
+  // an affine image of the
+  // hypercube, to make things more
+  // difficult. then refine it twice
+  Triangulation<dim> tr;
+  GridGenerator::reference_cell(tr, ReferenceCells::Pyramid);
+
+  tr.refine_global(1);
+
+  // now for a list of finite
+  // elements, for which we want to
+  // test. we happily waste tons of
+  // memory here, but who cares...
+  std::vector<hp::FECollection<dim>> fe_collections;
+
+  const unsigned int degree_max = 4;
+
+  for (unsigned int fe_degree = 1; fe_degree < degree_max + 1; ++fe_degree)
+    {
+      const FE_SimplexP<dim> fe_p(fe_degree, false);
+      const FE_PyramidP<dim> fe_pyramid(fe_degree, false);
+      fe_collections.emplace_back(fe_pyramid, fe_p);
+    }
+
+  for (unsigned int fe_degree = 1; fe_degree < degree_max + 1; ++fe_degree)
+    {
+      const FE_SimplexDGP<dim> fe_p(fe_degree, false);
+      const FE_PyramidDGP<dim> fe_pyramid(fe_degree, false);
+      fe_collections.emplace_back(fe_pyramid, fe_p);
+    }
+
+  for (const auto &fe_collection : fe_collections)
+    {
+      std::cout << dim << "d, uniform grid, fe ";
+      for (unsigned int i = 0; i < fe_collection.size(); ++i)
+        std::cout << fe_collection[i].get_name() << ", ";
+      std::cout << std::endl;
+
+      if (false)
+        {
+          const auto pm = fe_collection[0].get_prolongation_matrix(0);
+          const auto pm2 =
+            fe_collection[1].get_prolongation_matrix(0, RefinementCase<3>(1));
+
+          const auto rm = fe_collection[0].get_restriction_matrix(0);
+          const auto rm2 =
+            fe_collection[1].get_restriction_matrix(0, RefinementCase<3>(1));
+
+          pm.print(std::cout);
+          std::cout << std::endl;
+          pm2.print(std::cout);
+          std::cout << std::endl;
+          rm.print(std::cout);
+          std::cout << std::endl;
+          rm2.print(std::cout);
+        }
+
+      check_element(tr, fe_collection);
+      // check_constant_prolongation(tr, fe_collection);
+      // check_basis_function_prolongation(tr, fe_collection);
+      // check_polynomials_prolongation(tr, fe_collection);
+      {
+        check_constant_restriction(tr, fe_collection);
+        check_basis_function_restriction(tr, fe_collection);
+        check_polynomials_restriction(tr, fe_collection);
       }
-    while (last_residual_norm > 1e-2);
-  }
-} // namespace Step15
+      // check_constant_prolongation_transpose(tr, fe_collection);
+    }
+}
 
-// @sect4{The main function}
 
-// Finally the main function. This follows the scheme of all other main
-// functions:
+
 int main()
 {
-  try
-    {
-      using namespace Step15;
+  test<3>();
 
-      MinimalSurfaceProblem<2> problem;
-      problem.run();
-    }
-  catch (std::exception &exc)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Exception on processing: " << std::endl
-                << exc.what() << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-
-      return 1;
-    }
-  catch (...)
-    {
-      std::cerr << std::endl
-                << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      std::cerr << "Unknown exception!" << std::endl
-                << "Aborting!" << std::endl
-                << "----------------------------------------------------"
-                << std::endl;
-      return 1;
-    }
   return 0;
 }
