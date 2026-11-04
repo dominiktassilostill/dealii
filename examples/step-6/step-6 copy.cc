@@ -718,28 +718,32 @@ private:
             {
               const auto normal = integrator_inner.normal_vector(q);
 
-            const auto grad_inner = integrator_inner.get_gradient(q);
-            const auto grad_outer = integrator_outer.get_gradient(q);
+              const auto grad_inner = integrator_inner.get_gradient(q);
+              const auto grad_outer = integrator_outer.get_gradient(q);
 
-            const auto grad_inner_normal = grad_inner * normal;
-            const auto grad_outer_normal = grad_outer * normal;
+              const auto grad_inner_normal = grad_inner * normal;
+              const auto grad_outer_normal = grad_outer * normal;
 
-            const auto normal_derivative_inner =
-              integrator_inner.get_normal_derivative(q);
-            const auto normal_derivative_outer =
-              integrator_outer.get_normal_derivative(q);
-            
-            bool different = false;
-            for (unsigned int v = 0;  v < grad_inner_normal.size(); ++v)
-            if(std::abs(grad_inner_normal[v] - normal_derivative_inner[v]) > 1e-14 || std::abs(grad_outer_normal[v] - normal_derivative_outer[v]) > 1e-14)
-              different = true;            
-            
-            if(different)
-            std::cout << "face " << face << " quadrature point " << q << " inner: "
-                      << grad_inner_normal - normal_derivative_inner
-                      << ", outer: "
-                      << grad_outer_normal - normal_derivative_outer
-                      << std::endl;
+              const auto normal_derivative_inner =
+                integrator_inner.get_normal_derivative(q);
+              const auto normal_derivative_outer =
+                integrator_outer.get_normal_derivative(q);
+
+              bool different = false;
+              for (unsigned int v = 0; v < grad_inner_normal.size(); ++v)
+                if (std::abs(grad_inner_normal[v] -
+                             normal_derivative_inner[v]) > 1e-14 ||
+                    std::abs(grad_outer_normal[v] -
+                             normal_derivative_outer[v]) > 1e-14)
+                  different = true;
+
+              if (different)
+                std::cout << "face " << face << " quadrature point " << q
+                          << " inner: "
+                          << grad_inner_normal - normal_derivative_inner
+                          << ", outer: "
+                          << grad_outer_normal - normal_derivative_outer
+                          << std::endl;
             }
             const auto normal = integrator_inner.normal_vector(q);
             const VectorizedArray<number> solution_jump =
@@ -755,11 +759,11 @@ private:
             integrator_outer.submit_value(-test_by_value, q);
 
             integrator_inner.submit_gradient(-solution_jump * normal *
-                                                        number(0.5),
-                                                      q);
+                                               number(0.5),
+                                             q);
             integrator_outer.submit_gradient(-solution_jump * normal *
-                                                        number(0.5),
-                                                      q);
+                                               number(0.5),
+                                             q);
           }
 
         integrator_inner.integrate_scatter(EvaluationFlags::values |
@@ -798,23 +802,25 @@ private:
             {
               const auto normal = integrator_inner.normal_vector(q);
 
-            const auto grad_inner = integrator_inner.get_gradient(q);
+              const auto grad_inner = integrator_inner.get_gradient(q);
 
-            const auto grad_inner_normal = grad_inner * normal;
+              const auto grad_inner_normal = grad_inner * normal;
 
-            const auto normal_derivative_inner =
-              integrator_inner.get_normal_derivative(q);
-           
-            
-            bool different = false;
-            for (unsigned int v = 0;  v < grad_inner_normal.size(); ++v)
-            if(std::abs(grad_inner_normal[v] - normal_derivative_inner[v]) > 1e-14)
-              different = true;            
-            
-            if(different)
-            std::cout << "boundary face " << face << " quadrature point " << q << " inner: "
-                      << grad_inner_normal - normal_derivative_inner
-                      << std::endl;
+              const auto normal_derivative_inner =
+                integrator_inner.get_normal_derivative(q);
+
+
+              bool different = false;
+              for (unsigned int v = 0; v < grad_inner_normal.size(); ++v)
+                if (std::abs(grad_inner_normal[v] -
+                             normal_derivative_inner[v]) > 1e-14)
+                  different = true;
+
+              if (different)
+                std::cout << "boundary face " << face << " quadrature point "
+                          << q << " inner: "
+                          << grad_inner_normal - normal_derivative_inner
+                          << std::endl;
             }
             const auto normal_derivative_one =
               integrator_inner.get_normal_derivative(q)[0];
@@ -1092,9 +1098,9 @@ void do_test(const unsigned int        min_degree,
                           << "boundary face in non default orientation in cycle "
                           << cycle << " with orientation "
                           << int(face_orientation) << std::endl;
-                      //else
-                      //  std::cout << "boundary face in standard orientation "
-                       //           << int(face_orientation) << std::endl;
+                      // else
+                      //   std::cout << "boundary face in standard orientation "
+                      //            << int(face_orientation) << std::endl;
                     }
                   else
                     {
@@ -1144,8 +1150,8 @@ void do_test(const unsigned int        min_degree,
 
       parallel::fullydistributed::Triangulation<dim> tria(MPI_COMM_WORLD);
       typename dealii::TriangulationDescription::Settings
-        triangulation_description_setting =
-          dealii::TriangulationDescription::default_setting;
+                 triangulation_description_setting =
+                   dealii::TriangulationDescription::default_setting;
       const auto description = dealii::TriangulationDescription::Utilities::
         create_description_from_triangulation_in_groups<dim, dim>(
           serial_grid_generator,
@@ -1171,10 +1177,10 @@ void do_test(const unsigned int        min_degree,
               FE_PyramidDGP<dim> fe_pyramidp(fe_degree, use_equidistant_points);
               FE_WedgeDGP<dim>   fe_wedgep(fe_degree, use_equidistant_points);
               FE_SimplexDGP<dim> fe_simplexp(fe_degree, use_equidistant_points);
-              FE_DGQ<dim>        fe_q = use_equidistant_points ?
-                                          FE_DGQArbitraryNodes<dim>(
+              FE_DGQ<dim> fe_q = use_equidistant_points ?
+                                   FE_DGQArbitraryNodes<dim>(
                                      QIterated<1>(QTrapezoid<1>(), fe_degree)) :
-                                          FE_DGQ<dim>(fe_degree);
+                                   FE_DGQ<dim>(fe_degree);
 
               if (ref_cell == ReferenceCells::Pyramid)
                 fe = &fe_pyramidp;
@@ -1250,7 +1256,7 @@ void do_test(const unsigned int        min_degree,
                     e[i] = 1.0;
 
                     r = 0.;
-                    //std::cout << "basis vector " << i << std::endl;
+                    // std::cout << "basis vector " << i << std::endl;
                     op.vmult(r, e);
 
                     for (unsigned int j = 0; j < n_current_dofs; ++j)
@@ -1259,10 +1265,10 @@ void do_test(const unsigned int        min_degree,
                       }
                   }
               }
-              //std::cout << std::endl;
+              // std::cout << std::endl;
 
-              //std::cout << "System matrix (mf)" << std::endl;
-              //full_system_matrix_mf.print(std::cout, 10, 3);
+              // std::cout << "System matrix (mf)" << std::endl;
+              // full_system_matrix_mf.print(std::cout, 10, 3);
 
               FullMatrix<Number> full_system_matrix_diff(n_current_dofs,
                                                          n_current_dofs);
@@ -1274,10 +1280,11 @@ void do_test(const unsigned int        min_degree,
               std::cout << "Difference" << std::endl;
               for (unsigned int i = 0; i < full_system_matrix_diff.m(); ++i)
                 for (unsigned int j = 0; j < full_system_matrix_diff.n(); ++j)
-                 if (std::abs(full_system_matrix_diff[i][j])>1e-14)
-                  std::cout << i << " " << j << ": " << full_system_matrix_diff[i][j] << ", ";
-                std::cout << std::endl;
-              //full_system_matrix_diff.print(std::cout, 10, 3);
+                  if (std::abs(full_system_matrix_diff[i][j]) > 1e-14)
+                    std::cout << i << " " << j << ": "
+                              << full_system_matrix_diff[i][j] << ", ";
+              std::cout << std::endl;
+              // full_system_matrix_diff.print(std::cout, 10, 3);
 
               Vector<Number> x, rhs, x_mb, rhs_mb, random_vector;
               op.initialize_dof_vector(x);
@@ -1308,8 +1315,8 @@ void do_test(const unsigned int        min_degree,
               x_mb = 0.;
 
               ReductionControl         reduction_control(dof_handler.n_dofs(),
-                                                 1e-12,
-                                                 1e-12);
+                                                         1e-12,
+                                                         1e-12);
               SolverCG<Vector<Number>> solver(reduction_control);
               PreconditionIdentity     preconditioner;
 
